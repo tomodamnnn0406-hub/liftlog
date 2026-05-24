@@ -29,7 +29,8 @@ body{
 
 /* ── Header ── */
 #header{
-  padding:14px 20px 12px;display:flex;align-items:center;
+  padding:calc(env(safe-area-inset-top) + 12px) 20px 12px;
+  display:flex;align-items:center;
   justify-content:space-between;border-bottom:1px solid var(--border);
   position:sticky;top:0;background:var(--bg);z-index:10;
 }
@@ -367,6 +368,43 @@ function allExerciseNames() {
 }
 
 // ═══════════════════════════════════════
+// SPARKLINE SVG
+// ═══════════════════════════════════════
+function sparklineSVG(vals, w, h) {
+  if (!vals || vals.length < 2) return '';
+  const min = Math.min(...vals);
+  const max = Math.max(...vals);
+  const range = max - min || 1;
+  const pad = 5;
+
+  const pts = vals.map((v, i) => ({
+    x: pad + (i / (vals.length - 1)) * (w - pad * 2),
+    y: h - pad - ((v - min) / range) * (h - pad * 2)
+  }));
+
+  const line  = pts.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+  const area  = [
+    ...pts.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`),
+    `${pts[pts.length-1].x.toFixed(1)},${h}`,
+    `${pts[0].x.toFixed(1)},${h}`
+  ].join(' ');
+  const last  = pts[pts.length - 1];
+  const gid   = 'sg' + vals.length + vals[0];
+
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="display:block;margin-top:10px;width:100%">
+    <defs>
+      <linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#f97316" stop-opacity="0.25"/>
+        <stop offset="100%" stop-color="#f97316" stop-opacity="0"/>
+      </linearGradient>
+    </defs>
+    <polygon points="${area}" fill="url(#${gid})"/>
+    <polyline points="${line}" fill="none" stroke="#f97316" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="${last.x.toFixed(1)}" cy="${last.y.toFixed(1)}" r="3.5" fill="#f97316"/>
+  </svg>`;
+}
+
+// ═══════════════════════════════════════
 // VIEW ROUTER
 // ═══════════════════════════════════════
 function showView(view) {
@@ -441,7 +479,59 @@ function renderDashboard() {
     </div>
   </div>`;
 
-  // Recent workout
+  // ── Big 3 Progress ──
+  const BIG3 = ['Squat', 'Bench Press', 'Deadlift'];
+  const hasBig3 = BIG3.some(n => prs[n]?.bestSet);
+
+  html += `<div class="label">Big 3 Progress</div>`;
+  if (!hasBig3) {
+    html += `<div class="card" style="text-align:center;padding:20px">
+      <div style="font-size:28px;margin-bottom:8px">🏋️</div>
+      <div style="font-size:14px;font-weight:600;margin-bottom:4px">No Big 3 data yet</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:14px">Log Squat, Bench Press, or Deadlift to see your progress here</div>
+      <button class="btn btn-primary btn-sm" onclick="showView('log')">Log a workout</button>
+    </div>`;
+  } else {
+    html += `<div style="display:grid;gap:10px;margin-bottom:4px">`;
+    for (const name of BIG3) {
+      const pr       = prs[name];
+      const progress = getProgress(name);
+      const vals     = progress.map(p => p.est1RM);
+      const first    = vals[0];
+      const latest   = vals[vals.length - 1];
+      const gain     = vals.length >= 2 ? latest - first : 0;
+      const gainStr  = gain > 0 ? `+${gain}${unit}` : gain < 0 ? `${gain}${unit}` : null;
+      const gainColor = gain > 0 ? 'var(--green)' : 'var(--red)';
+
+      if (!pr?.bestSet) {
+        html += `<div class="card" style="opacity:.45">
+          <div style="font-weight:700;font-size:15px;margin-bottom:2px">${name}</div>
+          <div style="font-size:12px;color:var(--muted)">Not logged yet — add it to a workout</div>
+        </div>`;
+      } else {
+        html += `
+        <div class="card" style="cursor:pointer" onclick="selectPRExercise('${esc(name)}');showView('prs')">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start">
+            <div>
+              <div style="font-weight:700;font-size:15px">${name}</div>
+              <div style="font-size:12px;color:var(--muted);margin-top:2px">Best: ${pr.bestSet.weight}${unit} × ${pr.bestSet.reps} reps</div>
+            </div>
+            <div style="text-align:right">
+              <div style="font-size:22px;font-weight:800;color:var(--accent);line-height:1">${pr.best1RM}<span style="font-size:12px;color:var(--muted);font-weight:500">${unit}</span></div>
+              <div style="font-size:11px;color:var(--muted);margin-top:1px">est. 1RM</div>
+              ${gainStr ? `<div style="font-size:11px;font-weight:700;color:${gainColor};margin-top:3px">${gainStr} from start</div>` : ''}
+            </div>
+          </div>
+          ${vals.length >= 2
+            ? sparklineSVG(vals, 300, 44)
+            : `<div style="font-size:11px;color:var(--muted);margin-top:8px">Log more sessions to see progress chart</div>`}
+        </div>`;
+      }
+    }
+    html += `</div>`;
+  }
+
+  // ── Recent workout ──
   html += `<div class="label">Last Workout</div>`;
   if(recent) {
     const exNames = recent.exercises.map(e=>e.name).join(' · ') || 'No exercises';
