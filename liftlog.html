@@ -282,6 +282,8 @@ const DB = {
   saveExercises(e){ localStorage.setItem('ll_exercises', JSON.stringify(e)) },
   get unit()      { return localStorage.getItem('ll_unit') || 'kg' },
   saveUnit(u)     { localStorage.setItem('ll_unit', u) },
+  get profile()   { return JSON.parse(localStorage.getItem('ll_profile') || '{}') },
+  saveProfile(p)  { localStorage.setItem('ll_profile', JSON.stringify(p)) },
   addWorkout(w)   { const arr = this.workouts; arr.push(w); this.save(arr) },
   removeWorkout(id){ this.save(this.workouts.filter(w => w.id !== id)) }
 };
@@ -365,6 +367,67 @@ function allExerciseNames() {
   const names = new Set(DB.exercises);
   for(const w of DB.workouts) for(const e of w.exercises) names.add(e.name);
   return [...names].sort();
+}
+
+// ═══════════════════════════════════════
+// PROFILE / BMI
+// ═══════════════════════════════════════
+function bmiColor(bmi) {
+  const b = +bmi;
+  if (b < 18.5) return '#3b82f6';   // underweight – blue
+  if (b < 25)   return '#22c55e';   // normal – green
+  if (b < 30)   return '#f97316';   // overweight – orange
+  return '#ef4444';                 // obese – red
+}
+function bmiLabel(bmi) {
+  const b = +bmi;
+  if (b < 18.5) return 'Underweight';
+  if (b < 25)   return 'Normal';
+  if (b < 30)   return 'Overweight';
+  return 'Obese';
+}
+
+function openProfileModal() {
+  const p    = DB.profile;
+  const unit = DB.unit;
+  document.getElementById('modal-content').innerHTML = `
+  <div style="font-size:18px;font-weight:700;margin-bottom:16px">My Stats</div>
+
+  <div class="input-group">
+    <div class="label">Height (cm)</div>
+    <input type="number" inputmode="numeric" id="p-height" placeholder="e.g. 175"
+      value="${p.height || ''}" min="100" max="250">
+  </div>
+
+  <div class="input-group" style="margin-bottom:20px">
+    <div class="label">Body Weight (${unit})</div>
+    <input type="number" inputmode="decimal" id="p-bw" placeholder="e.g. ${unit==='kg'?'75':'165'}"
+      value="${p.bodyweight || ''}" min="30" max="300" step="0.1">
+  </div>
+
+  <button class="btn btn-primary btn-full" onclick="saveProfile()">Save</button>
+  ${p.height || p.bodyweight
+    ? `<button class="btn btn-danger btn-full" style="margin-top:8px" onclick="clearProfile()">Clear stats</button>`
+    : ''}
+  `;
+  openModal();
+  setTimeout(() => document.getElementById('p-height')?.focus(), 100);
+}
+
+function saveProfile() {
+  const height     = +document.getElementById('p-height').value  || null;
+  const bodyweight = +document.getElementById('p-bw').value      || null;
+  DB.saveProfile({ height, bodyweight });
+  closeModal();
+  showToast('Stats saved!');
+  renderDashboard();
+}
+
+function clearProfile() {
+  if (!confirm('Clear your stats?')) return;
+  DB.saveProfile({});
+  closeModal();
+  renderDashboard();
 }
 
 // ═══════════════════════════════════════
@@ -452,12 +515,65 @@ function renderDashboard() {
   const recent = [...workouts].sort((a,b)=>b.date.localeCompare(a.date))[0];
   const prEntries = Object.entries(prs).filter(([,p])=>p.bestSet);
 
+  const profile = DB.profile;
+  const hasProfile = profile.height || profile.bodyweight;
+
+  // BMI calc (always in metric internally)
+  let bmi = null;
+  if (profile.height && profile.bodyweight) {
+    const hM  = profile.height / 100;          // cm → m
+    const wKg = unit === 'lbs'
+      ? profile.bodyweight / 2.2046            // lbs → kg
+      : profile.bodyweight;
+    bmi = (wKg / (hM * hM)).toFixed(1);
+  }
+
+  // Format height display
+  function fmtHeight(cm) {
+    const ft  = Math.floor(cm / 30.48);
+    const inc = Math.round((cm / 30.48 - ft) * 12);
+    return `${cm} cm  ·  ${ft}′${inc}″`;
+  }
+
   let html = `
   <div class="section-header">
     <div>
       <div style="font-size:22px;font-weight:800;margin-bottom:2px">Dashboard</div>
       <div style="font-size:12px;color:var(--muted)">${now.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}</div>
     </div>
+  </div>
+
+  <!-- Profile card -->
+  <div class="card" onclick="openProfileModal()" style="cursor:pointer;margin-bottom:14px">
+    ${hasProfile ? `
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <div style="display:flex;gap:20px">
+        <div>
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);margin-bottom:2px">Height</div>
+          <div style="font-size:15px;font-weight:700">${profile.height ? fmtHeight(profile.height) : '—'}</div>
+        </div>
+        <div>
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);margin-bottom:2px">Body Weight</div>
+          <div style="font-size:15px;font-weight:700">${profile.bodyweight ? profile.bodyweight + unit : '—'}</div>
+        </div>
+      </div>
+      <div style="text-align:right">
+        ${bmi ? `
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);margin-bottom:2px">BMI</div>
+        <div style="font-size:22px;font-weight:800;color:${bmiColor(bmi)}">${bmi}</div>
+        <div style="font-size:10px;color:var(--muted)">${bmiLabel(bmi)}</div>
+        ` : ''}
+      </div>
+    </div>
+    ` : `
+    <div style="display:flex;align-items:center;gap:12px">
+      <div style="font-size:28px">👤</div>
+      <div>
+        <div style="font-weight:600;margin-bottom:2px">Add your stats</div>
+        <div style="font-size:12px;color:var(--muted)">Tap to set your height & body weight</div>
+      </div>
+    </div>
+    `}
   </div>
 
   <div class="stats-grid">
