@@ -439,14 +439,32 @@ const DEFAULT_EXERCISES = [
 // MIGRATION — tag old workouts with a dataUnit
 // ═══════════════════════════════════════════════════════
 function runMigrations() {
-  if (localStorage.getItem('ll_migrated_v2')) return;
-  const currentUnit = DB.unit; // whatever was active before — best guess for old data
-  const workouts = DB.workouts;
-  if (workouts.length) {
-    const migrated = workouts.map(w => w.dataUnit ? w : { ...w, dataUnit: currentUnit });
-    DB.save(migrated);
+  // v2 — tag old workouts with dataUnit
+  if (!localStorage.getItem('ll_migrated_v2')) {
+    const currentUnit = DB.unit;
+    const workouts = DB.workouts;
+    if (workouts.length) {
+      DB.save(workouts.map(w => w.dataUnit ? w : { ...w, dataUnit: currentUnit }));
+    }
+    localStorage.setItem('ll_migrated_v2', '1');
   }
-  localStorage.setItem('ll_migrated_v2', '1');
+
+  // v3 — convert goals from est-1RM format → targetWeightKg × targetReps
+  if (!localStorage.getItem('ll_migrated_v3')) {
+    const goals = DB.goals;
+    if (goals.length) {
+      DB.saveGoals(goals.map(g => {
+        if (g.targetKg !== undefined && !g.targetWeightKg) {
+          // old targetKg was est. 1RM; back-calculate to ~5-rep weight
+          const wFor5 = g.targetKg / (1 + 5 / 30);
+          return { id: g.id, exercise: g.exercise,
+            targetWeightKg: Math.round(wFor5 / 2.5) * 2.5, targetReps: 5 };
+        }
+        return g;
+      }));
+    }
+    localStorage.setItem('ll_migrated_v3', '1');
+  }
 }
 
 // ═══════════════════════════════════════════════════════
@@ -615,14 +633,31 @@ function estimateWeeks(exercise, targetKg) {
 // ═══════════════════════════════════════════════════════
 // GOALS ENGINE
 // ═══════════════════════════════════════════════════════
+
+// Returns est. 1RM in kg implied by this goal (weight × reps)
+function goalTarget1RM_kg(goal) {
+  if (goal.targetWeightKg && goal.targetReps) {
+    return goal.targetWeightKg * (1 + goal.targetReps / 30);
+  }
+  return goal.targetKg || 0; // backward compat
+}
+
+// For chart: returns the goal reference line value (in display unit) for a given mode
+function goalLineForMode(goal, mode) {
+  const t1rm_kg = goalTarget1RM_kg(goal);
+  if (mode === '1rm') return Math.round(dispW(t1rm_kg, 'kg'));
+  const reps = +mode;
+  return Math.round(dispW(t1rm_kg / (1 + reps / 30), 'kg') * 10) / 10;
+}
+
 function getGoalProgress(goal) {
-  const prs = getPRs();
-  const pr  = prs[goal.exercise];
-  const currentKg = pr?.best1RM_kg || 0;
-  const targetKg  = goal.targetKg;
-  const pct = targetKg > 0 ? Math.min(100, Math.round((currentKg / targetKg) * 100)) : 0;
-  const remaining = Math.max(0, dispW(targetKg - currentKg, 'kg'));
-  return { currentKg, targetKg, pct, remaining };
+  const prs   = getPRs();
+  const pr    = prs[goal.exercise];
+  const currentKg  = pr?.best1RM_kg || 0;
+  const target1RM  = goalTarget1RM_kg(goal);
+  const done       = currentKg >= target1RM && target1RM > 0;
+  const remaining1RM_kg = Math.max(0, target1RM - currentKg);
+  return { currentKg, target1RM, done, remaining1RM_kg };
 }
 
 // ═══════════════════════════════════════════════════════
@@ -749,7 +784,6 @@ function syncUnitToggle() {
 // DASHBOARD
 // ═══════════════════════════════════════════════════════
 function renderDashboard() {
-  // Destroy any existing dashboard chart before rebuilding DOM
   if (dashChart) { dashChart.destroy(); dashChart = null; }
 
   const workouts = DB.workouts;
@@ -760,26 +794,58 @@ function renderDashboard() {
   const profile  = DB.profile;
   const now      = new Date();
 
-  // Pick default chart exercise: first goal that has data, else highest-1RM exercise
+  // Pick default chart exercise
   if (!dashChartExercise || !prs[dashChartExercise]?.bestSet) {
-    const goalWithData = goals.find(g => prs[g.exercise]?.bestSet);
-    if (goalWithData) {
-      dashChartExercise = goalWithData.exercise;
-    } else {
-      const topEntry = Object.entries(prs)
-        .filter(([,p]) => p.bestSet)
-        .sort((a,b) => (b[1].best1RM_kg||0) - (a[1].best1RM_kg||0))[0];
-      dashChartExercise = topEntry ? topEntry[0] : null;
+    const gwd = goals.find(g => prs[g.exercise]?.bestSet);
+    if (gwd) dashChartExercise = gwd.exercise;
+    else {
+      const top = Object.entries(prs).filter(([,p])=>p.bestSet)
+        .sort((a,b)=>(b[1].best1RM_kg||0)-(a[1].best1RM_kg||0))[0];
+      dashChartExercise = top ? top[0] : null;
     }
   }
 
+  // All exercises with PR data (for the "change" dropdown)
+  const allWithData = Object.keys(prs).filter(n => prs[n]?.bestSet).sort();
+
   let html = `
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
     <div>
       <div style="font-size:22px;font-weight:800;margin-bottom:2px">Dashboard</div>
       <div style="font-size:12px;color:var(--muted)">${now.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}</div>
     </div>
   </div>`;
+
+  // ── CHART (TOP) ────────────────────────────────────────
+  if (allWithData.length) {
+    const exOpts = allWithData.map(n =>
+      `<option value="${n}" ${n===dashChartExercise?'selected':''}>${n}</option>`
+    ).join('');
+
+    html += `
+    <div class="card" style="margin-bottom:14px">
+      <!-- Exercise selector + mode toggles -->
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+        <div class="select-wrap" style="flex:1;min-width:120px;max-width:180px">
+          <select id="dash-ex-select" onchange="setDashChartExercise(this.value)"
+            style="font-size:13px;font-weight:700;padding:8px 30px 8px 10px;height:36px">
+            ${exOpts}
+          </select>
+        </div>
+        <div style="display:flex;gap:4px;flex-shrink:0">
+          <button id="dm-1rm" class="btn btn-sm ${dashChartMode==='1rm'?'btn-primary':'btn-secondary'}"
+            style="padding:6px 10px;font-size:11px" onclick="setDashChartMode('1rm')">Est. 1RM</button>
+          <button id="dm-5" class="btn btn-sm ${dashChartMode==='5'?'btn-primary':'btn-secondary'}"
+            style="padding:6px 10px;font-size:11px" onclick="setDashChartMode('5')">5 Rep</button>
+          <button id="dm-8" class="btn btn-sm ${dashChartMode==='8'?'btn-primary':'btn-secondary'}"
+            style="padding:6px 10px;font-size:11px" onclick="setDashChartMode('8')">8 Rep</button>
+        </div>
+      </div>
+      <div id="dash-chart-wrap" style="position:relative;height:210px">
+        <canvas id="dash-chart-canvas"></canvas>
+      </div>
+    </div>`;
+  }
 
   // ── GOALS ──────────────────────────────────────────────
   html += `
@@ -793,115 +859,95 @@ function renderDashboard() {
 
   if (!goals.length) {
     html += `
-    <div class="card" style="text-align:center;padding:24px 20px;margin-bottom:16px">
+    <div class="card" style="text-align:center;padding:24px 20px;margin-bottom:14px">
       <div style="font-size:36px;margin-bottom:8px">🎯</div>
       <div style="font-weight:600;margin-bottom:4px">No goals set yet</div>
       <div style="font-size:12px;color:var(--muted);margin-bottom:14px">
-        Set a goal to track your progress and see an estimated timeline here
+        Set a target weight and reps — see your timeline here
       </div>
       <button class="btn btn-primary btn-sm" onclick="showView('goals')">Set Your First Goal</button>
     </div>`;
   } else {
     for (const goal of goals) {
-      const pr        = prs[goal.exercise];
-      const currentKg = pr?.best1RM_kg || 0;
-      const targetKg  = goal.targetKg;
-      const pct       = targetKg > 0 ? Math.min(100, Math.round((currentKg / targetKg) * 100)) : 0;
-      const done      = pct >= 100;
-      const dispCur   = pr?.best1RM   ? pr.best1RM : 0;
-      const dispTgt   = Math.round(dispW(targetKg, 'kg'));
+      const pr   = prs[goal.exercise];
+      const gp   = getGoalProgress(goal);
+      const barPct = gp.target1RM > 0
+        ? Math.min(100, Math.round((gp.currentKg / gp.target1RM) * 100)) : 0;
 
-      // Estimate time
-      const weeks     = done ? 0 : estimateWeeks(goal.exercise, targetKg);
-      const timeStr   = done ? null
-        : weeks === 0    ? null
-        : weeks === null ? `${dispTgt - dispCur}${unit} to go`
-        : weeks <= 4     ? `~${weeks} week${weeks>1?'s':''} away`
-        : weeks <= 52    ? `~${Math.round(weeks/4)} month${Math.round(weeks/4)>1?'s':''} away`
-        : `${Math.round(weeks/52)}+ year${Math.round(weeks/52)>1?'s':''} away`;
+      // Format target display
+      const tWDisp = goal.targetWeightKg
+        ? Math.round(dispW(goal.targetWeightKg, 'kg') * 10) / 10 : '—';
+      const tReps  = goal.targetReps || '—';
+
+      // Remaining 1RM gap
+      const remDisp = Math.round(dispW(gp.remaining1RM_kg, 'kg'));
+
+      // Est. time
+      const weeks  = gp.done ? 0 : estimateWeeks(goal.exercise, gp.target1RM);
+      const timeStr = gp.done ? null
+        : weeks === null ? (remDisp > 0 ? `${remDisp}${unit} 1RM to go` : null)
+        : weeks <= 4     ? `~${weeks}w`
+        : weeks <= 52    ? `~${Math.round(weeks/4)}mo`
+        : `${Math.round(weeks/52)}+ yr`;
 
       const isSelected = dashChartExercise === goal.exercise;
 
       html += `
-      <div class="card" style="margin-bottom:10px;cursor:pointer;border-color:${isSelected?'var(--accent)':'var(--border)'};transition:border-color .2s"
+      <div class="card" style="margin-bottom:10px;cursor:pointer;
+           border-color:${isSelected?'var(--accent)':'var(--border)'};transition:border-color .2s"
            onclick="setDashChartExercise('${esc(goal.exercise)}')">
 
-        <!-- Header row -->
         <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
           <div style="flex:1;min-width:0">
-            <div style="font-size:15px;font-weight:700;margin-bottom:5px">${goal.exercise}</div>
-            <!-- Current PR -->
-            <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:3px">
-              <span style="font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)">Current PR</span>
+            <!-- Exercise -->
+            <div style="font-size:15px;font-weight:700;margin-bottom:6px">${goal.exercise}</div>
+            <!-- PR row -->
+            <div style="display:flex;align-items:baseline;gap:5px;margin-bottom:4px">
+              <span style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);min-width:56px">Current</span>
               ${pr?.bestSet
-                ? `<span style="font-size:15px;font-weight:800;color:var(--accent)">${pr.displayWeight}${unit}</span>
-                   <span style="font-size:12px;color:var(--muted)">× ${pr.bestSet.reps} reps</span>
-                   <span style="font-size:11px;color:var(--muted)">(~${pr.best1RM}${unit} 1RM)</span>`
+                ? `<span style="font-size:16px;font-weight:800;color:var(--accent)">${pr.displayWeight}${unit}</span>
+                   <span style="font-size:12px;color:var(--muted)">× ${pr.bestSet.reps} reps</span>`
                 : `<span style="font-size:12px;color:var(--muted)">No data yet</span>`}
             </div>
-            <!-- Target -->
-            <div style="display:flex;align-items:baseline;gap:6px">
-              <span style="font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)">Target</span>
-              <span style="font-size:15px;font-weight:700;color:var(--green)">${dispTgt}${unit}</span>
-              <span style="font-size:11px;color:var(--muted)">est. 1RM</span>
+            <!-- Target row -->
+            <div style="display:flex;align-items:baseline;gap:5px">
+              <span style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);min-width:56px">Target</span>
+              <span style="font-size:16px;font-weight:800;color:var(--green)">${tWDisp}${unit}</span>
+              <span style="font-size:12px;color:var(--muted)">× ${tReps} reps</span>
             </div>
           </div>
-          <!-- Percent badge -->
-          <div style="text-align:right;flex-shrink:0;margin-left:12px">
-            <div style="font-size:26px;font-weight:900;line-height:1;color:${done?'var(--green)':'var(--accent)'}">${pct}%</div>
-            <div style="font-size:10px;color:var(--muted);margin-top:2px">${dispCur} / ${dispTgt}${unit}</div>
+          <!-- Tap-to-chart indicator -->
+          <div style="flex-shrink:0;margin-left:10px;text-align:center;padding:6px 8px;border-radius:8px;
+               background:${isSelected?'var(--accent-dim)':'transparent'};border:1px solid ${isSelected?'var(--accent)':'transparent'}">
+            <div style="font-size:10px;color:${isSelected?'var(--accent)':'var(--muted)'};font-weight:600;text-transform:uppercase;letter-spacing:.4px">
+              ${isSelected?'◆ Active':'Chart'}
+            </div>
           </div>
         </div>
 
         <!-- Progress bar -->
         <div class="goal-bar-track">
-          <div class="goal-bar-fill ${done?'done':''}" style="width:${pct}%"></div>
+          <div class="goal-bar-fill ${gp.done?'done':''}" style="width:${barPct}%"></div>
         </div>
 
-        <!-- Footer row -->
+        <!-- Footer -->
         <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;font-size:11px">
-          ${done
+          ${gp.done
             ? `<span style="color:var(--green);font-weight:700">🎉 Goal reached!</span>`
-            : `<span style="color:var(--muted)">${timeStr || `${dispTgt-dispCur}${unit} remaining`}</span>`}
-          <span style="color:${isSelected?'var(--accent)':'var(--muted)'};font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.4px">
-            ${isSelected ? '▲ Chart below' : 'Tap to chart'}
-          </span>
+            : `<span style="color:var(--muted)">${timeStr || ''}</span>`}
+          ${!gp.done && weeks !== null
+            ? `<span style="color:var(--muted)">Est. ${timeStr} away</span>` : ''}
         </div>
       </div>`;
     }
   }
 
-  // ── INTERACTIVE PROGRESS CHART ─────────────────────────
-  if (dashChartExercise) {
-    html += `
-    <div class="card" style="margin-bottom:16px">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;margin-bottom:12px">
-        <div>
-          <div style="font-size:14px;font-weight:700">${dashChartExercise}</div>
-          <div style="font-size:11px;color:var(--muted)">Progress over time</div>
-        </div>
-        <!-- Toggle buttons -->
-        <div style="display:flex;gap:4px">
-          <button id="dm-1rm" class="btn btn-sm ${dashChartMode==='1rm'?'btn-primary':'btn-secondary'}"
-            style="padding:6px 10px;font-size:11px" onclick="setDashChartMode('1rm')">Est. 1RM</button>
-          <button id="dm-5" class="btn btn-sm ${dashChartMode==='5'?'btn-primary':'btn-secondary'}"
-            style="padding:6px 10px;font-size:11px" onclick="setDashChartMode('5')">5 Rep</button>
-          <button id="dm-8" class="btn btn-sm ${dashChartMode==='8'?'btn-primary':'btn-secondary'}"
-            style="padding:6px 10px;font-size:11px" onclick="setDashChartMode('8')">8 Rep</button>
-        </div>
-      </div>
-      <div id="dash-chart-wrap" style="position:relative;height:200px">
-        <canvas id="dash-chart-canvas"></canvas>
-      </div>
-    </div>`;
-  }
-
   // ── LAST WORKOUT ──────────────────────────────────────
-  html += `<div class="label" style="margin-bottom:8px">Last Workout</div>`;
+  html += `<div class="label" style="margin-bottom:8px;margin-top:4px">Last Workout</div>`;
   if (recent) {
-    const du       = wUnit(recent);
-    const exNames  = recent.exercises.map(e => e.name).join(' · ') || 'No exercises';
-    const totalVol = recent.exercises.reduce((s,e) =>
+    const du        = wUnit(recent);
+    const exNames   = recent.exercises.map(e => e.name).join(' · ') || 'No exercises';
+    const totalVol  = recent.exercises.reduce((s,e) =>
       s + e.sets.reduce((s2,set) => s2 + (dispW(+set.weight||0,du)) * (+set.reps||0), 0), 0);
     const totalSets = recent.exercises.reduce((s,e) =>
       s + e.sets.filter(s => s.weight || s.reps).length, 0);
@@ -911,16 +957,19 @@ function renderDashboard() {
         <div style="font-weight:700;font-size:16px">${recent.name||'Workout'}</div>
         <div style="font-size:12px;color:var(--muted)">${daysAgo(recent.date)}</div>
       </div>
-      <div style="font-size:12px;color:var(--muted);margin-bottom:${totalVol?'8px':'0'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${exNames}</div>
-      ${totalVol ? `<div style="font-size:12px;color:var(--accent);font-weight:600">${Math.round(totalVol).toLocaleString()}${unit} vol · ${totalSets} sets</div>` : ''}
+      <div style="font-size:12px;color:var(--muted);margin-bottom:${totalVol?'8px':'0'};
+           white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${exNames}</div>
+      ${totalVol
+        ? `<div style="font-size:12px;color:var(--accent);font-weight:600">${Math.round(totalVol).toLocaleString()}${unit} vol · ${totalSets} sets</div>`
+        : ''}
     </div>`;
   } else {
     html += `
-    <div class="card" style="text-align:center;padding:28px 20px;margin-bottom:14px">
-      <div style="font-size:42px;margin-bottom:10px">🏋️</div>
+    <div class="card" style="text-align:center;padding:24px 20px;margin-bottom:14px">
+      <div style="font-size:40px;margin-bottom:10px">🏋️</div>
       <div style="font-weight:700;margin-bottom:6px">No workouts yet</div>
-      <div style="font-size:13px;color:var(--muted);margin-bottom:16px">Start logging to track your progress</div>
-      <button class="btn btn-primary" onclick="showView('log')">Log First Workout</button>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:14px">Start logging to track your progress</div>
+      <button class="btn btn-primary btn-sm" onclick="showView('log')">Log First Workout</button>
     </div>`;
   }
 
@@ -944,10 +993,9 @@ function renderDashboard() {
           </div>
           <div>
             <div style="font-size:10px;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);margin-bottom:2px">Height</div>
-            <div style="font-size:20px;font-weight:800">${profile.height ? profile.height : '—'}<span style="font-size:12px;font-weight:400;color:var(--muted);margin-left:2px">${profile.height?'cm':''}</span></div>
+            <div style="font-size:20px;font-weight:800">${profile.height||'—'}<span style="font-size:12px;font-weight:400;color:var(--muted);margin-left:2px">${profile.height?'cm':''}</span></div>
           </div>
-          ${bmi ? `
-          <div>
+          ${bmi ? `<div>
             <div style="font-size:10px;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);margin-bottom:2px">BMI</div>
             <div style="font-size:20px;font-weight:800;color:${bmiColor(bmi)}">${bmi}</div>
           </div>` : ''}
@@ -972,8 +1020,6 @@ function renderDashboard() {
   }
 
   document.getElementById('main').innerHTML = html;
-
-  // Render chart after DOM is ready
   if (dashChartExercise) setTimeout(() => renderDashboardChart(), 60);
 }
 
@@ -1029,14 +1075,7 @@ function renderDashboardChart() {
 
   // Goal reference line
   if (goal) {
-    let goalDisplay;
-    if (dashChartMode === '1rm') {
-      goalDisplay = Math.round(dispW(goal.targetKg, 'kg'));
-    } else {
-      const reps  = +dashChartMode;
-      const gKg   = goal.targetKg / (1 + reps / 30);
-      goalDisplay = Math.round(dispW(gKg, 'kg'));
-    }
+    const goalDisplay = goalLineForMode(goal, dashChartMode);
     datasets.push({
       label:       `Goal: ${goalDisplay}${unit}`,
       data:        Array(labels.length).fill(goalDisplay),
@@ -1637,50 +1676,64 @@ function renderGoals() {
   }
 
   for(const goal of goals) {
-    const gp        = getGoalProgress(goal);
-    const done      = gp.pct >= 100;
-    const dispCur   = Math.round(dispW(gp.currentKg,  'kg'));
-    const dispTgt   = Math.round(dispW(gp.targetKg,   'kg'));
-    const dispRem   = Math.round(dispW(Math.max(0, gp.targetKg - gp.currentKg), 'kg'));
-    const pr        = prs[goal.exercise];
-    const hasPR     = !!pr?.bestSet;
+    const gp             = getGoalProgress(goal);
+    const pr             = prs[goal.exercise];
+    const hasPR          = !!pr?.bestSet;
+    const done           = gp.done;
+
+    // Current best set display
+    const curWeight      = hasPR ? pr.displayWeight : '—';
+    const curReps        = hasPR ? pr.bestSet.reps  : '—';
+
+    // Target display (convert stored kg → display unit)
+    const tgtWeight      = goal.targetWeightKg
+      ? Math.round(dispW(goal.targetWeightKg, 'kg') * 10) / 10
+      : '—';
+    const tgtReps        = goal.targetReps || '—';
+
+    // Progress bar % based on est. 1RM progress
+    const pct = gp.target1RM > 0
+      ? Math.min(100, Math.round((gp.currentKg / gp.target1RM) * 100))
+      : 0;
+
+    // Estimated weeks
+    const weeksLeft = done ? 0 : estimateWeeks(goal.exercise, gp.target1RM);
+    const etaText   = done
+      ? `<span style="color:var(--green);font-weight:700">Goal reached! 🎉</span>`
+      : weeksLeft === null
+        ? `<span style="color:var(--muted)">Log more sets to estimate</span>`
+        : weeksLeft === 0
+          ? `<span style="color:var(--green);font-weight:700">Goal reached! 🎉</span>`
+          : `<span style="color:var(--muted)">~${weeksLeft}w away</span>`;
 
     html += `
     <div class="goal-card">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
         <div style="flex:1;min-width:0">
-          <div style="font-size:16px;font-weight:700">${goal.exercise}</div>
-          ${hasPR
-            ? `<div style="font-size:12px;color:var(--muted);margin-top:3px">
-                PR: <strong style="color:var(--text)">${pr.displayWeight}${unit} × ${pr.bestSet.reps}</strong> · est. 1RM <strong style="color:var(--accent)">${pr.best1RM}${unit}</strong>
-               </div>`
-            : `<div style="font-size:12px;color:var(--muted);margin-top:3px">No data yet — log this exercise!</div>`}
-        </div>
-        <div style="display:flex;align-items:center;gap:8px">
-          <div style="text-align:right">
-            <div style="font-size:22px;font-weight:900;color:${done?'var(--green)':'var(--accent)'}">${gp.pct}%</div>
-            ${done
-              ? `<div style="font-size:10px;color:var(--green);font-weight:700">🎉 Done!</div>`
-              : `<div style="font-size:10px;color:var(--muted)">${dispCur}/${dispTgt}${unit}</div>`}
+          <div style="font-size:16px;font-weight:700;margin-bottom:6px">${goal.exercise}</div>
+          <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 10px;font-size:13px">
+            <span style="color:var(--muted)">Current</span>
+            <span style="font-weight:600;color:${hasPR?'var(--text)':'var(--muted)'}">
+              ${hasPR ? `${curWeight}${unit} × ${curReps} reps` : 'No data yet'}
+            </span>
+            <span style="color:var(--muted)">Target</span>
+            <span style="font-weight:600;color:var(--accent)">${tgtWeight}${unit} × ${tgtReps} reps</span>
           </div>
-          <button class="del-btn" onclick="openEditGoalModal('${goal.id}')" style="color:var(--muted)">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-            </svg>
-          </button>
         </div>
+        <button class="del-btn" onclick="openEditGoalModal('${goal.id}')" style="color:var(--muted);margin-left:8px;flex-shrink:0">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+          </svg>
+        </button>
       </div>
 
       <div class="goal-bar-track">
-        <div class="goal-bar-fill ${done?'done':''}" style="width:${gp.pct}%"></div>
+        <div class="goal-bar-fill ${done?'done':''}" style="width:${pct}%"></div>
       </div>
 
       <div class="goal-meta">
-        <span>Target: ${dispTgt}${unit} est. 1RM</span>
-        ${done
-          ? `<span style="color:var(--green);font-weight:700">Goal reached! 🎉</span>`
-          : `<span>${dispRem}${unit} to go</span>`}
+        ${etaText}
       </div>
     </div>`;
   }
@@ -1714,9 +1767,15 @@ function openAddGoalModal(prefillExercise) {
 
   <div id="goal-current-pr" style="font-size:12px;color:var(--muted);margin:-4px 0 12px;min-height:18px"></div>
 
-  <div class="input-group">
-    <div class="label">Target Est. 1RM (${unit})</div>
-    <input type="number" inputmode="decimal" id="goal-target" placeholder="e.g. ${unit==='kg'?'100':'225'}" min="1" step="2.5">
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+    <div class="input-group">
+      <div class="label">Target Weight (${unit})</div>
+      <input type="number" inputmode="decimal" id="goal-target-weight" placeholder="${unit==='kg'?'e.g. 80':'e.g. 175'}" min="1" step="2.5">
+    </div>
+    <div class="input-group">
+      <div class="label">Target Reps</div>
+      <input type="number" inputmode="numeric" id="goal-target-reps" placeholder="e.g. 5" min="1" max="30" step="1" value="5">
+    </div>
   </div>
 
   <button class="btn btn-primary btn-full" style="margin-top:8px" onclick="saveGoal()">Save Goal</button>`;
@@ -1744,20 +1803,21 @@ function updateGoalCurrentPR(exerciseName) {
 }
 
 function saveGoal() {
-  const exercise = document.getElementById('goal-exercise').value;
-  const targetDisp = +document.getElementById('goal-target').value;
+  const exercise     = document.getElementById('goal-exercise').value;
+  const targetDisp   = +document.getElementById('goal-target-weight').value;
+  const targetReps   = +document.getElementById('goal-target-reps').value || 5;
   if(!exercise) { showToast('Pick an exercise', false); return }
   if(!targetDisp || targetDisp <= 0) { showToast('Enter a target weight', false); return }
 
-  const targetKg = toKg(targetDisp, DB.unit);
-  const goals    = DB.goals;
+  const targetWeightKg = toKg(targetDisp, DB.unit);
+  const goals          = DB.goals;
 
   // Replace if same exercise already has a goal, else add
   const existing = goals.findIndex(g => g.exercise === exercise);
   if(existing >= 0) {
-    goals[existing] = { ...goals[existing], targetKg };
+    goals[existing] = { ...goals[existing], targetWeightKg, targetReps };
   } else {
-    goals.push({ id: uid(), exercise, targetKg });
+    goals.push({ id: uid(), exercise, targetWeightKg, targetReps });
   }
   DB.saveGoals(goals);
   closeModal();
@@ -1767,31 +1827,42 @@ function saveGoal() {
 
 function openEditGoalModal(id) {
   const goal = DB.goals.find(g=>g.id===id); if(!goal) return;
-  const unit = DB.unit;
-  const disp = Math.round(dispW(goal.targetKg, 'kg'));
+  const unit       = DB.unit;
+  const dispWeight = goal.targetWeightKg
+    ? Math.round(dispW(goal.targetWeightKg, 'kg') * 10) / 10
+    : '';
+  const dispReps   = goal.targetReps || 5;
 
   document.getElementById('modal-content').innerHTML = `
   <div style="font-size:18px;font-weight:700;margin-bottom:16px">Edit Goal</div>
   <div style="font-size:14px;font-weight:600;margin-bottom:12px;color:var(--accent)">${goal.exercise}</div>
 
-  <div class="input-group">
-    <div class="label">Target Est. 1RM (${unit})</div>
-    <input type="number" inputmode="decimal" id="goal-edit-target" value="${disp}" min="1" step="2.5">
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+    <div class="input-group">
+      <div class="label">Target Weight (${unit})</div>
+      <input type="number" inputmode="decimal" id="goal-edit-weight" value="${dispWeight}" min="1" step="2.5">
+    </div>
+    <div class="input-group">
+      <div class="label">Target Reps</div>
+      <input type="number" inputmode="numeric" id="goal-edit-reps" value="${dispReps}" min="1" max="30" step="1">
+    </div>
   </div>
 
   <button class="btn btn-primary btn-full" style="margin-top:8px" onclick="updateGoal('${id}')">Update Goal</button>
   <button class="btn btn-danger btn-full" style="margin-top:8px" onclick="deleteGoal('${id}')">Delete Goal</button>`;
   openModal();
-  setTimeout(()=>document.getElementById('goal-edit-target')?.focus(), 100);
+  setTimeout(()=>document.getElementById('goal-edit-weight')?.focus(), 100);
 }
 
 function updateGoal(id) {
-  const targetDisp = +document.getElementById('goal-edit-target').value;
+  const targetDisp = +document.getElementById('goal-edit-weight').value;
+  const targetReps = +document.getElementById('goal-edit-reps').value || 5;
   if(!targetDisp || targetDisp <= 0) { showToast('Enter a valid weight', false); return }
   const goals = DB.goals;
   const i = goals.findIndex(g=>g.id===id);
   if(i<0) return;
-  goals[i].targetKg = toKg(targetDisp, DB.unit);
+  goals[i].targetWeightKg = toKg(targetDisp, DB.unit);
+  goals[i].targetReps     = targetReps;
   DB.saveGoals(goals);
   closeModal();
   showToast('Goal updated!');
@@ -1833,7 +1904,7 @@ function showToast(msg, ok=true) {
 // ═══════════════════════════════════════════════════════
 // DATA EXPORT / IMPORT
 // ═══════════════════════════════════════════════════════
-const DATA_KEYS = ['ll_workouts','ll_exercises','ll_unit','ll_profile','ll_goals','ll_migrated_v2'];
+const DATA_KEYS = ['ll_workouts','ll_exercises','ll_unit','ll_profile','ll_goals','ll_migrated_v2','ll_migrated_v3'];
 
 function openDataModal() {
   const workoutCount = DB.workouts.length;
