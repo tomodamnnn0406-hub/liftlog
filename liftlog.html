@@ -242,7 +242,7 @@ input:focus,textarea:focus,select:focus{border-color:var(--accent)}
   border-radius:20px;padding:5px 12px;font-size:13px;cursor:pointer;
   transition:all .15s;margin:3px;
 }
-.ex-chip:hover{border-color:var(--accent);color:var(--accent)}
+.ex-chip:hover,.ex-chip.active{border-color:var(--accent);color:var(--accent)}
 
 /* ── Unit toggle ── */
 .unit-toggle{display:flex;background:var(--card2);border-radius:8px;padding:2px;border:1px solid var(--border)}
@@ -372,8 +372,33 @@ const BODY_PART_MAP = {
   'Core':      ['plank','crunch','ab wheel','cable crunch','hanging leg raise','russian twist','sit-up','leg raise','decline crunch'],
 };
 const BODY_PART_EMOJI = {
-  'Chest':'💪','Back':'🔙','Legs':'🦵','Shoulders':'🏔️','Arms':'💪','Core':'🔥','Other':'⚡'
+  'Chest':'🏋️','Back':'🔙','Legs':'🦵','Shoulders':'🏔️','Arms':'💪','Abs':'🔥','Core':'🔥','Other':'⚡'
 };
+
+// Detailed muscle taxonomy — used for exercise tagging and PR grouping
+const MUSCLE_GROUPS = {
+  'Chest':     { emoji:'🏋️', sub:['Upper Chest','Middle Chest','Lower Chest'] },
+  'Shoulders': { emoji:'🏔️', sub:['Front Delt','Middle Delt','Rear Delt'] },
+  'Back':      { emoji:'🔙', sub:['Traps','Lats','Teres Major','Rhomboids'] },
+  'Legs':      { emoji:'🦵', sub:['Quads','Hamstrings','Glutes','Calves'] },
+  'Arms':      { emoji:'💪', sub:['Biceps','Triceps','Forearms'] },
+  'Abs':       { emoji:'🔥', sub:['Rectus Abdominis','Obliques','Lower Abs'] },
+};
+
+function getMuscleForExercise(name) {
+  return DB.exerciseMuscles[name] || null;
+}
+function getBodyPartForMuscle(muscle) {
+  for (const [bp, data] of Object.entries(MUSCLE_GROUPS)) {
+    if (data.sub.includes(muscle)) return bp;
+  }
+  return null;
+}
+function getBodyPartForExercise(name) {
+  const m = getMuscleForExercise(name);
+  if (m) return getBodyPartForMuscle(m) || 'Other';
+  return getBodyPart(name);
+}
 
 function getBodyPart(name) {
   const n = name.toLowerCase();
@@ -422,8 +447,10 @@ const DB = {
   saveUnit(u)      { localStorage.setItem('ll_unit', u) },
   get profile()    { return JSON.parse(localStorage.getItem('ll_profile') || '{}') },
   saveProfile(p)   { localStorage.setItem('ll_profile', JSON.stringify(p)) },
-  get goals()      { return JSON.parse(localStorage.getItem('ll_goals') || '[]') },
-  saveGoals(g)     { localStorage.setItem('ll_goals', JSON.stringify(g)) },
+  get goals()          { return JSON.parse(localStorage.getItem('ll_goals') || '[]') },
+  saveGoals(g)         { localStorage.setItem('ll_goals', JSON.stringify(g)) },
+  get exerciseMuscles(){ return JSON.parse(localStorage.getItem('ll_exercise_muscles') || '{}') },
+  saveExerciseMuscles(m){ localStorage.setItem('ll_exercise_muscles', JSON.stringify(m)) },
   addWorkout(w)    { const arr = this.workouts; arr.push(w); this.save(arr) },
   removeWorkout(id){ this.save(this.workouts.filter(w => w.id !== id)) }
 };
@@ -470,16 +497,20 @@ function runMigrations() {
 // ═══════════════════════════════════════════════════════
 // APP STATE
 // ═══════════════════════════════════════════════════════
-let currentView   = 'dashboard';
-let currentLog    = newLog();
-let selectedPREx  = null;
-let prChart       = null;
-let openBPGroups  = new Set(); // which body-part groups are expanded
+let currentView    = 'dashboard';
+let currentLog     = newLog();
+let editingWorkout = null;  // non-null when editing a saved workout
+let selectedPREx   = null;
+let prChart        = null;
+let openBPGroups   = new Set(); // which body-part groups are expanded
 
 // Dashboard chart state
 let dashChart         = null;
 let dashChartMode     = '1rm';   // '1rm' | '5' | '8'
 let dashChartExercise = null;
+
+// Returns the workout currently being built/edited (log or edit mode)
+function getActiveLog() { return editingWorkout || currentLog; }
 
 function newLog() {
   return { id: uid(), date: todayStr(), name: '', notes: '', exercises: [] };
@@ -1216,7 +1247,10 @@ function renderExercisesHTML() {
   return currentLog.exercises.map((ex, ei) => `
   <div class="card" id="ex-${ei}" style="margin-bottom:10px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-      <div style="font-size:16px;font-weight:700">${ex.name}</div>
+      <div>
+        <div style="font-size:16px;font-weight:700">${ex.name}</div>
+        ${getMuscleForExercise(ex.name)?`<div style="font-size:11px;color:var(--accent);margin-top:2px">${getMuscleForExercise(ex.name)}</div>`:''}
+      </div>
       <button class="del-btn" onclick="removeExercise(${ei})">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <polyline points="3 6 5 6 21 6"/>
@@ -1277,47 +1311,96 @@ function removeExercise(ei) {
 }
 
 function openAddExModal() {
-  const used  = new Set(currentLog.exercises.map(e=>e.name));
-  const avail = allExerciseNames().filter(e=>!used.has(e));
+  const active = getActiveLog();
+  const used   = new Set(active.exercises.map(e=>e.name));
+  const avail  = allExerciseNames().filter(e=>!used.has(e));
   document.getElementById('modal-content').innerHTML = `
   <div style="font-size:18px;font-weight:700;margin-bottom:14px">Add Exercise</div>
-  <div class="input-wrapper" style="margin-bottom:14px">
+  <div class="input-wrapper" style="margin-bottom:8px;position:relative">
     <input type="text" id="ex-search" placeholder="Search or type a new exercise…"
       oninput="filterExDropdown(this.value)" autocomplete="off"
-      autocapitalize="words" autocorrect="off" spellcheck="false">
+      autocapitalize="words" autocorrect="off" spellcheck="false"
+      onkeydown="if(event.key==='Enter'){const v=this.value.trim();if(v)pickExerciseName(v)}">
     <div id="ex-dropdown" class="ac-dropdown" style="display:none"></div>
   </div>
+  <button class="btn btn-primary btn-full" style="margin-bottom:14px" onclick="pickExerciseName(document.getElementById('ex-search').value.trim())">Next: Pick Muscle →</button>
   <div class="label">Common Exercises</div>
-  <div>${avail.map(e=>`<span class="ex-chip" onclick="addExercise('${esc(e)}')">${e}</span>`).join('')}</div>`;
+  <div>${avail.map(e=>`<span class="ex-chip" onclick="pickExerciseName('${esc(e)}')">${e}</span>`).join('')}</div>`;
   openModal();
   setTimeout(()=>document.getElementById('ex-search')?.focus(), 100);
+}
+
+function pickExerciseName(name) {
+  name = name.trim();
+  if (!name) { showToast('Enter an exercise name', false); return; }
+  const existingMuscle = DB.exerciseMuscles[name] || '';
+
+  let html = `
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+    <button class="btn btn-secondary btn-sm" onclick="openAddExModal()" style="padding:8px 10px">← Back</button>
+    <div style="font-size:18px;font-weight:700">Target Muscle</div>
+  </div>
+  <div style="font-size:14px;color:var(--accent);font-weight:600;margin-bottom:14px">${name}</div>`;
+
+  for (const [bp, data] of Object.entries(MUSCLE_GROUPS)) {
+    html += `<div class="label" style="margin-bottom:6px">${data.emoji} ${bp}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">`;
+    for (const m of data.sub) {
+      const sel = m === existingMuscle;
+      html += `<span class="ex-chip" onclick="addExercise('${esc(name)}','${esc(m)}')"
+        style="${sel?'background:var(--accent);color:#fff;border-color:var(--accent)':''}">${m}</span>`;
+    }
+    html += `</div>`;
+  }
+  html += `<button class="btn btn-secondary btn-full" style="margin-top:4px" onclick="addExercise('${esc(name)}','')">Skip — don't tag a muscle</button>`;
+  document.getElementById('modal-content').innerHTML = html;
 }
 
 function filterExDropdown(q) {
   const dd = document.getElementById('ex-dropdown');
   if(!q.trim()) { dd.style.display='none'; return }
-  const used = new Set(currentLog.exercises.map(e=>e.name));
+  const active = getActiveLog();
+  const used   = new Set(active.exercises.map(e=>e.name));
   const matches = allExerciseNames().filter(e=>!used.has(e)&&e.toLowerCase().includes(q.toLowerCase()));
-  const isNew = q.trim() && !allExerciseNames().map(e=>e.toLowerCase()).includes(q.trim().toLowerCase());
-  const items = [
-    ...matches.map(e=>`<div class="ac-item" onclick="addExercise('${esc(e)}')">${e}</div>`),
-    isNew ? `<div class="ac-item" onclick="addExercise('${esc(q.trim())}')" style="color:var(--accent)">+ Add "${q.trim()}"</div>` : ''
+  const isNew  = q.trim() && !allExerciseNames().map(e=>e.toLowerCase()).includes(q.trim().toLowerCase());
+  const items  = [
+    ...matches.map(e=>`<div class="ac-item" onclick="pickExerciseName('${esc(e)}')">${e}</div>`),
+    isNew ? `<div class="ac-item" onclick="pickExerciseName('${esc(q.trim())}')" style="color:var(--accent)">+ Add "${q.trim()}"</div>` : ''
   ].join('');
   dd.innerHTML = items || `<div class="ac-item" style="color:var(--muted)">No matches</div>`;
   dd.style.display = 'block';
 }
 
-function addExercise(name) {
+function addExercise(name, muscle) {
   name = name.trim(); if(!name) return;
+  // Save to known exercises list
   const exs = DB.exercises;
   if(!exs.includes(name)) { exs.push(name); DB.saveExercises(exs) }
-  currentLog.exercises.push({name, sets:[{weight:'',reps:''}]});
-  closeModal();
-  refreshExSection();
-  setTimeout(()=>{
-    document.getElementById(`ex-${currentLog.exercises.length-1}`)
-      ?.scrollIntoView({behavior:'smooth',block:'start'});
-  },100);
+  // Save muscle mapping if provided
+  if (muscle) {
+    const muscles = DB.exerciseMuscles;
+    muscles[name] = muscle;
+    DB.saveExerciseMuscles(muscles);
+  }
+
+  if (editingWorkout) {
+    // Edit mode — add to editingWorkout and refresh edit modal
+    editingWorkout.exercises.push({name, sets:[{weight:'',reps:''}]});
+    renderWorkoutEditModal();
+    setTimeout(()=>{
+      document.getElementById(`edit-ex-${editingWorkout.exercises.length-1}`)
+        ?.scrollIntoView({behavior:'smooth',block:'start'});
+    }, 120);
+  } else {
+    // Log mode
+    currentLog.exercises.push({name, sets:[{weight:'',reps:''}]});
+    closeModal();
+    refreshExSection();
+    setTimeout(()=>{
+      document.getElementById(`ex-${currentLog.exercises.length-1}`)
+        ?.scrollIntoView({behavior:'smooth',block:'start'});
+    }, 100);
+  }
 }
 
 function saveWorkout() {
@@ -1413,7 +1496,16 @@ function showWorkoutDetail(id) {
       <div style="font-size:20px;font-weight:800">${w.name||'Workout'}</div>
       <div style="font-size:13px;color:var(--muted)">${fmtDate(w.date)}</div>
     </div>
-    <button class="btn btn-danger btn-sm" onclick="deleteWorkout('${id}')">Delete</button>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-secondary btn-sm" onclick="openEditWorkoutModal('${id}')">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+        </svg>
+        Edit
+      </button>
+      <button class="btn btn-danger btn-sm" onclick="deleteWorkout('${id}')">Delete</button>
+    </div>
   </div>`;
 
   for(const ex of w.exercises) {
@@ -1451,6 +1543,217 @@ function deleteWorkout(id) {
   showToast('Workout deleted');
 }
 
+// ── Edit workout ──────────────────────────────────────
+function openEditWorkoutModal(id) {
+  const w = DB.workouts.find(x=>x.id===id); if(!w) return;
+  editingWorkout = JSON.parse(JSON.stringify(w));
+  renderWorkoutEditModal();
+}
+
+function renderWorkoutEditModal() {
+  const w         = editingWorkout;
+  const unit      = DB.unit;
+  const presetMatch  = SESSION_PRESETS.includes(w.name);
+  const showCustom   = w.name && !presetMatch;
+  const selectVal    = presetMatch ? w.name : (showCustom ? '__custom__' : '');
+  const presetsHTML  = SESSION_PRESETS.map(p=>
+    `<option value="${p}" ${selectVal===p?'selected':''}>${p}</option>`).join('');
+
+  let html = `
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+    <div style="font-size:18px;font-weight:700">Edit Workout</div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-secondary btn-sm" onclick="cancelEditWorkout()">Cancel</button>
+      <button class="btn btn-primary btn-sm" onclick="saveEditedWorkout()">Save</button>
+    </div>
+  </div>
+
+  <div class="card-sm" style="margin-bottom:12px">
+    <div class="input-group">
+      <div class="label">Date</div>
+      <input type="date" id="edit-log-date" value="${w.date}" onchange="editingWorkout.date=this.value">
+    </div>
+    <div class="input-group" style="margin-bottom:0">
+      <div class="label">Session Type</div>
+      <div class="select-wrap" style="margin-bottom:${showCustom?'8px':'0'}">
+        <select id="edit-log-name-select" onchange="handleEditSessionSelect(this.value)">
+          <option value="" ${!selectVal?'selected':''}>Select session type…</option>
+          ${presetsHTML}
+          <option value="__custom__" ${selectVal==='__custom__'?'selected':''}>✏️ Custom…</option>
+        </select>
+      </div>
+      <input type="text" id="edit-log-name-custom"
+        placeholder="Type session name…"
+        value="${showCustom ? w.name : ''}"
+        style="${showCustom?'':'display:none'}"
+        oninput="editingWorkout.name=this.value"
+        autocapitalize="words" autocorrect="off">
+    </div>
+  </div>
+
+  <div id="edit-exercises-section">${renderEditExercisesHTML()}</div>
+
+  <button class="btn btn-secondary btn-full" style="margin-bottom:12px;margin-top:4px" onclick="editOpenAddExModal()">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+      <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+    </svg>
+    Add Exercise
+  </button>
+
+  <div class="card-sm">
+    <div class="input-group" style="margin-bottom:0">
+      <div class="label">Notes (optional)</div>
+      <textarea id="edit-log-notes" rows="2" placeholder="How did it feel?" oninput="editingWorkout.notes=this.value">${w.notes||''}</textarea>
+    </div>
+  </div>`;
+
+  document.getElementById('modal-content').innerHTML = html;
+  openModal();
+}
+
+function handleEditSessionSelect(val) {
+  const customInput = document.getElementById('edit-log-name-custom');
+  if (val === '__custom__') {
+    customInput.style.display = '';
+    editingWorkout.name = '';
+    setTimeout(() => customInput.focus(), 50);
+  } else {
+    customInput.style.display = 'none';
+    editingWorkout.name = val;
+  }
+}
+
+function renderEditExercisesHTML() {
+  const unit = DB.unit;
+  const du   = wUnit(editingWorkout);
+  return editingWorkout.exercises.map((ex, ei) => {
+    const muscle = getMuscleForExercise(ex.name);
+    return `
+  <div class="card-sm" id="edit-ex-${ei}" style="margin-bottom:10px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <div>
+        <div style="font-size:15px;font-weight:700">${ex.name}</div>
+        ${muscle ? `<div style="font-size:11px;color:var(--accent);margin-top:2px">${muscle}</div>` : ''}
+      </div>
+      <button class="del-btn" onclick="editRemoveExercise(${ei})">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="3 6 5 6 21 6"/>
+          <path d="M19 6l-1 14H6L5 6"/>
+          <path d="M10 11v6"/><path d="M14 11v6"/>
+        </svg>
+      </button>
+    </div>
+    <div class="sets-header">
+      <span>Set</span><span>Wt (${unit})</span><span>Reps</span><span>~1RM</span><span></span>
+    </div>
+    ${ex.sets.map((set, si) => {
+      const dw = dispW(+set.weight||0, du);
+      return `
+    <div class="set-row">
+      <div class="set-num">${si+1}</div>
+      <input type="number" inputmode="decimal" min="0" step="0.5" value="${dw||''}" placeholder="0"
+        id="ew-${ei}-${si}"
+        oninput="editUpdateSet(${ei},${si},'weight',this.value,true);editRefreshRM(${ei},${si})">
+      <input type="number" inputmode="numeric" min="0" step="1" value="${set.reps||''}" placeholder="0"
+        id="er-${ei}-${si}"
+        oninput="editUpdateSet(${ei},${si},'reps',this.value);editRefreshRM(${ei},${si})">
+      <div class="set-rm" id="erm-${ei}-${si}">${dw&&set.reps?calc1RM(dw,set.reps):'-'}</div>
+      <button class="del-btn" onclick="editRemoveSet(${ei},${si})">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>`;
+    }).join('')}
+    <button class="btn btn-secondary btn-sm" style="margin-top:8px" onclick="editAddSet(${ei})">+ Add Set</button>
+  </div>`;
+  }).join('');
+}
+
+function editRefreshExSection() {
+  const el = document.getElementById('edit-exercises-section');
+  if (el) el.innerHTML = renderEditExercisesHTML();
+}
+
+// Weight stored in editingWorkout must always be in the workout's original dataUnit
+function editUpdateSet(ei, si, field, val, isWeight) {
+  if (isWeight) {
+    // Convert display unit back to the workout's dataUnit
+    const du  = wUnit(editingWorkout);
+    const unit = DB.unit;
+    let kg = toKg(+val, unit);
+    let stored = (du === 'kg') ? kg : kg * KG_TO_LBS;
+    editingWorkout.exercises[ei].sets[si][field] = stored ? Math.round(stored * 10) / 10 : val;
+  } else {
+    editingWorkout.exercises[ei].sets[si][field] = val;
+  }
+}
+function editRefreshRM(ei, si) {
+  const set  = editingWorkout.exercises[ei].sets[si];
+  const du   = wUnit(editingWorkout);
+  const dw   = dispW(+set.weight||0, du);
+  const el   = document.getElementById(`erm-${ei}-${si}`);
+  if (el) el.textContent = dw && set.reps ? calc1RM(dw, set.reps) : '-';
+}
+function editAddSet(ei) {
+  const last = editingWorkout.exercises[ei].sets.slice(-1)[0];
+  editingWorkout.exercises[ei].sets.push({weight:last?.weight||'', reps:''});
+  editRefreshExSection();
+  setTimeout(()=>document.getElementById(`ew-${ei}-${editingWorkout.exercises[ei].sets.length-1}`)?.focus(),50);
+}
+function editRemoveSet(ei, si) {
+  editingWorkout.exercises[ei].sets.splice(si,1);
+  if(!editingWorkout.exercises[ei].sets.length) editingWorkout.exercises[ei].sets.push({weight:'',reps:''});
+  editRefreshExSection();
+}
+function editRemoveExercise(ei) {
+  editingWorkout.exercises.splice(ei,1);
+  editRefreshExSection();
+}
+function editOpenAddExModal() {
+  // Temporarily close and reopen with exercise picker
+  // Uses openAddExModal — addExercise() will detect editingWorkout and route there
+  openAddExModal();
+}
+
+function saveEditedWorkout() {
+  const nameEl  = document.getElementById('edit-log-name-select');
+  const custEl  = document.getElementById('edit-log-name-custom');
+  const dateEl  = document.getElementById('edit-log-date');
+  const notesEl = document.getElementById('edit-log-notes');
+  if (dateEl)  editingWorkout.date  = dateEl.value;
+  if (nameEl && nameEl.value !== '__custom__') editingWorkout.name = nameEl.value;
+  if (custEl && custEl.style.display !== 'none') editingWorkout.name = custEl.value;
+  if (notesEl) editingWorkout.notes = notesEl.value;
+
+  if (!editingWorkout.exercises.length) { showToast('Add at least one exercise!', false); return; }
+
+  const cleaned = {
+    ...editingWorkout,
+    name: editingWorkout.name || 'Workout',
+    exercises: editingWorkout.exercises.map(ex=>({
+      ...ex,
+      sets: ex.sets.filter(s => s.weight || s.reps)
+    })).filter(ex => ex.sets.length)
+  };
+
+  const workouts = DB.workouts;
+  const idx = workouts.findIndex(x => x.id === cleaned.id);
+  if (idx >= 0) workouts[idx] = cleaned;
+  else workouts.push(cleaned);
+  DB.save(workouts);
+
+  editingWorkout = null;
+  closeModal();
+  renderHistory();
+  showToast('Workout updated! ✅');
+}
+
+function cancelEditWorkout() {
+  editingWorkout = null;
+  closeModal();
+}
+
 // ═══════════════════════════════════════════════════════
 // PRs — grouped by body part
 // ═══════════════════════════════════════════════════════
@@ -1470,16 +1773,20 @@ function renderPRs() {
     return;
   }
 
-  // Group by body part
+  // Group by body part → sub-muscle
+  // groups = { 'Chest': { 'Upper Chest': ['Incline Bench', ...], 'General': [...] } }
   const groups = {};
   for(const name of names) {
-    const bp = getBodyPart(name);
-    if(!groups[bp]) groups[bp] = [];
-    groups[bp].push(name);
+    const muscle = getMuscleForExercise(name);
+    const bp     = muscle ? (getBodyPartForMuscle(muscle) || 'Other') : getBodyPart(name);
+    const sub    = muscle || 'General';
+    if(!groups[bp]) groups[bp] = {};
+    if(!groups[bp][sub]) groups[bp][sub] = [];
+    groups[bp][sub].push(name);
   }
 
   // Order body parts: known ones first, then Other
-  const ORDER = ['Chest','Back','Legs','Shoulders','Arms','Core','Other'];
+  const ORDER = ['Chest','Back','Legs','Shoulders','Arms','Abs','Core','Other'];
   const sortedBPs = [
     ...ORDER.filter(bp => groups[bp]),
     ...Object.keys(groups).filter(bp => !ORDER.includes(bp))
@@ -1490,17 +1797,71 @@ function renderPRs() {
   <div style="font-size:12px;color:var(--muted);margin-bottom:16px">Tap a group to see all exercises · Tap exercise for progress chart</div>`;
 
   for(const bp of sortedBPs) {
-    const exList  = groups[bp];
-    const emoji   = BODY_PART_EMOJI[bp] || '⚡';
-    const isOpen  = openBPGroups.has(bp);
+    const subGroups = groups[bp]; // { subName: [exerciseNames...] }
+    const emoji     = (MUSCLE_GROUPS[bp]?.emoji) || BODY_PART_EMOJI[bp] || '⚡';
+    const isOpen    = openBPGroups.has(bp);
 
-    // Best exercise in this group (highest 1RM)
-    let bestName = exList[0], bestRM = 0;
-    for(const n of exList) {
-      if(prs[n].best1RM_kg > bestRM) { bestRM=prs[n].best1RM_kg; bestName=n }
+    // All exercises in this body part
+    const allExInBP = Object.values(subGroups).flat();
+    const totalCount = allExInBP.length;
+
+    // Best exercise (highest 1RM)
+    let bestName = allExInBP[0], bestRM = 0;
+    for(const n of allExInBP) {
+      if(prs[n]?.best1RM_kg > bestRM) { bestRM=prs[n].best1RM_kg; bestName=n }
     }
     const bestPR   = prs[bestName];
-    const bestDisp = bestPR.displayWeight;
+    const bestDisp = bestPR?.displayWeight || '—';
+
+    // Check if selected exercise is in this group
+    const selInGroup = selectedPREx && allExInBP.includes(selectedPREx);
+
+    // Build the sub-group body
+    // Order sub-groups: MUSCLE_GROUPS defined order first, then General/Others
+    const knownSubs = (MUSCLE_GROUPS[bp]?.sub) || [];
+    const sortedSubs = [
+      ...knownSubs.filter(s => subGroups[s]),
+      ...Object.keys(subGroups).filter(s => !knownSubs.includes(s))
+    ];
+
+    let bodyHtml = '';
+    for (const sub of sortedSubs) {
+      const exList = subGroups[sub];
+      const isTagged = sub !== 'General';
+
+      if (isTagged) {
+        bodyHtml += `<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;padding:8px 16px 4px;border-top:1px solid var(--border)">${sub}</div>`;
+      }
+
+      for (const name of exList) {
+        const pr  = prs[name];
+        const sel = name === selectedPREx;
+        bodyHtml += `
+        <div class="bp-ex-row" onclick="selectPRExercise('${esc(name)}')"
+          style="${sel?'background:var(--accent-dim);border-left:3px solid var(--accent);':''}">
+          <div>
+            <div class="bp-ex-name" style="${sel?'color:var(--accent)':''}">${name}</div>
+            <div class="bp-ex-date">${fmtDate(pr.date)}</div>
+          </div>
+          <div class="bp-ex-pr">
+            <div class="bp-ex-weight">${pr.displayWeight}<span style="font-size:11px;font-weight:500;color:var(--muted)">${unit}</span></div>
+            <div class="bp-ex-reps">× ${pr.bestSet.reps} reps</div>
+            <div class="bp-ex-1rm">est. 1RM ${pr.best1RM}${unit}</div>
+          </div>
+        </div>`;
+      }
+    }
+
+    // Chart area if an exercise in this group is selected
+    if (selInGroup) {
+      bodyHtml += `
+      <div style="padding:0 16px 16px">
+        <div class="label" style="margin-top:12px">Progress — ${selectedPREx}</div>
+        <div id="pr-chart-area" style="min-height:50px;text-align:center;color:var(--muted);font-size:13px;padding:16px 0">
+          Loading chart…
+        </div>
+      </div>`;
+    }
 
     html += `
     <div class="bp-group ${isOpen?'open':''}" id="bpg-${bp.replace(/\s/g,'_')}">
@@ -1509,44 +1870,18 @@ function renderPRs() {
           <div class="bp-group-emoji">${emoji}</div>
           <div>
             <div class="bp-group-name">${bp}</div>
-            <div class="bp-group-best">${exList.length} exercise${exList.length>1?'s':''} · Best: ${bestName}</div>
+            <div class="bp-group-best">${totalCount} exercise${totalCount>1?'s':''} · Best: ${bestName}</div>
           </div>
         </div>
         <div style="display:flex;align-items:center;gap:10px">
           <div style="text-align:right">
             <div style="font-size:17px;font-weight:800;color:var(--accent)">${bestDisp}<span style="font-size:11px;font-weight:500;color:var(--muted)">${unit}</span></div>
-            <div style="font-size:10px;color:var(--muted)">× ${bestPR.bestSet.reps} reps</div>
+            <div style="font-size:10px;color:var(--muted)">× ${bestPR?.bestSet.reps||'—'} reps</div>
           </div>
           <div class="bp-group-chevron">▾</div>
         </div>
       </div>
-      <div class="bp-group-body">
-        ${exList.map(name => {
-          const pr  = prs[name];
-          const sel = name === selectedPREx;
-          return `
-          <div class="bp-ex-row ${sel?'':''}
-            " onclick="selectPRExercise('${esc(name)}')"
-            style="${sel?'background:var(--accent-dim);border-left:3px solid var(--accent);':''}">
-            <div>
-              <div class="bp-ex-name" style="${sel?'color:var(--accent)':''}">${name}</div>
-              <div class="bp-ex-date">${fmtDate(pr.date)}</div>
-            </div>
-            <div class="bp-ex-pr">
-              <div class="bp-ex-weight">${pr.displayWeight}<span style="font-size:11px;font-weight:500;color:var(--muted)">${unit}</span></div>
-              <div class="bp-ex-reps">× ${pr.bestSet.reps} reps</div>
-              <div class="bp-ex-1rm">est. 1RM ${pr.best1RM}${unit}</div>
-            </div>
-          </div>`;
-        }).join('')}
-        ${selectedPREx && exList.includes(selectedPREx) ? `
-        <div style="padding:0 16px 16px">
-          <div class="label" style="margin-top:12px">Progress — ${selectedPREx}</div>
-          <div id="pr-chart-area" style="min-height:50px;text-align:center;color:var(--muted);font-size:13px;padding:16px 0">
-            Loading chart…
-          </div>
-        </div>` : ''}
-      </div>
+      <div class="bp-group-body">${bodyHtml}</div>
     </div>`;
   }
 
@@ -1562,7 +1897,7 @@ function renderPRs() {
 
   // Render chart if a PR is selected and its group is open
   if(selectedPREx && prs[selectedPREx]) {
-    const bp = getBodyPart(selectedPREx);
+    const bp = getBodyPartForExercise(selectedPREx);
     if(openBPGroups.has(bp)) {
       const progress = getProgress(selectedPREx);
       setTimeout(()=>renderInlineChart(progress, unit), 80);
@@ -1582,7 +1917,7 @@ function toggleBPGroup(bp) {
 function selectPRExercise(name) {
   selectedPREx = name;
   // Auto-open the group containing this exercise
-  const bp = getBodyPart(name);
+  const bp = getBodyPartForExercise(name);
   openBPGroups.add(bp);
   renderPRs();
   setTimeout(()=>{
@@ -1885,9 +2220,22 @@ function openModal() {
 function closeModal() {
   document.getElementById('modal-overlay').classList.remove('open');
   if(prChart && currentView!=='prs') { prChart.destroy(); prChart=null }
+  editingWorkout = null;
 }
 function closeModalOutside(e) {
-  if(e.target===document.getElementById('modal-overlay')) closeModal();
+  if(e.target!==document.getElementById('modal-overlay')) return;
+  if(editingWorkout) {
+    // If in the edit workout modal itself → confirm discard
+    if(document.getElementById('edit-exercises-section')) {
+      if(!confirm('Discard changes?')) return;
+      cancelEditWorkout();
+    } else {
+      // In add-exercise sub-modal → return to edit modal
+      renderWorkoutEditModal();
+    }
+    return;
+  }
+  closeModal();
 }
 
 // ═══════════════════════════════════════════════════════
@@ -1904,7 +2252,7 @@ function showToast(msg, ok=true) {
 // ═══════════════════════════════════════════════════════
 // DATA EXPORT / IMPORT
 // ═══════════════════════════════════════════════════════
-const DATA_KEYS = ['ll_workouts','ll_exercises','ll_unit','ll_profile','ll_goals','ll_migrated_v2','ll_migrated_v3'];
+const DATA_KEYS = ['ll_workouts','ll_exercises','ll_unit','ll_profile','ll_goals','ll_migrated_v2','ll_migrated_v3','ll_exercise_muscles'];
 
 function openDataModal() {
   const workoutCount = DB.workouts.length;
