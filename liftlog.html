@@ -114,6 +114,14 @@ input:focus,textarea:focus,select:focus{border-color:var(--accent)}
 .set-num{text-align:center;font-size:13px;color:var(--muted);font-weight:600}
 .set-row input{padding:10px 4px;text-align:center;border-radius:8px;font-weight:600;font-size:15px;min-height:44px}
 .set-rm{text-align:center;font-size:11px;color:var(--muted);font-weight:600}
+/* Quick-action buttons inside set rows (BW / Failed) */
+.set-cell{display:flex;flex-direction:column;align-items:center;gap:2px}
+.set-qbtn{font-size:10px;font-weight:700;background:none;border:1px solid var(--border);
+  border-radius:4px;padding:1px 6px;cursor:pointer;color:var(--muted);line-height:1.5;
+  -webkit-tap-highlight-color:transparent;touch-action:manipulation}
+.set-qbtn:active{opacity:.7}
+.set-qbtn.fail-on{color:var(--red);border-color:var(--red);background:rgba(239,68,68,.1)}
+.set-qbtn.bw-on{color:var(--accent);border-color:var(--accent);background:var(--accent-dim)}
 .del-btn{
   background:none;border:none;color:var(--muted);cursor:pointer;
   display:flex;align-items:center;justify-content:center;
@@ -552,7 +560,7 @@ function getPRs() {
       const n = ex.name;
       if(!prs[n]) prs[n] = { bestSet:null, bestSetUnit:'kg', best1RM_kg:0, date:'' };
       for(const set of ex.sets) {
-        if(!set.weight || !set.reps) continue;
+        if(!set.weight || !set.reps || set.failed) continue;
         const wKg   = toKg(+set.weight, du);
         const rm_kg = toKg(calc1RM(+set.weight, +set.reps), du);
         if(rm_kg > prs[n].best1RM_kg) {
@@ -583,7 +591,7 @@ function getProgress(name) {
     const du = wUnit(workout);
     const ex = workout.exercises.find(e=>e.name===name);
     if(!ex) continue;
-    const valid = ex.sets.filter(s=>s.weight&&s.reps);
+    const valid = ex.sets.filter(s=>s.weight&&s.reps&&!s.failed);
     if(!valid.length) continue;
     let best1RM_kg=0, bestSet=null, bestSetUnit=du;
     for(const s of valid){
@@ -624,7 +632,7 @@ function getProgressByMode(name, mode) {
     if (mode === '1rm') {
       let best = 0;
       for (const s of ex.sets) {
-        if (s.weight && s.reps) {
+        if (s.weight && s.reps && !s.failed) {
           const rm = toKg(calc1RM(+s.weight, +s.reps), du);
           if (rm > best) best = rm;
         }
@@ -634,7 +642,7 @@ function getProgressByMode(name, mode) {
       const minReps = +mode;
       let best = 0;
       for (const s of ex.sets) {
-        if (+s.reps >= minReps && s.weight) {
+        if (+s.reps >= minReps && s.weight && !s.failed) {
           const wKg = toKg(+s.weight, du);
           if (wKg > best) best = wKg;
         }
@@ -1262,22 +1270,33 @@ function renderExercisesHTML() {
     <div class="sets-header">
       <span>Set</span><span>Wt (${unit})</span><span>Reps</span><span>~1RM</span><span></span>
     </div>
-    ${ex.sets.map((set, si) => `
+    ${ex.sets.map((set, si) => {
+      const isFailed = !!set.failed;
+      const rm1 = isFailed ? '<span style="color:var(--red);font-size:10px">FAIL</span>'
+                           : (set.weight&&set.reps ? calc1RM(set.weight,set.reps) : '-');
+      return `
     <div class="set-row">
       <div class="set-num">${si+1}</div>
-      <input type="number" inputmode="decimal" min="0" step="0.5" value="${set.weight||''}" placeholder="0"
-        id="w-${ei}-${si}"
-        oninput="updateSet(${ei},${si},'weight',this.value);refreshRM(${ei},${si})">
-      <input type="number" inputmode="numeric" min="0" step="1" value="${set.reps||''}" placeholder="0"
-        id="r-${ei}-${si}"
-        oninput="updateSet(${ei},${si},'reps',this.value);refreshRM(${ei},${si})">
-      <div class="set-rm" id="rm-${ei}-${si}">${set.weight&&set.reps?calc1RM(set.weight,set.reps):'-'}</div>
+      <div class="set-cell">
+        <input type="number" inputmode="decimal" min="0" step="0.5" value="${set.weight||''}" placeholder="0"
+          id="w-${ei}-${si}"
+          oninput="updateSet(${ei},${si},'weight',this.value);refreshRM(${ei},${si})">
+        <button class="set-qbtn${set._bw?' bw-on':''}" onclick="setBW(${ei},${si})">BW</button>
+      </div>
+      <div class="set-cell">
+        <input type="number" inputmode="decimal" min="0" step="0.5" value="${set.reps||''}" placeholder="0"
+          id="r-${ei}-${si}" ${isFailed?'style="opacity:0.4;pointer-events:none"':''}
+          oninput="updateSet(${ei},${si},'reps',this.value);refreshRM(${ei},${si})">
+        <button class="set-qbtn${isFailed?' fail-on':''}" onclick="toggleFailed(${ei},${si})">Failed</button>
+      </div>
+      <div class="set-rm" id="rm-${ei}-${si}">${rm1}</div>
       <button class="del-btn" onclick="removeSet(${ei},${si})">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
           <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
         </svg>
       </button>
-    </div>`).join('')}
+    </div>`;
+    }).join('')}
     <button class="btn btn-secondary btn-sm" style="margin-top:8px" onclick="addSet(${ei})">+ Add Set</button>
   </div>`).join('');
 }
@@ -1292,7 +1311,9 @@ function updateSet(ei, si, field, val) {
 function refreshRM(ei, si) {
   const set = currentLog.exercises[ei].sets[si];
   const el  = document.getElementById(`rm-${ei}-${si}`);
-  if(el) el.textContent = set.weight&&set.reps ? calc1RM(set.weight,set.reps) : '-';
+  if (!el) return;
+  if (set.failed) { el.innerHTML = '<span style="color:var(--red);font-size:10px">FAIL</span>'; return; }
+  el.textContent = set.weight && set.reps ? calc1RM(set.weight, set.reps) : '-';
 }
 function addSet(ei) {
   const last = currentLog.exercises[ei].sets.slice(-1)[0];
@@ -1308,6 +1329,43 @@ function removeSet(ei, si) {
 function removeExercise(ei) {
   currentLog.exercises.splice(ei,1);
   refreshExSection();
+}
+
+function setBW(ei, si) {
+  const bw = DB.profile.bodyweight;
+  if (!bw) { showToast('Add your body weight in My Stats (tap 👤 icon) first', false); return; }
+  const log = getActiveLog();
+  const set = log.exercises[ei].sets[si];
+
+  if (editingWorkout) {
+    // Convert display-unit BW to the workout's stored data unit
+    const du  = wUnit(editingWorkout);
+    const kg  = toKg(+bw, DB.unit);
+    set.weight = (du === 'kg') ? Math.round(kg * 10) / 10 : Math.round(kg * KG_TO_LBS * 10) / 10;
+    set._bw    = true;
+    const el   = document.getElementById(`ew-${ei}-${si}`);
+    if (el) el.value = bw; // show in display unit
+    editRefreshRM(ei, si);
+    // Refresh BW button highlight without full re-render
+    const btn = el?.closest('.set-cell')?.querySelector('.set-qbtn');
+    if (btn) btn.className = 'set-qbtn bw-on';
+  } else {
+    set.weight = bw;
+    set._bw    = true;
+    const el   = document.getElementById(`w-${ei}-${si}`);
+    if (el) el.value = bw;
+    refreshRM(ei, si);
+    const btn = el?.closest('.set-cell')?.querySelector('.set-qbtn');
+    if (btn) btn.className = 'set-qbtn bw-on';
+  }
+}
+
+function toggleFailed(ei, si) {
+  const log = getActiveLog();
+  const set = log.exercises[ei].sets[si];
+  set.failed = !set.failed;
+  if (editingWorkout) editRefreshExSection();
+  else refreshExSection();
 }
 
 function openAddExModal() {
@@ -1516,13 +1574,15 @@ function showWorkoutDetail(id) {
         <span>Set</span><span>Wt (${unit})</span><span>Reps</span><span>~1RM</span><span></span>
       </div>
       ${ex.sets.map((s,i)=>{
-        const dw  = dispW(+s.weight||0, du);
-        const drm = dw && s.reps ? calc1RM(dw, s.reps) : '—';
+        const dw    = dispW(+s.weight||0, du);
+        const drm   = s.failed ? '<span style="color:var(--red);font-size:10px">FAIL</span>'
+                                : (dw && s.reps ? calc1RM(dw, s.reps) : '—');
+        const bwTag = s._bw ? ' <span style="font-size:10px;color:var(--accent)">BW</span>' : '';
         return `
         <div class="set-row" style="pointer-events:none">
           <div class="set-num">${i+1}</div>
-          <div style="text-align:center;font-size:14px;font-weight:700">${dw||'—'}</div>
-          <div style="text-align:center;font-size:14px;font-weight:700">${s.reps||'—'}</div>
+          <div style="text-align:center;font-size:14px;font-weight:700">${dw||'—'}${bwTag}</div>
+          <div style="text-align:center;font-size:14px;font-weight:700">${s.failed?'✗':s.reps||'—'}</div>
           <div class="set-rm">${drm}</div>
           <div></div>
         </div>`;
@@ -1647,17 +1707,26 @@ function renderEditExercisesHTML() {
       <span>Set</span><span>Wt (${unit})</span><span>Reps</span><span>~1RM</span><span></span>
     </div>
     ${ex.sets.map((set, si) => {
-      const dw = dispW(+set.weight||0, du);
+      const dw       = dispW(+set.weight||0, du);
+      const isFailed = !!set.failed;
+      const rm1 = isFailed ? '<span style="color:var(--red);font-size:10px">FAIL</span>'
+                           : (dw&&set.reps ? calc1RM(dw,set.reps) : '-');
       return `
     <div class="set-row">
       <div class="set-num">${si+1}</div>
-      <input type="number" inputmode="decimal" min="0" step="0.5" value="${dw||''}" placeholder="0"
-        id="ew-${ei}-${si}"
-        oninput="editUpdateSet(${ei},${si},'weight',this.value,true);editRefreshRM(${ei},${si})">
-      <input type="number" inputmode="numeric" min="0" step="1" value="${set.reps||''}" placeholder="0"
-        id="er-${ei}-${si}"
-        oninput="editUpdateSet(${ei},${si},'reps',this.value);editRefreshRM(${ei},${si})">
-      <div class="set-rm" id="erm-${ei}-${si}">${dw&&set.reps?calc1RM(dw,set.reps):'-'}</div>
+      <div class="set-cell">
+        <input type="number" inputmode="decimal" min="0" step="0.5" value="${dw||''}" placeholder="0"
+          id="ew-${ei}-${si}"
+          oninput="editUpdateSet(${ei},${si},'weight',this.value,true);editRefreshRM(${ei},${si})">
+        <button class="set-qbtn${set._bw?' bw-on':''}" onclick="setBW(${ei},${si})">BW</button>
+      </div>
+      <div class="set-cell">
+        <input type="number" inputmode="decimal" min="0" step="0.5" value="${set.reps||''}" placeholder="0"
+          id="er-${ei}-${si}" ${isFailed?'style="opacity:0.4;pointer-events:none"':''}
+          oninput="editUpdateSet(${ei},${si},'reps',this.value);editRefreshRM(${ei},${si})">
+        <button class="set-qbtn${isFailed?' fail-on':''}" onclick="toggleFailed(${ei},${si})">Failed</button>
+      </div>
+      <div class="set-rm" id="erm-${ei}-${si}">${rm1}</div>
       <button class="del-btn" onclick="editRemoveSet(${ei},${si})">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
           <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
@@ -1689,11 +1758,13 @@ function editUpdateSet(ei, si, field, val, isWeight) {
   }
 }
 function editRefreshRM(ei, si) {
-  const set  = editingWorkout.exercises[ei].sets[si];
-  const du   = wUnit(editingWorkout);
-  const dw   = dispW(+set.weight||0, du);
-  const el   = document.getElementById(`erm-${ei}-${si}`);
-  if (el) el.textContent = dw && set.reps ? calc1RM(dw, set.reps) : '-';
+  const set = editingWorkout.exercises[ei].sets[si];
+  const du  = wUnit(editingWorkout);
+  const dw  = dispW(+set.weight||0, du);
+  const el  = document.getElementById(`erm-${ei}-${si}`);
+  if (!el) return;
+  if (set.failed) { el.innerHTML = '<span style="color:var(--red);font-size:10px">FAIL</span>'; return; }
+  el.textContent = dw && set.reps ? calc1RM(dw, set.reps) : '-';
 }
 function editAddSet(ei) {
   const last = editingWorkout.exercises[ei].sets.slice(-1)[0];
