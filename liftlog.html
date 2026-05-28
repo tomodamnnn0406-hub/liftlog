@@ -458,6 +458,11 @@ let selectedPREx  = null;
 let prChart       = null;
 let openBPGroups  = new Set(); // which body-part groups are expanded
 
+// Dashboard chart state
+let dashChart         = null;
+let dashChartMode     = '1rm';   // '1rm' | '5' | '8'
+let dashChartExercise = null;
+
 function newLog() {
   return { id: uid(), date: todayStr(), name: '', notes: '', exercises: [] };
 }
@@ -550,6 +555,61 @@ function allExerciseNames() {
   const names = new Set(DB.exercises);
   for(const w of DB.workouts) for(const e of w.exercises) names.add(e.name);
   return [...names].sort();
+}
+
+// ═══════════════════════════════════════════════════════
+// DASHBOARD CHART HELPERS
+// ═══════════════════════════════════════════════════════
+
+// Returns [{date, weightKg}] for an exercise in the chosen mode:
+//   '1rm' → estimated 1RM per session
+//   '5'   → best weight where reps >= 5 per session
+//   '8'   → best weight where reps >= 8 per session
+function getProgressByMode(name, mode) {
+  const sorted = [...DB.workouts].sort((a,b) => a.date.localeCompare(b.date));
+  const data = [];
+  for (const workout of sorted) {
+    const du = wUnit(workout);
+    const ex = workout.exercises.find(e => e.name === name);
+    if (!ex) continue;
+    if (mode === '1rm') {
+      let best = 0;
+      for (const s of ex.sets) {
+        if (s.weight && s.reps) {
+          const rm = toKg(calc1RM(+s.weight, +s.reps), du);
+          if (rm > best) best = rm;
+        }
+      }
+      if (best > 0) data.push({ date: workout.date, weightKg: best });
+    } else {
+      const minReps = +mode;
+      let best = 0;
+      for (const s of ex.sets) {
+        if (+s.reps >= minReps && s.weight) {
+          const wKg = toKg(+s.weight, du);
+          if (wKg > best) best = wKg;
+        }
+      }
+      if (best > 0) data.push({ date: workout.date, weightKg: best });
+    }
+  }
+  return data;
+}
+
+// Estimate weeks to hit targetKg (est-1RM) using linear regression on recent progress.
+// Returns integer weeks, 0 if already achieved, null if can't estimate.
+function estimateWeeks(exercise, targetKg) {
+  const progress = getProgressByMode(exercise, '1rm');
+  if (progress.length < 2) return null;
+  const current = progress[progress.length - 1].weightKg;
+  if (current >= targetKg) return 0;
+  const first = progress[0];
+  const last  = progress[progress.length - 1];
+  const days  = (new Date(last.date+'T12:00:00') - new Date(first.date+'T12:00:00')) / 86400000;
+  const gain  = last.weightKg - first.weightKg;
+  if (days <= 0 || gain <= 0) return null;
+  const perWeek = (gain / days) * 7;
+  return Math.max(1, Math.round((targetKg - current) / perWeek));
 }
 
 // ═══════════════════════════════════════════════════════
@@ -689,200 +749,174 @@ function syncUnitToggle() {
 // DASHBOARD
 // ═══════════════════════════════════════════════════════
 function renderDashboard() {
+  // Destroy any existing dashboard chart before rebuilding DOM
+  if (dashChart) { dashChart.destroy(); dashChart = null; }
+
   const workouts = DB.workouts;
   const prs      = getPRs();
   const unit     = DB.unit;
+  const goals    = DB.goals.slice(0, 3);
+  const recent   = [...workouts].sort((a,b) => b.date.localeCompare(a.date))[0];
+  const profile  = DB.profile;
   const now      = new Date();
 
-  const weekStart = new Date(now);
-  weekStart.setDate(now.getDate() - now.getDay());
-  const weekCount  = workouts.filter(w=>new Date(w.date+'T12:00:00')>=weekStart).length;
-  const monthCount = workouts.filter(w=>{
-    const d=new Date(w.date+'T12:00:00');
-    return d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear();
-  }).length;
-
-  const recent     = [...workouts].sort((a,b)=>b.date.localeCompare(a.date))[0];
-  const prEntries  = Object.entries(prs).filter(([,p])=>p.bestSet);
-  const profile    = DB.profile;
-  const hasProfile = profile.height || profile.bodyweight;
-
-  let bmi = null;
-  if (profile.height && profile.bodyweight) {
-    const hM  = profile.height / 100;
-    const wKg = unit === 'lbs' ? profile.bodyweight / KG_TO_LBS : profile.bodyweight;
-    bmi = (wKg / (hM * hM)).toFixed(1);
-  }
-  function fmtHeight(cm) {
-    const ft  = Math.floor(cm / 30.48);
-    const inc = Math.round((cm / 30.48 - ft) * 12);
-    return `${cm} cm · ${ft}′${inc}″`;
+  // Pick default chart exercise: first goal that has data, else highest-1RM exercise
+  if (!dashChartExercise || !prs[dashChartExercise]?.bestSet) {
+    const goalWithData = goals.find(g => prs[g.exercise]?.bestSet);
+    if (goalWithData) {
+      dashChartExercise = goalWithData.exercise;
+    } else {
+      const topEntry = Object.entries(prs)
+        .filter(([,p]) => p.bestSet)
+        .sort((a,b) => (b[1].best1RM_kg||0) - (a[1].best1RM_kg||0))[0];
+      dashChartExercise = topEntry ? topEntry[0] : null;
+    }
   }
 
   let html = `
-  <div class="section-header">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
     <div>
       <div style="font-size:22px;font-weight:800;margin-bottom:2px">Dashboard</div>
       <div style="font-size:12px;color:var(--muted)">${now.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}</div>
     </div>
-  </div>
-
-  <!-- Profile card -->
-  <div class="card" onclick="openProfileModal()" style="cursor:pointer;margin-bottom:14px">
-    ${hasProfile ? `
-    <div style="display:flex;justify-content:space-between;align-items:center">
-      <div style="display:flex;gap:20px">
-        <div>
-          <div style="font-size:10px;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);margin-bottom:2px">Height</div>
-          <div style="font-size:15px;font-weight:700">${profile.height ? fmtHeight(profile.height) : '—'}</div>
-        </div>
-        <div>
-          <div style="font-size:10px;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);margin-bottom:2px">Weight</div>
-          <div style="font-size:15px;font-weight:700">${profile.bodyweight ? profile.bodyweight+unit : '—'}</div>
-        </div>
-      </div>
-      ${bmi ? `
-      <div style="text-align:right">
-        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);margin-bottom:2px">BMI</div>
-        <div style="font-size:22px;font-weight:800;color:${bmiColor(bmi)}">${bmi}</div>
-        <div style="font-size:10px;color:var(--muted)">${bmiLabel(bmi)}</div>
-      </div>` : ''}
-    </div>` : `
-    <div style="display:flex;align-items:center;gap:12px">
-      <div style="font-size:28px">👤</div>
-      <div>
-        <div style="font-weight:600;margin-bottom:2px">Add your stats</div>
-        <div style="font-size:12px;color:var(--muted)">Tap to set your height & body weight</div>
-      </div>
-    </div>`}
-  </div>
-
-  <div class="stats-grid">
-    <div class="stat-card"><div class="stat-value accent">${weekCount}</div><div class="stat-label">This week</div></div>
-    <div class="stat-card"><div class="stat-value">${monthCount}</div><div class="stat-label">This month</div></div>
-    <div class="stat-card"><div class="stat-value">${workouts.length}</div><div class="stat-label">Total sessions</div></div>
-    <div class="stat-card"><div class="stat-value">${prEntries.length}</div><div class="stat-label">Exercises tracked</div></div>
   </div>`;
 
-  // ── Big 3 ──
-  const BIG3 = ['Squat','Bench Press','Deadlift'];
-  const hasBig3 = BIG3.some(n => prs[n]?.bestSet);
-  html += `<div class="label">Big 3 Progress</div>`;
-  if (!hasBig3) {
-    html += `<div class="card" style="text-align:center;padding:20px">
-      <div style="font-size:28px;margin-bottom:8px">🏋️</div>
-      <div style="font-size:14px;font-weight:600;margin-bottom:4px">No Big 3 data yet</div>
-      <div style="font-size:12px;color:var(--muted);margin-bottom:14px">Log Squat, Bench Press, or Deadlift to see progress here</div>
-      <button class="btn btn-primary btn-sm" onclick="showView('log')">Log a workout</button>
-    </div>`;
-  } else {
-    html += `<div style="display:grid;gap:10px;margin-bottom:4px">`;
-    for (const name of BIG3) {
-      const pr       = prs[name];
-      const progress = getProgress(name);
-      const vals     = progress.map(p => p.est1RM);
-      const first    = vals[0];
-      const latest   = vals[vals.length - 1];
-      const gain     = vals.length >= 2 ? latest - first : 0;
-      const gainStr  = gain > 0 ? `+${gain}${unit}` : gain < 0 ? `${gain}${unit}` : null;
-      const gainColor = gain > 0 ? 'var(--green)' : 'var(--red)';
-
-      if (!pr?.bestSet) {
-        html += `<div class="card" style="opacity:.45">
-          <div style="font-weight:700;font-size:15px;margin-bottom:2px">${name}</div>
-          <div style="font-size:12px;color:var(--muted)">Not logged yet</div>
-        </div>`;
-      } else {
-        html += `
-        <div class="card" style="cursor:pointer" onclick="selectPRExercise('${esc(name)}');showView('prs')">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start">
-            <div style="flex:1;min-width:0">
-              <div style="font-weight:700;font-size:15px">${name}</div>
-              ${gainStr ? `<div style="font-size:11px;font-weight:700;color:${gainColor};margin-top:3px">${gainStr} est. 1RM from first session</div>` : ''}
-            </div>
-            <div class="pr-hero">
-              <div>
-                <span class="pr-hero-weight">${pr.displayWeight}</span><span class="pr-hero-unit">${unit}</span>
-              </div>
-              <div class="pr-hero-reps">× ${pr.bestSet.reps} reps</div>
-              <div class="pr-hero-label">Current PR</div>
-              <div class="pr-sub-1rm">est. 1RM ${pr.best1RM}${unit}</div>
-            </div>
-          </div>
-          ${vals.length >= 2 ? sparklineSVG(vals, 300, 44) : `<div style="font-size:11px;color:var(--muted);margin-top:8px">Log more sessions to see chart</div>`}
-        </div>`;
-      }
-    }
-    html += `</div>`;
-  }
-
-  // ── Goals preview on dashboard ──
-  const goals = DB.goals;
+  // ── GOALS ──────────────────────────────────────────────
   html += `
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-    <div class="label" style="margin-bottom:0">Goals</div>
-    <button class="btn btn-ghost btn-sm" onclick="showView('goals')" style="font-size:12px;color:var(--accent);font-weight:600;padding:4px 8px">
-      ${goals.length ? 'Manage' : '+ Add Goal'}
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+    <div class="label" style="margin-bottom:0">🎯 My Goals</div>
+    <button class="btn btn-ghost btn-sm" onclick="showView('goals')"
+      style="font-size:12px;color:var(--accent);padding:4px 8px;font-weight:600">
+      ${goals.length ? 'Edit Goals' : '+ Add Goal'}
     </button>
   </div>`;
 
   if (!goals.length) {
-    html += `<div class="card" style="text-align:center;padding:20px">
-      <div style="font-size:28px;margin-bottom:8px">🎯</div>
-      <div style="font-size:14px;font-weight:600;margin-bottom:4px">Set your first goal</div>
-      <div style="font-size:12px;color:var(--muted);margin-bottom:14px">Pick an exercise and a target weight — see how close you are</div>
-      <button class="btn btn-primary btn-sm" onclick="showView('goals')">Set a Goal</button>
+    html += `
+    <div class="card" style="text-align:center;padding:24px 20px;margin-bottom:16px">
+      <div style="font-size:36px;margin-bottom:8px">🎯</div>
+      <div style="font-weight:600;margin-bottom:4px">No goals set yet</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:14px">
+        Set a goal to track your progress and see an estimated timeline here
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="showView('goals')">Set Your First Goal</button>
     </div>`;
   } else {
-    goals.slice(0, 3).forEach(goal => {
-      const gp   = getGoalProgress(goal);
-      const done = gp.pct >= 100;
-      const disp_current = Math.round(dispW(gp.currentKg, 'kg'));
-      const disp_target  = Math.round(dispW(gp.targetKg,  'kg'));
+    for (const goal of goals) {
+      const pr        = prs[goal.exercise];
+      const currentKg = pr?.best1RM_kg || 0;
+      const targetKg  = goal.targetKg;
+      const pct       = targetKg > 0 ? Math.min(100, Math.round((currentKg / targetKg) * 100)) : 0;
+      const done      = pct >= 100;
+      const dispCur   = pr?.best1RM   ? pr.best1RM : 0;
+      const dispTgt   = Math.round(dispW(targetKg, 'kg'));
+
+      // Estimate time
+      const weeks     = done ? 0 : estimateWeeks(goal.exercise, targetKg);
+      const timeStr   = done ? null
+        : weeks === 0    ? null
+        : weeks === null ? `${dispTgt - dispCur}${unit} to go`
+        : weeks <= 4     ? `~${weeks} week${weeks>1?'s':''} away`
+        : weeks <= 52    ? `~${Math.round(weeks/4)} month${Math.round(weeks/4)>1?'s':''} away`
+        : `${Math.round(weeks/52)}+ year${Math.round(weeks/52)>1?'s':''} away`;
+
+      const isSelected = dashChartExercise === goal.exercise;
+
       html += `
-      <div class="goal-card" onclick="showView('goals')" style="cursor:pointer">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start">
-          <div>
-            <div style="font-size:14px;font-weight:700">${goal.exercise}</div>
-            <div style="font-size:11px;color:var(--muted);margin-top:2px">Target: ${disp_target}${unit} est. 1RM</div>
+      <div class="card" style="margin-bottom:10px;cursor:pointer;border-color:${isSelected?'var(--accent)':'var(--border)'};transition:border-color .2s"
+           onclick="setDashChartExercise('${esc(goal.exercise)}')">
+
+        <!-- Header row -->
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:15px;font-weight:700;margin-bottom:5px">${goal.exercise}</div>
+            <!-- Current PR -->
+            <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:3px">
+              <span style="font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)">Current PR</span>
+              ${pr?.bestSet
+                ? `<span style="font-size:15px;font-weight:800;color:var(--accent)">${pr.displayWeight}${unit}</span>
+                   <span style="font-size:12px;color:var(--muted)">× ${pr.bestSet.reps} reps</span>
+                   <span style="font-size:11px;color:var(--muted)">(~${pr.best1RM}${unit} 1RM)</span>`
+                : `<span style="font-size:12px;color:var(--muted)">No data yet</span>`}
+            </div>
+            <!-- Target -->
+            <div style="display:flex;align-items:baseline;gap:6px">
+              <span style="font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)">Target</span>
+              <span style="font-size:15px;font-weight:700;color:var(--green)">${dispTgt}${unit}</span>
+              <span style="font-size:11px;color:var(--muted)">est. 1RM</span>
+            </div>
           </div>
-          <div style="text-align:right">
-            <div style="font-size:18px;font-weight:800;color:${done?'var(--green)':'var(--accent)'}">${gp.pct}%</div>
-            ${done ? `<div style="font-size:11px;color:var(--green);font-weight:700">🎉 Reached!</div>` : `<div style="font-size:11px;color:var(--muted)">${disp_current}/${disp_target}${unit}</div>`}
+          <!-- Percent badge -->
+          <div style="text-align:right;flex-shrink:0;margin-left:12px">
+            <div style="font-size:26px;font-weight:900;line-height:1;color:${done?'var(--green)':'var(--accent)'}">${pct}%</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:2px">${dispCur} / ${dispTgt}${unit}</div>
           </div>
         </div>
+
+        <!-- Progress bar -->
         <div class="goal-bar-track">
-          <div class="goal-bar-fill ${done?'done':''}" style="width:${gp.pct}%"></div>
+          <div class="goal-bar-fill ${done?'done':''}" style="width:${pct}%"></div>
         </div>
-        <div class="goal-meta">
-          <span>Current PR: ${disp_current}${unit} est. 1RM</span>
-          ${done ? '<span style="color:var(--green);font-weight:600">Goal achieved!</span>' : `<span>${Math.round(dispW(gp.remaining,'kg'))}${unit} to go</span>`}
+
+        <!-- Footer row -->
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;font-size:11px">
+          ${done
+            ? `<span style="color:var(--green);font-weight:700">🎉 Goal reached!</span>`
+            : `<span style="color:var(--muted)">${timeStr || `${dispTgt-dispCur}${unit} remaining`}</span>`}
+          <span style="color:${isSelected?'var(--accent)':'var(--muted)'};font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.4px">
+            ${isSelected ? '▲ Chart below' : 'Tap to chart'}
+          </span>
         </div>
       </div>`;
-    });
-    if (goals.length > 3) {
-      html += `<div style="text-align:center;font-size:12px;color:var(--muted);padding:8px 0;cursor:pointer" onclick="showView('goals')">View all ${goals.length} goals →</div>`;
     }
   }
 
-  // ── Recent workout ──
-  html += `<div class="label" style="margin-top:16px">Last Workout</div>`;
-  if(recent) {
-    const exNames  = recent.exercises.map(e=>e.name).join(' · ') || 'No exercises';
-    const du       = wUnit(recent);
-    const totalVol = recent.exercises.reduce((s,e)=>s+e.sets.reduce((s2,set)=>s2+(dispW(+set.weight||0,du))*(+set.reps||0),0),0);
+  // ── INTERACTIVE PROGRESS CHART ─────────────────────────
+  if (dashChartExercise) {
     html += `
-    <div class="card" style="cursor:pointer" onclick="showView('history')">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+    <div class="card" style="margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+        <div>
+          <div style="font-size:14px;font-weight:700">${dashChartExercise}</div>
+          <div style="font-size:11px;color:var(--muted)">Progress over time</div>
+        </div>
+        <!-- Toggle buttons -->
+        <div style="display:flex;gap:4px">
+          <button id="dm-1rm" class="btn btn-sm ${dashChartMode==='1rm'?'btn-primary':'btn-secondary'}"
+            style="padding:6px 10px;font-size:11px" onclick="setDashChartMode('1rm')">Est. 1RM</button>
+          <button id="dm-5" class="btn btn-sm ${dashChartMode==='5'?'btn-primary':'btn-secondary'}"
+            style="padding:6px 10px;font-size:11px" onclick="setDashChartMode('5')">5 Rep</button>
+          <button id="dm-8" class="btn btn-sm ${dashChartMode==='8'?'btn-primary':'btn-secondary'}"
+            style="padding:6px 10px;font-size:11px" onclick="setDashChartMode('8')">8 Rep</button>
+        </div>
+      </div>
+      <div id="dash-chart-wrap" style="position:relative;height:200px">
+        <canvas id="dash-chart-canvas"></canvas>
+      </div>
+    </div>`;
+  }
+
+  // ── LAST WORKOUT ──────────────────────────────────────
+  html += `<div class="label" style="margin-bottom:8px">Last Workout</div>`;
+  if (recent) {
+    const du       = wUnit(recent);
+    const exNames  = recent.exercises.map(e => e.name).join(' · ') || 'No exercises';
+    const totalVol = recent.exercises.reduce((s,e) =>
+      s + e.sets.reduce((s2,set) => s2 + (dispW(+set.weight||0,du)) * (+set.reps||0), 0), 0);
+    const totalSets = recent.exercises.reduce((s,e) =>
+      s + e.sets.filter(s => s.weight || s.reps).length, 0);
+    html += `
+    <div class="card" style="cursor:pointer;margin-bottom:14px" onclick="showView('history')">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
         <div style="font-weight:700;font-size:16px">${recent.name||'Workout'}</div>
         <div style="font-size:12px;color:var(--muted)">${daysAgo(recent.date)}</div>
       </div>
-      <div style="font-size:13px;color:var(--muted);margin-bottom:${totalVol?'10px':'0'}">${exNames}</div>
-      ${totalVol?`<div style="font-size:12px;color:var(--accent);font-weight:600">${Math.round(totalVol).toLocaleString()}${unit} total volume</div>`:''}
+      <div style="font-size:12px;color:var(--muted);margin-bottom:${totalVol?'8px':'0'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${exNames}</div>
+      ${totalVol ? `<div style="font-size:12px;color:var(--accent);font-weight:600">${Math.round(totalVol).toLocaleString()}${unit} vol · ${totalSets} sets</div>` : ''}
     </div>`;
   } else {
     html += `
-    <div class="card" style="text-align:center;padding:28px 20px">
+    <div class="card" style="text-align:center;padding:28px 20px;margin-bottom:14px">
       <div style="font-size:42px;margin-bottom:10px">🏋️</div>
       <div style="font-weight:700;margin-bottom:6px">No workouts yet</div>
       <div style="font-size:13px;color:var(--muted);margin-bottom:16px">Start logging to track your progress</div>
@@ -890,7 +924,169 @@ function renderDashboard() {
     </div>`;
   }
 
+  // ── BODY STATS ────────────────────────────────────────
+  html += `<div class="label" style="margin-bottom:8px">Body Stats</div>`;
+  const hasProfile = profile.height || profile.bodyweight;
+  if (hasProfile) {
+    let bmi = null;
+    if (profile.height && profile.bodyweight) {
+      const hM  = profile.height / 100;
+      const wKg = unit === 'lbs' ? profile.bodyweight / KG_TO_LBS : profile.bodyweight;
+      bmi = (wKg / (hM * hM)).toFixed(1);
+    }
+    html += `
+    <div class="card" style="cursor:pointer" onclick="openProfileModal()">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div style="display:flex;gap:28px">
+          <div>
+            <div style="font-size:10px;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);margin-bottom:2px">Body Weight</div>
+            <div style="font-size:20px;font-weight:800">${profile.bodyweight||'—'}<span style="font-size:12px;font-weight:400;color:var(--muted);margin-left:2px">${unit}</span></div>
+          </div>
+          <div>
+            <div style="font-size:10px;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);margin-bottom:2px">Height</div>
+            <div style="font-size:20px;font-weight:800">${profile.height ? profile.height : '—'}<span style="font-size:12px;font-weight:400;color:var(--muted);margin-left:2px">${profile.height?'cm':''}</span></div>
+          </div>
+          ${bmi ? `
+          <div>
+            <div style="font-size:10px;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);margin-bottom:2px">BMI</div>
+            <div style="font-size:20px;font-weight:800;color:${bmiColor(bmi)}">${bmi}</div>
+          </div>` : ''}
+        </div>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2">
+          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+        </svg>
+      </div>
+    </div>`;
+  } else {
+    html += `
+    <div class="card" style="cursor:pointer" onclick="openProfileModal()">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div style="font-size:28px">👤</div>
+        <div>
+          <div style="font-weight:600;margin-bottom:2px">Add your stats</div>
+          <div style="font-size:12px;color:var(--muted)">Tap to set your height & body weight</div>
+        </div>
+      </div>
+    </div>`;
+  }
+
   document.getElementById('main').innerHTML = html;
+
+  // Render chart after DOM is ready
+  if (dashChartExercise) setTimeout(() => renderDashboardChart(), 60);
+}
+
+// ── Dashboard chart renderer ──────────────────────────
+function renderDashboardChart() {
+  const wrap = document.getElementById('dash-chart-wrap');
+  if (!wrap) return;
+  if (dashChart) { dashChart.destroy(); dashChart = null; }
+
+  const exercise = dashChartExercise;
+  if (!exercise) return;
+
+  const unit     = DB.unit;
+  const progress = getProgressByMode(exercise, dashChartMode);
+  const goal     = DB.goals.find(g => g.exercise === exercise);
+
+  if (progress.length < 2) {
+    wrap.innerHTML = `
+      <div style="height:200px;display:flex;align-items:center;justify-content:center;
+                  color:var(--muted);font-size:13px;text-align:center;line-height:1.6">
+        Log at least 2 sessions with<br><strong style="color:var(--text)">${exercise}</strong><br>to see your chart
+      </div>`;
+    return;
+  }
+
+  // Ensure canvas exists (could have been replaced by the message above)
+  if (!document.getElementById('dash-chart-canvas')) {
+    wrap.innerHTML = `<canvas id="dash-chart-canvas"></canvas>`;
+  }
+  const ctx = document.getElementById('dash-chart-canvas');
+  if (!ctx) return;
+
+  const labels  = progress.map(p =>
+    new Date(p.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'}));
+  const weights = progress.map(p => Math.round(dispW(p.weightKg,'kg') * 10) / 10);
+
+  const modeLabel = dashChartMode === '1rm'
+    ? `Est. 1RM (${unit})`
+    : `Best weight @ ${dashChartMode}+ reps (${unit})`;
+
+  const datasets = [{
+    label:              modeLabel,
+    data:               weights,
+    borderColor:        '#f97316',
+    backgroundColor:    'rgba(249,115,22,0.12)',
+    borderWidth:        2.5,
+    pointBackgroundColor:'#f97316',
+    pointRadius:        4,
+    pointHoverRadius:   6,
+    tension:            0.3,
+    fill:               true
+  }];
+
+  // Goal reference line
+  if (goal) {
+    let goalDisplay;
+    if (dashChartMode === '1rm') {
+      goalDisplay = Math.round(dispW(goal.targetKg, 'kg'));
+    } else {
+      const reps  = +dashChartMode;
+      const gKg   = goal.targetKg / (1 + reps / 30);
+      goalDisplay = Math.round(dispW(gKg, 'kg'));
+    }
+    datasets.push({
+      label:       `Goal: ${goalDisplay}${unit}`,
+      data:        Array(labels.length).fill(goalDisplay),
+      borderColor: '#22c55e',
+      borderDash:  [6, 3],
+      borderWidth: 2,
+      pointRadius: 0,
+      tension:     0,
+      fill:        false
+    });
+  }
+
+  dashChart = new Chart(ctx, {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { labels: { color:'#888', font:{ size:11 }, boxWidth:12, padding:12 } },
+        tooltip: {
+          backgroundColor:'#1a1a1a', borderColor:'#2a2a2a', borderWidth:1,
+          titleColor:'#f0f0f0', bodyColor:'#aaa',
+          callbacks: { label: c => ` ${c.dataset.label}: ${c.parsed.y}${unit}` }
+        }
+      },
+      scales: {
+        x: { grid:{ color:'#1f1f1f' }, ticks:{ color:'#555', font:{ size:10 }, maxTicksLimit:6 } },
+        y: { grid:{ color:'#1f1f1f' }, ticks:{ color:'#555', font:{ size:10 }, callback: v => v+unit } }
+      }
+    }
+  });
+}
+
+// ── Dashboard chart controls ──────────────────────────
+function setDashChartMode(mode) {
+  dashChartMode = mode;
+  // Update button styles without full re-render
+  ['1rm','5','8'].forEach(m => {
+    const btn = document.getElementById('dm-' + m);
+    if (!btn) return;
+    btn.className = btn.className
+      .replace('btn-primary','').replace('btn-secondary','').trim()
+      + (m === mode ? ' btn-primary' : ' btn-secondary');
+  });
+  renderDashboardChart();
+}
+
+function setDashChartExercise(name) {
+  dashChartExercise = name;
+  renderDashboard(); // Re-render so card highlights update correctly
 }
 
 // ═══════════════════════════════════════════════════════
