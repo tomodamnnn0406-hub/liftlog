@@ -234,12 +234,15 @@ input:focus,textarea:focus,select:focus{border-color:var(--accent)}
   border:1px solid transparent;position:relative}
 .cal-cell.blank{visibility:hidden}
 .cal-cell.today{border-color:var(--border);color:var(--text)}
-.cal-cell.has-workout{background:var(--accent-dim);border-color:var(--accent);
-  color:var(--text);font-weight:700;cursor:pointer}
-.cal-cell.has-workout:hover{background:rgba(249,115,22,0.22)}
-.cal-dot{position:absolute;bottom:6px;width:5px;height:5px;border-radius:50%;
-  background:var(--accent)}
-.cal-count{position:absolute;top:3px;right:5px;font-size:9px;font-weight:700;color:var(--accent)}
+.cal-cell.has-workout{color:var(--text);font-weight:700;cursor:pointer}
+.cal-cell.has-workout:hover{filter:brightness(1.25)}
+.cal-dots{position:absolute;bottom:5px;left:0;right:0;display:flex;justify-content:center;gap:3px}
+.cal-dot{width:5px;height:5px;border-radius:50%;background:var(--accent)}
+/* legend */
+.cal-legend{display:flex;flex-wrap:wrap;gap:8px 14px;margin-top:16px;
+  padding:12px 14px;background:var(--card);border:1px solid var(--border);border-radius:14px}
+.cal-legend-item{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text)}
+.cal-legend-swatch{width:11px;height:11px;border-radius:3px;flex-shrink:0}
 
 /* ── Modal ── */
 #modal-overlay{
@@ -475,6 +478,8 @@ const DB = {
   saveExercises(e) { localStorage.setItem('ll_exercises', JSON.stringify(e)) },
   get unit()       { return localStorage.getItem('ll_unit') || 'kg' },
   saveUnit(u)      { localStorage.setItem('ll_unit', u) },
+  get lang()       { return localStorage.getItem('ll_lang') || 'en' },
+  saveLang(l)      { localStorage.setItem('ll_lang', l) },
   get profile()    { return JSON.parse(localStorage.getItem('ll_profile') || '{}') },
   saveProfile(p)   { localStorage.setItem('ll_profile', JSON.stringify(p)) },
   get goals()          { return JSON.parse(localStorage.getItem('ll_goals') || '[]') },
@@ -491,6 +496,96 @@ const DEFAULT_EXERCISES = [
   'Leg Press','Romanian Deadlift','Incline Bench','Cable Row','Lateral Raise',
   'Hip Thrust','Face Pull','Hammer Curl','Skull Crusher','Arnold Press'
 ];
+
+// ═══════════════════════════════════════════════════════
+// I18N — English (source) + Japanese
+// ═══════════════════════════════════════════════════════
+const I18N = {
+  ja: {
+    // nav
+    'Dashboard':'ダッシュボード','Log':'記録','History':'履歴','PRs':'自己ベスト','Goals':'目標',
+    // sections / headers
+    'Last Workout':'前回のワークアウト','Body Stats':'身体データ','My Goals':'マイ目標',
+    'Edit Goals':'目標を編集','Progress':'進捗','Target Muscle':'対象の筋肉',
+    // buttons
+    'Save':'保存','Cancel':'キャンセル','Delete':'削除','Edit':'編集','← Back':'← 戻る',
+    'Export All Data':'すべてのデータを書き出す','Import Data':'データを取り込む',
+    'Add Goal':'目標を追加','+ Add Goal':'＋ 目標を追加','Set Your First Goal':'最初の目標を設定',
+    'Log First Workout':'最初のワークアウトを記録','Add Exercise':'種目を追加',
+    'Save Workout':'ワークアウトを保存',"Skip — don't tag a muscle":'スキップ（筋肉を指定しない）',
+    'Manage Goals':'目標を管理',
+    // labels
+    'Current':'現在','Target':'目標値','Goal reached!':'目標達成！','Active':'選択中','Chart':'グラフ',
+    'Top Weight':'最高重量','5 Rep':'5レップ','8 Rep':'8レップ','Est. 1RM':'推定1RM',
+    'days trained':'トレーニング日数','days / week':'週あたり日数',
+    'sessions':'セッション','session':'セッション','sessions this day':'この日のセッション',
+    'Notes':'メモ','Workout':'ワークアウト','No data yet':'データがありません','No exercises':'種目なし',
+    'Today':'今日','Yesterday':'昨日',
+    // settings
+    'Data & Settings':'データと設定','Backup your data':'データのバックアップ',
+    'Restore from backup':'バックアップから復元','Language':'言語',
+    // empty states
+    'No goals set yet':'目標がまだ設定されていません','No workouts logged yet':'まだ記録がありません',
+    'Tap Log to get started':'「記録」をタップして始めましょう','No workouts yet':'ワークアウトがまだありません',
+    'Start logging to track your progress':'記録を始めて進捗を追跡しましょう',
+    'Tap a highlighted day to see that session':'ハイライトされた日をタップするとその記録を表示します',
+    // body parts
+    'Chest':'胸','Shoulders':'肩','Back':'背中','Legs':'脚','Arms':'腕','Abs':'腹筋','Core':'体幹','Other':'その他',
+    'Upper Chest':'胸上部','Middle Chest':'胸中部','Lower Chest':'胸下部',
+    'Front Delt':'三角筋前部','Middle Delt':'三角筋中部','Rear Delt':'三角筋後部',
+    'Traps':'僧帽筋','Lats':'広背筋','Teres Major':'大円筋','Rhomboids':'菱形筋',
+    'Quads':'大腿四頭筋','Hamstrings':'ハムストリング','Glutes':'臀筋','Calves':'ふくらはぎ',
+    'Biceps':'上腕二頭筋','Triceps':'上腕三頭筋','Forearms':'前腕',
+    'Rectus Abdominis':'腹直筋','Obliques':'腹斜筋','Lower Abs':'下腹部'
+  }
+};
+
+function L(){ return DB.lang === 'ja' ? 'ja-JP' : 'en-US'; }   // date locale
+function t(s){ return (DB.lang === 'ja' && I18N.ja[s] !== undefined) ? I18N.ja[s] : s; }
+
+// Walk the DOM and swap visible English text → Japanese (and back).
+// Original English is cached per-node so switching languages is reversible.
+function applyLang(){
+  const dict = I18N.ja, ja = DB.lang === 'ja';
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+    acceptNode(node){
+      const p = node.parentNode;
+      if(!p) return NodeFilter.FILTER_REJECT;
+      const tag = p.nodeName;
+      if(tag === 'SCRIPT' || tag === 'STYLE') return NodeFilter.FILTER_REJECT;
+      if(p.closest && p.closest('svg')) return NodeFilter.FILTER_REJECT;
+      return node.nodeValue.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+    }
+  });
+  const nodes = []; let n; while(n = walker.nextNode()) nodes.push(n);
+  for(const node of nodes){
+    if(node.__en === undefined) node.__en = node.nodeValue;
+    const raw = node.__en, key = raw.trim();
+    let out = raw;
+    if(ja && key){
+      if(dict[key] !== undefined){
+        out = raw.replace(key, dict[key]);
+      } else {
+        const m = key.match(/^(\S+)\s+(.+)$/);   // emoji-prefixed label e.g. "🎽 Chest"
+        if(m && !/[A-Za-z]/.test(m[1]) && dict[m[2]] !== undefined)
+          out = raw.replace(key, m[1] + ' ' + dict[m[2]]);
+      }
+    }
+    if(node.nodeValue !== out) node.nodeValue = out;
+  }
+  // placeholders
+  document.body.querySelectorAll('[placeholder]').forEach(el => {
+    if(el.__enPh === undefined) el.__enPh = el.getAttribute('placeholder') || '';
+    const k = el.__enPh.trim();
+    el.setAttribute('placeholder', (ja && dict[k] !== undefined) ? dict[k] : el.__enPh);
+  });
+}
+
+function setLang(l){
+  DB.saveLang(l);
+  showView(currentView);
+  openDataModal();   // rebuild settings so the selected language highlights
+}
 
 // ═══════════════════════════════════════════════════════
 // MIGRATION — tag old workouts with a dataUnit
@@ -552,7 +647,7 @@ function uid()      { return Date.now().toString(36) + Math.random().toString(36
 function todayStr() { return new Date().toISOString().slice(0,10) }
 
 function fmtDate(d) {
-  return new Date(d+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+  return new Date(d+'T12:00:00').toLocaleDateString(L(),{month:'short',day:'numeric',year:'numeric'});
 }
 function daysAgo(d) {
   const diff = Math.round((Date.now() - new Date(d+'T12:00:00')) / 86400000);
@@ -842,6 +937,7 @@ function showView(view) {
   else if(view==='prs')     renderPRs();
   else if(view==='goals')   renderGoals();
   syncUnitToggle();
+  applyLang();
 }
 
 function setUnit(u) {
@@ -888,7 +984,7 @@ function renderDashboard() {
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
     <div>
       <div style="font-size:22px;font-weight:800;margin-bottom:2px">Dashboard</div>
-      <div style="font-size:12px;color:var(--muted)">${now.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}</div>
+      <div style="font-size:12px;color:var(--muted)">${now.toLocaleDateString(L(),{weekday:'long',month:'long',day:'numeric'})}</div>
     </div>
   </div>`;
 
@@ -1129,7 +1225,7 @@ function renderDashboardChart() {
   if (!ctx) return;
 
   const labels  = progress.map(p =>
-    new Date(p.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'}));
+    new Date(p.date+'T12:00:00').toLocaleDateString(L(),{month:'short',day:'numeric'}));
   const weights = progress.map(p => Math.round(dispW(p.weightKg,'kg') * 10) / 10);
 
   const modeLabel = dashChartMode === '1rm'
@@ -1538,12 +1634,21 @@ function clearLog() {
 // ── History — calendar view ───────────────────────────
 const pad2 = n => String(n).padStart(2, '0');
 
+// Stable colour per workout name (same name → same colour, app-wide)
+const WORKOUT_PALETTE = ['#f97316','#22c55e','#3b82f6','#a855f7','#ec4899',
+                         '#eab308','#14b8a6','#ef4444','#06b6d4','#f43f5e'];
+function workoutColor(name){
+  const names = [...new Set(DB.workouts.map(w => w.name || 'Workout'))].sort();
+  const i = names.indexOf(name || 'Workout');
+  return WORKOUT_PALETTE[(i < 0 ? 0 : i) % WORKOUT_PALETTE.length];
+}
+
 function renderHistory() {
   const workouts = DB.workouts;
   let html = `
   <div class="section-header">
-    <div style="font-size:22px;font-weight:800">History</div>
-    <div style="font-size:13px;color:var(--muted)">${workouts.length} session${workouts.length===1?'':'s'}</div>
+    <div style="font-size:22px;font-weight:800">${t('History')}</div>
+    <div style="font-size:13px;color:var(--muted)">${workouts.length} ${t('sessions')}</div>
   </div>`;
 
   if(!workouts.length) {
@@ -1570,20 +1675,32 @@ function renderHistory() {
   const monthIdx = mon - 1;
 
   const monthLabel = new Date(year, monthIdx, 1)
-    .toLocaleDateString('en-US', { month:'long', year:'numeric' });
+    .toLocaleDateString(L(), { month:'long', year:'numeric' });
   const todayStr = `${realNow.getFullYear()}-${pad2(realNow.getMonth()+1)}-${pad2(realNow.getDate())}`;
 
   const startDOW    = new Date(year, monthIdx, 1).getDay();
   const daysInMonth = new Date(year, monthIdx+1, 0).getDate();
 
-  // Sessions + distinct days this month → weekly frequency
+  // Sessions + distinct training days this month.
+  // Weekly frequency = average training days across the Sun–Sat weeks that
+  // actually had a workout (so a single full week of 5 days reads as 5, not 1.1).
   let monthSessions = 0;
   const monthDays = new Set();
+  const weekDayCounts = {};   // weekKey (Sunday's date) → Set of training days
   for(let d=1; d<=daysInMonth; d++){
     const ds = `${year}-${pad2(monthIdx+1)}-${pad2(d)}`;
-    if(byDate[ds]){ monthSessions += byDate[ds].length; monthDays.add(ds); }
+    if(byDate[ds]){
+      monthSessions += byDate[ds].length;
+      monthDays.add(ds);
+      const dt = new Date(year, monthIdx, d);
+      const sunday = new Date(dt); sunday.setDate(dt.getDate() - dt.getDay());
+      const wk = `${sunday.getFullYear()}-${pad2(sunday.getMonth()+1)}-${pad2(sunday.getDate())}`;
+      (weekDayCounts[wk] = weekDayCounts[wk] || new Set()).add(ds);
+    }
   }
-  const perWeek = monthDays.size ? Math.round((monthDays.size / daysInMonth) * 7 * 10) / 10 : 0;
+  const activeWeeks = Object.keys(weekDayCounts).length;
+  const perWeekRaw  = activeWeeks ? monthDays.size / activeWeeks : 0;
+  const perWeek     = Number.isInteger(perWeekRaw) ? perWeekRaw : Math.round(perWeekRaw * 10) / 10;
 
   const prevDisabled = ym <= earliestYM;
   const nextDisabled = ym >= currentYM;
@@ -1596,12 +1713,13 @@ function renderHistory() {
     <button class="cal-nav-btn" onclick="historyShiftMonth(1)" ${nextDisabled?'disabled':''}>›</button>
   </div>`;
 
-  // Weekday headers
+  // Weekday headers (localised)
+  const dow = DB.lang === 'ja' ? ['日','月','火','水','木','金','土'] : ['S','M','T','W','T','F','S'];
   html += `<div class="cal-grid" style="margin-bottom:5px">`;
-  for(const d of ['S','M','T','W','T','F','S']) html += `<div class="cal-dow">${d}</div>`;
+  for(const d of dow) html += `<div class="cal-dow">${d}</div>`;
   html += `</div>`;
 
-  // Day cells
+  // Day cells — coloured by workout type
   html += `<div class="cal-grid">`;
   for(let i=0; i<startDOW; i++) html += `<div class="cal-cell blank"></div>`;
   for(let d=1; d<=daysInMonth; d++){
@@ -1612,10 +1730,14 @@ function renderHistory() {
       const tap = list.length === 1
         ? `showWorkoutDetail('${list[0].id}')`
         : `showDaySessions('${ds}')`;
+      const c0   = workoutColor(list[0].name);
+      const dots = list.slice(0,4)
+        .map(w => `<span class="cal-dot" style="background:${workoutColor(w.name)}"></span>`).join('');
       html += `
-      <div class="cal-cell has-workout ${isToday?'today':''}" onclick="${tap}">
+      <div class="cal-cell has-workout ${isToday?'today':''}" onclick="${tap}"
+           style="background:${c0}22;border-color:${c0}">
         ${d}
-        ${list.length>1 ? `<span class="cal-count">${list.length}</span>` : `<span class="cal-dot"></span>`}
+        <span class="cal-dots">${dots}</span>
       </div>`;
     } else {
       html += `<div class="cal-cell ${isToday?'today':''}">${d}</div>`;
@@ -1623,24 +1745,37 @@ function renderHistory() {
   }
   html += `</div>`;
 
+  // Legend — workout types present this month, with their colours
+  const monthNames = [...new Set(
+    [...monthDays].flatMap(ds => byDate[ds].map(w => w.name || 'Workout'))
+  )].sort();
+  if(monthNames.length){
+    html += `<div class="cal-legend">`;
+    for(const n of monthNames){
+      html += `<div class="cal-legend-item">
+        <span class="cal-legend-swatch" style="background:${workoutColor(n)}"></span>${n}</div>`;
+    }
+    html += `</div>`;
+  }
+
   // Month summary
   html += `
   <div class="card" style="margin-top:16px;display:flex;justify-content:space-around;text-align:center">
     <div>
       <div style="font-size:20px;font-weight:800;color:var(--accent)">${monthSessions}</div>
-      <div style="font-size:11px;color:var(--muted)">session${monthSessions===1?'':'s'}</div>
+      <div style="font-size:11px;color:var(--muted)">${t('sessions')}</div>
     </div>
     <div>
       <div style="font-size:20px;font-weight:800;color:var(--accent)">${monthDays.size}</div>
-      <div style="font-size:11px;color:var(--muted)">days trained</div>
+      <div style="font-size:11px;color:var(--muted)">${t('days trained')}</div>
     </div>
     <div>
       <div style="font-size:20px;font-weight:800;color:var(--accent)">${perWeek}</div>
-      <div style="font-size:11px;color:var(--muted)">days / week</div>
+      <div style="font-size:11px;color:var(--muted)">${t('days / week')}</div>
     </div>
   </div>
   <div style="text-align:center;font-size:11px;color:var(--muted);margin-top:6px">
-    Tap a highlighted day to see that session
+    ${t('Tap a highlighted day to see that session')}
   </div>`;
 
   document.getElementById('main').innerHTML = html;
@@ -1665,7 +1800,7 @@ function showDaySessions(dateStr){
   if(list.length===1){ showWorkoutDetail(list[0].id); return; }
   const unit = DB.unit;
   let html = `<div style="font-size:18px;font-weight:800;margin-bottom:4px">${fmtDate(dateStr)}</div>
-    <div style="font-size:13px;color:var(--muted);margin-bottom:14px">${list.length} sessions this day</div>`;
+    <div style="font-size:13px;color:var(--muted);margin-bottom:14px">${list.length} ${t('sessions this day')}</div>`;
   for(const w of list){
     const du       = wUnit(w);
     const exNames  = w.exercises.map(e=>e.name).join(' · ') || 'No exercises';
@@ -2157,7 +2292,7 @@ function drawProgressChart(progress, unit) {
 
   const labels = progress.map(p=>{
     const d=new Date(p.date+'T12:00:00');
-    return d.toLocaleDateString('en-US',{month:'short',day:'numeric'});
+    return d.toLocaleDateString(L(),{month:'short',day:'numeric'});
   });
 
   prChart = new Chart(ctx, {
@@ -2430,6 +2565,7 @@ function deleteGoal(id) {
 // ═══════════════════════════════════════════════════════
 function openModal() {
   document.getElementById('modal-overlay').classList.add('open');
+  applyLang();
 }
 function closeModal() {
   document.getElementById('modal-overlay').classList.remove('open');
@@ -2473,6 +2609,14 @@ function openDataModal() {
   document.getElementById('modal-content').innerHTML = `
   <div style="font-size:18px;font-weight:700;margin-bottom:6px">Data & Settings</div>
   <div style="font-size:12px;color:var(--muted);margin-bottom:20px">${workoutCount} workout${workoutCount!==1?'s':''} stored on this device</div>
+
+  <div style="font-size:13px;font-weight:600;margin-bottom:10px">Language</div>
+  <div style="display:flex;gap:8px;margin-bottom:20px">
+    <button class="btn btn-full ${DB.lang==='en'?'btn-primary':'btn-secondary'}" onclick="setLang('en')">English</button>
+    <button class="btn btn-full ${DB.lang==='ja'?'btn-primary':'btn-secondary'}" onclick="setLang('ja')">日本語</button>
+  </div>
+
+  <div class="divider" style="margin:0 0 20px"></div>
 
   <div style="font-size:13px;font-weight:600;margin-bottom:10px">Backup your data</div>
   <div style="font-size:12px;color:var(--muted);margin-bottom:12px">
