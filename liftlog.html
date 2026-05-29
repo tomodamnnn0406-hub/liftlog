@@ -219,6 +219,28 @@ input:focus,textarea:focus,select:focus{border-color:var(--accent)}
 .workout-name{font-size:15px;font-weight:600;margin-bottom:3px}
 .workout-exercises{font-size:12px;color:var(--muted)}
 
+/* ── History calendar ── */
+.cal-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.cal-nav-btn{background:var(--card2);border:1px solid var(--border);color:var(--text);
+  width:34px;height:34px;border-radius:9px;font-size:16px;cursor:pointer;display:flex;
+  align-items:center;justify-content:center}
+.cal-nav-btn:disabled{opacity:.3;cursor:default}
+.cal-nav-title{font-size:15px;font-weight:700}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}
+.cal-dow{text-align:center;font-size:10px;font-weight:700;color:var(--muted);
+  text-transform:uppercase;letter-spacing:.5px;padding-bottom:2px}
+.cal-cell{aspect-ratio:1;border-radius:10px;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;font-size:13px;color:var(--muted);
+  border:1px solid transparent;position:relative}
+.cal-cell.blank{visibility:hidden}
+.cal-cell.today{border-color:var(--border);color:var(--text)}
+.cal-cell.has-workout{background:var(--accent-dim);border-color:var(--accent);
+  color:var(--text);font-weight:700;cursor:pointer}
+.cal-cell.has-workout:hover{background:rgba(249,115,22,0.22)}
+.cal-dot{position:absolute;bottom:6px;width:5px;height:5px;border-radius:50%;
+  background:var(--accent)}
+.cal-count{position:absolute;top:3px;right:5px;font-size:9px;font-weight:700;color:var(--accent)}
+
 /* ── Modal ── */
 #modal-overlay{
   display:none;position:fixed;inset:0;
@@ -380,14 +402,14 @@ const BODY_PART_MAP = {
   'Core':      ['plank','crunch','ab wheel','cable crunch','hanging leg raise','russian twist','sit-up','leg raise','decline crunch'],
 };
 const BODY_PART_EMOJI = {
-  'Chest':'🏋️','Back':'🔙','Legs':'🦵','Shoulders':'🏔️','Arms':'💪','Abs':'🔥','Core':'🔥','Other':'⚡'
+  'Chest':'🎽','Back':'🎒','Legs':'🦵','Shoulders':'🏋️','Arms':'💪','Abs':'🔥','Core':'🔥','Other':'⚡'
 };
 
 // Detailed muscle taxonomy — used for exercise tagging and PR grouping
 const MUSCLE_GROUPS = {
-  'Chest':     { emoji:'🏋️', sub:['Upper Chest','Middle Chest','Lower Chest'] },
-  'Shoulders': { emoji:'🏔️', sub:['Front Delt','Middle Delt','Rear Delt'] },
-  'Back':      { emoji:'🔙', sub:['Traps','Lats','Teres Major','Rhomboids'] },
+  'Chest':     { emoji:'🎽', sub:['Upper Chest','Middle Chest','Lower Chest'] },
+  'Shoulders': { emoji:'🏋️', sub:['Front Delt','Middle Delt','Rear Delt'] },
+  'Back':      { emoji:'🎒', sub:['Traps','Lats','Teres Major','Rhomboids'] },
   'Legs':      { emoji:'🦵', sub:['Quads','Hamstrings','Glutes','Calves'] },
   'Arms':      { emoji:'💪', sub:['Biceps','Triceps','Forearms'] },
   'Abs':       { emoji:'🔥', sub:['Rectus Abdominis','Obliques','Lower Abs'] },
@@ -516,6 +538,9 @@ let openBPGroups   = new Set(); // which body-part groups are expanded
 let dashChart         = null;
 let dashChartMode     = '1rm';   // '1rm' | '5' | '8'
 let dashChartExercise = null;
+
+// History calendar state — 'YYYY-MM' of the month currently shown (null = latest)
+let historyMonth      = null;
 
 // Returns the workout currently being built/edited (log or edit mode)
 function getActiveLog() { return editingWorkout || currentLog; }
@@ -813,7 +838,7 @@ function showView(view) {
   main.className = 'fade-in';
   if(view==='dashboard') renderDashboard();
   else if(view==='log')     renderLog();
-  else if(view==='history') renderHistory();
+  else if(view==='history') { historyMonth = null; renderHistory(); }
   else if(view==='prs')     renderPRs();
   else if(view==='goals')   renderGoals();
   syncUnitToggle();
@@ -1510,13 +1535,15 @@ function clearLog() {
 // ═══════════════════════════════════════════════════════
 // HISTORY
 // ═══════════════════════════════════════════════════════
+// ── History — calendar view ───────────────────────────
+const pad2 = n => String(n).padStart(2, '0');
+
 function renderHistory() {
-  const workouts = [...DB.workouts].sort((a,b)=>b.date.localeCompare(a.date));
-  const unit     = DB.unit;
+  const workouts = DB.workouts;
   let html = `
   <div class="section-header">
     <div style="font-size:22px;font-weight:800">History</div>
-    <div style="font-size:13px;color:var(--muted)">${workouts.length} sessions</div>
+    <div style="font-size:13px;color:var(--muted)">${workouts.length} session${workouts.length===1?'':'s'}</div>
   </div>`;
 
   if(!workouts.length) {
@@ -1529,13 +1556,117 @@ function renderHistory() {
     return;
   }
 
-  let prevMonth = '';
-  for(const w of workouts) {
-    const month = new Date(w.date+'T12:00:00').toLocaleDateString('en-US',{month:'long',year:'numeric'});
-    if(month !== prevMonth) {
-      prevMonth = month;
-      html += `<div class="label" style="margin-top:12px">${month}</div>`;
+  // Map each YYYY-MM-DD to the workouts logged that day
+  const byDate = {};
+  for(const w of workouts) (byDate[w.date] = byDate[w.date] || []).push(w);
+  const allDates = Object.keys(byDate).sort();
+  const earliestYM = allDates[0].slice(0,7);
+
+  // Which month are we showing?
+  const realNow = new Date();
+  const currentYM = `${realNow.getFullYear()}-${pad2(realNow.getMonth()+1)}`;
+  const ym = historyMonth || allDates[allDates.length-1].slice(0,7);
+  const [year, mon] = ym.split('-').map(Number);
+  const monthIdx = mon - 1;
+
+  const monthLabel = new Date(year, monthIdx, 1)
+    .toLocaleDateString('en-US', { month:'long', year:'numeric' });
+  const todayStr = `${realNow.getFullYear()}-${pad2(realNow.getMonth()+1)}-${pad2(realNow.getDate())}`;
+
+  const startDOW    = new Date(year, monthIdx, 1).getDay();
+  const daysInMonth = new Date(year, monthIdx+1, 0).getDate();
+
+  // Sessions + distinct days this month → weekly frequency
+  let monthSessions = 0;
+  const monthDays = new Set();
+  for(let d=1; d<=daysInMonth; d++){
+    const ds = `${year}-${pad2(monthIdx+1)}-${pad2(d)}`;
+    if(byDate[ds]){ monthSessions += byDate[ds].length; monthDays.add(ds); }
+  }
+  const perWeek = monthDays.size ? Math.round((monthDays.size / daysInMonth) * 7 * 10) / 10 : 0;
+
+  const prevDisabled = ym <= earliestYM;
+  const nextDisabled = ym >= currentYM;
+
+  // Nav + month title
+  html += `
+  <div class="cal-nav">
+    <button class="cal-nav-btn" onclick="historyShiftMonth(-1)" ${prevDisabled?'disabled':''}>‹</button>
+    <div class="cal-nav-title">${monthLabel}</div>
+    <button class="cal-nav-btn" onclick="historyShiftMonth(1)" ${nextDisabled?'disabled':''}>›</button>
+  </div>`;
+
+  // Weekday headers
+  html += `<div class="cal-grid" style="margin-bottom:5px">`;
+  for(const d of ['S','M','T','W','T','F','S']) html += `<div class="cal-dow">${d}</div>`;
+  html += `</div>`;
+
+  // Day cells
+  html += `<div class="cal-grid">`;
+  for(let i=0; i<startDOW; i++) html += `<div class="cal-cell blank"></div>`;
+  for(let d=1; d<=daysInMonth; d++){
+    const ds   = `${year}-${pad2(monthIdx+1)}-${pad2(d)}`;
+    const list = byDate[ds];
+    const isToday = ds === todayStr;
+    if(list && list.length){
+      const tap = list.length === 1
+        ? `showWorkoutDetail('${list[0].id}')`
+        : `showDaySessions('${ds}')`;
+      html += `
+      <div class="cal-cell has-workout ${isToday?'today':''}" onclick="${tap}">
+        ${d}
+        ${list.length>1 ? `<span class="cal-count">${list.length}</span>` : `<span class="cal-dot"></span>`}
+      </div>`;
+    } else {
+      html += `<div class="cal-cell ${isToday?'today':''}">${d}</div>`;
     }
+  }
+  html += `</div>`;
+
+  // Month summary
+  html += `
+  <div class="card" style="margin-top:16px;display:flex;justify-content:space-around;text-align:center">
+    <div>
+      <div style="font-size:20px;font-weight:800;color:var(--accent)">${monthSessions}</div>
+      <div style="font-size:11px;color:var(--muted)">session${monthSessions===1?'':'s'}</div>
+    </div>
+    <div>
+      <div style="font-size:20px;font-weight:800;color:var(--accent)">${monthDays.size}</div>
+      <div style="font-size:11px;color:var(--muted)">days trained</div>
+    </div>
+    <div>
+      <div style="font-size:20px;font-weight:800;color:var(--accent)">${perWeek}</div>
+      <div style="font-size:11px;color:var(--muted)">days / week</div>
+    </div>
+  </div>
+  <div style="text-align:center;font-size:11px;color:var(--muted);margin-top:6px">
+    Tap a highlighted day to see that session
+  </div>`;
+
+  document.getElementById('main').innerHTML = html;
+}
+
+function historyShiftMonth(delta){
+  const workouts = DB.workouts;
+  const allDates = workouts.map(w=>w.date).sort();
+  const ym = historyMonth || (allDates.length ? allDates[allDates.length-1].slice(0,7) : null);
+  if(!ym) return;
+  let [y, m] = ym.split('-').map(Number);
+  m += delta;
+  if(m < 1){ m = 12; y--; } else if(m > 12){ m = 1; y++; }
+  historyMonth = `${y}-${pad2(m)}`;
+  renderHistory();
+}
+
+// When a day has more than one session, list them and let the user pick
+function showDaySessions(dateStr){
+  const list = DB.workouts.filter(w=>w.date===dateStr);
+  if(!list.length) return;
+  if(list.length===1){ showWorkoutDetail(list[0].id); return; }
+  const unit = DB.unit;
+  let html = `<div style="font-size:18px;font-weight:800;margin-bottom:4px">${fmtDate(dateStr)}</div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:14px">${list.length} sessions this day</div>`;
+  for(const w of list){
     const du       = wUnit(w);
     const exNames  = w.exercises.map(e=>e.name).join(' · ') || 'No exercises';
     const totalSets= w.exercises.reduce((s,e)=>s+e.sets.length, 0);
@@ -1543,7 +1674,6 @@ function renderHistory() {
     html += `
     <div class="workout-item" onclick="showWorkoutDetail('${w.id}')">
       <div style="flex:1;min-width:0">
-        <div class="workout-date">${fmtDate(w.date)} · ${daysAgo(w.date)}</div>
         <div class="workout-name">${w.name||'Workout'}</div>
         <div class="workout-exercises" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${exNames}</div>
         ${vol?`<div style="font-size:11px;color:var(--accent);font-weight:600;margin-top:4px">${Math.round(vol).toLocaleString()}${unit} vol · ${totalSets} sets</div>`:''}
@@ -1553,7 +1683,8 @@ function renderHistory() {
       </svg>
     </div>`;
   }
-  document.getElementById('main').innerHTML = html;
+  document.getElementById('modal-content').innerHTML = html;
+  openModal();
 }
 
 function showWorkoutDetail(id) {
