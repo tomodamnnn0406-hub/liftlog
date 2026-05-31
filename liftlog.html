@@ -421,6 +421,8 @@ input:focus,textarea:focus,select:focus{border-color:var(--accent)}
 
 <div id="toast"></div>
 
+<div id="confetti-layer"></div>
+
 <button id="scroll-top-fab" onclick="scrollActiveTop()" aria-label="Scroll to top">
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
     <line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>
@@ -2861,6 +2863,56 @@ function initEnhancements() {
     }
     startY = null; delta = 0;
   });
+}
+
+// ═══════════════════════════════════════════════════════
+// GOAL CELEBRATION
+// ═══════════════════════════════════════════════════════
+function fireConfetti() {
+  const layer = document.getElementById('confetti-layer');
+  if (!layer) return;
+  layer.innerHTML = '';
+  layer.classList.add('show');
+  const colors = ['#22c55e','#86efac','#f97316','#fbbf24','#3b82f6','#a855f7','#ffffff'];
+  const N = 110;
+  for (let i = 0; i < N; i++) {
+    const b = document.createElement('div');
+    b.className = 'confetti-bit';
+    b.style.left = (Math.random() * 100) + 'vw';
+    b.style.background = colors[i % colors.length];
+    b.style.animationDuration = (2.2 + Math.random() * 1.8) + 's';
+    b.style.animationDelay = (Math.random() * 0.5) + 's';
+    if (Math.random() < 0.5) b.style.borderRadius = '50%';
+    layer.appendChild(b);
+  }
+  clearTimeout(window.__confettiTO);
+  window.__confettiTO = setTimeout(() => { layer.classList.remove('show'); layer.innerHTML = ''; }, 4500);
+}
+
+// Fire confetti once when a goal is newly reached. Re-arms if the target is raised.
+function checkGoalCelebrations() {
+  let celebrated;
+  try { celebrated = JSON.parse(localStorage.getItem('ll_celebrated') || '[]'); }
+  catch (e) { celebrated = []; }
+  const nowDone = [];
+  let fresh = false;
+  for (const goal of DB.goals) {
+    if (getGoalProgress(goal).done) {
+      nowDone.push(goal.id);
+      if (!celebrated.includes(goal.id)) fresh = true;
+    }
+  }
+  // Keep only still-completed ids, so raising a target lets it celebrate again later
+  localStorage.setItem('ll_celebrated', JSON.stringify(nowDone));
+  if (fresh) {
+    fireConfetti();
+    showToast('🎉 Goal reached! Set a new target to keep going');
+  }
+}
+
+// CTA from a reached goal → open its editor so the user can raise the target
+function raiseGoalTarget(id) {
+  openEditGoalModal(id);
 }
 
 // ═══════════════════════════════════════════════════════
