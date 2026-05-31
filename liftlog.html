@@ -258,6 +258,43 @@ input:focus,textarea:focus,select:focus{border-color:var(--accent)}
   border:1px solid var(--border);border-bottom:none;
 }
 .modal-handle{width:36px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 16px}
+#modal{will-change:transform}
+
+/* ── Reorder buttons ── */
+.reorder-btn{background:none;border:1px solid var(--border);color:var(--muted);
+  width:30px;height:30px;border-radius:7px;font-size:12px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;line-height:1;
+  -webkit-tap-highlight-color:transparent;touch-action:manipulation}
+.reorder-btn:active{color:var(--accent);border-color:var(--accent)}
+
+/* ── Edit-modal exercise accordion ── */
+.ex-acc-header{display:flex;justify-content:space-between;align-items:center;
+  gap:8px;padding:12px 14px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.ex-acc-chevron{font-size:11px;color:var(--muted);transition:transform .2s;
+  transform:rotate(-90deg);display:inline-block;width:12px;flex-shrink:0}
+.ex-acc.open .ex-acc-chevron{transform:rotate(0deg)}
+.ex-acc-body{display:none;padding:0 14px 14px}
+.ex-acc.open .ex-acc-body{display:block}
+
+/* ── Sticky action bars ── */
+.log-action-bar{position:fixed;left:50%;transform:translateX(-50%);
+  bottom:calc(62px + env(safe-area-inset-bottom));
+  width:100%;max-width:480px;display:flex;gap:10px;
+  padding:10px 20px;background:var(--bg);border-top:1px solid var(--border);z-index:50}
+.modal-action-bar{position:sticky;bottom:0;display:flex;gap:10px;
+  margin:12px -20px -20px;padding:14px 20px calc(14px + env(safe-area-inset-bottom));
+  background:var(--card);border-top:1px solid var(--border);z-index:5}
+
+/* ── Scroll-to-top FAB ── */
+#scroll-top-fab{position:fixed;right:16px;
+  bottom:calc(138px + env(safe-area-inset-bottom));
+  width:46px;height:46px;border-radius:50%;background:var(--accent);color:#fff;
+  border:none;display:none;align-items:center;justify-content:center;z-index:120;
+  cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.45);
+  -webkit-tap-highlight-color:transparent;touch-action:manipulation}
+#scroll-top-fab.show{display:flex}
+#scroll-top-fab:active{transform:scale(.92)}
+#scroll-top-fab svg{width:22px;height:22px}
 
 /* ── Autocomplete ── */
 .input-wrapper{position:relative}
@@ -383,6 +420,12 @@ input:focus,textarea:focus,select:focus{border-color:var(--accent)}
 </div>
 
 <div id="toast"></div>
+
+<button id="scroll-top-fab" onclick="scrollActiveTop()" aria-label="Scroll to top">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>
+  </svg>
+</button>
 
 <script>
 // ═══════════════════════════════════════════════════════
@@ -628,6 +671,7 @@ let editingWorkout = null;  // non-null when editing a saved workout
 let selectedPREx   = null;
 let prChart        = null;
 let openBPGroups   = new Set(); // which body-part groups are expanded
+let editOpenEx     = new Set(); // expanded exercise accordions in the edit modal
 
 // Dashboard chart state
 let dashChart         = null;
@@ -938,6 +982,8 @@ function showView(view) {
   else if(view==='goals')   renderGoals();
   syncUnitToggle();
   applyLang();
+  document.getElementById('main').scrollTop = 0;
+  updateScrollFab();
 }
 
 function setUnit(u) {
@@ -1359,7 +1405,9 @@ function renderLog() {
     </div>
   </div>
 
-  <div style="display:flex;gap:10px;margin-top:4px;padding-bottom:4px">
+  <div style="height:64px"></div>
+
+  <div class="log-action-bar">
     <button class="btn btn-secondary" style="flex:1" onclick="clearLog()">Clear</button>
     <button class="btn btn-primary" style="flex:2" onclick="saveWorkout()">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
@@ -1387,18 +1435,22 @@ function renderExercisesHTML() {
   const unit = DB.unit;
   return currentLog.exercises.map((ex, ei) => `
   <div class="card" id="ex-${ei}" style="margin-bottom:10px">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-      <div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:8px">
+      <div style="min-width:0">
         <div style="font-size:16px;font-weight:700">${ex.name}</div>
         ${getMuscleForExercise(ex.name)?`<div style="font-size:11px;color:var(--accent);margin-top:2px">${getMuscleForExercise(ex.name)}</div>`:''}
       </div>
-      <button class="del-btn" onclick="removeExercise(${ei})">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polyline points="3 6 5 6 21 6"/>
-          <path d="M19 6l-1 14H6L5 6"/>
-          <path d="M10 11v6"/><path d="M14 11v6"/>
-        </svg>
-      </button>
+      <div style="display:flex;align-items:center;gap:3px;flex-shrink:0">
+        ${ei>0?`<button class="reorder-btn" onclick="moveExercise(${ei},-1)">▲</button>`:''}
+        ${ei<currentLog.exercises.length-1?`<button class="reorder-btn" onclick="moveExercise(${ei},1)">▼</button>`:''}
+        <button class="del-btn" onclick="removeExercise(${ei})">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="3 6 5 6 21 6"/>
+            <path d="M19 6l-1 14H6L5 6"/>
+            <path d="M10 11v6"/><path d="M14 11v6"/>
+          </svg>
+        </button>
+      </div>
     </div>
     <div class="sets-header">
       <span>Set</span><span>Wt (${unit})</span><span>Reps</span><span>~1RM</span><span></span>
@@ -1577,6 +1629,7 @@ function addExercise(name, muscle) {
   if (editingWorkout) {
     // Edit mode — add to editingWorkout and refresh edit modal
     editingWorkout.exercises.push({name, sets:[{weight:'',reps:''}]});
+    editOpenEx.add(editingWorkout.exercises.length - 1); // expand the new one
     renderWorkoutEditModal();
     setTimeout(()=>{
       document.getElementById(`edit-ex-${editingWorkout.exercises.length-1}`)
@@ -1885,6 +1938,7 @@ function deleteWorkout(id) {
 function openEditWorkoutModal(id) {
   const w = DB.workouts.find(x=>x.id===id); if(!w) return;
   editingWorkout = JSON.parse(JSON.stringify(w));
+  editOpenEx = new Set();   // start with all exercises collapsed
   renderWorkoutEditModal();
 }
 
@@ -1898,13 +1952,7 @@ function renderWorkoutEditModal() {
     `<option value="${p}" ${selectVal===p?'selected':''}>${p}</option>`).join('');
 
   let html = `
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-    <div style="font-size:18px;font-weight:700">Edit Workout</div>
-    <div style="display:flex;gap:8px">
-      <button class="btn btn-secondary btn-sm" onclick="cancelEditWorkout()">Cancel</button>
-      <button class="btn btn-primary btn-sm" onclick="saveEditedWorkout()">Save</button>
-    </div>
-  </div>
+  <div style="font-size:18px;font-weight:700;margin-bottom:16px">Edit Workout</div>
 
   <div class="card-sm" style="margin-bottom:12px">
     <div class="input-group">
@@ -1943,6 +1991,17 @@ function renderWorkoutEditModal() {
       <div class="label">Notes (optional)</div>
       <textarea id="edit-log-notes" rows="2" placeholder="How did it feel?" oninput="editingWorkout.notes=this.value">${w.notes||''}</textarea>
     </div>
+  </div>
+
+  <div class="modal-action-bar">
+    <button class="btn btn-secondary" style="flex:1" onclick="cancelEditWorkout()">Cancel</button>
+    <button class="btn btn-primary" style="flex:2" onclick="saveEditedWorkout()">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+        <polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>
+      </svg>
+      Save
+    </button>
   </div>`;
 
   document.getElementById('modal-content').innerHTML = html;
@@ -1965,22 +2024,33 @@ function renderEditExercisesHTML() {
   const unit = DB.unit;
   const du   = wUnit(editingWorkout);
   return editingWorkout.exercises.map((ex, ei) => {
-    const muscle = getMuscleForExercise(ex.name);
+    const muscle  = getMuscleForExercise(ex.name);
+    const isOpen  = editOpenEx.has(ei);
+    const nSets   = ex.sets.length;
+    const summary = muscle ? muscle : `${nSets} set${nSets!==1?'s':''}`;
     return `
-  <div class="card-sm" id="edit-ex-${ei}" style="margin-bottom:10px">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-      <div>
-        <div style="font-size:15px;font-weight:700">${ex.name}</div>
-        ${muscle ? `<div style="font-size:11px;color:var(--accent);margin-top:2px">${muscle}</div>` : ''}
+  <div class="card-sm ex-acc${isOpen?' open':''}" id="edit-ex-${ei}" style="margin-bottom:10px;padding:0;overflow:hidden">
+    <div class="ex-acc-header" onclick="toggleEditEx(${ei})">
+      <div style="display:flex;align-items:center;gap:9px;min-width:0">
+        <span class="ex-acc-chevron">▾</span>
+        <div style="min-width:0">
+          <div style="font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${ex.name}</div>
+          <div style="font-size:11px;color:${muscle?'var(--accent)':'var(--muted)'};margin-top:2px">${summary}</div>
+        </div>
       </div>
-      <button class="del-btn" onclick="editRemoveExercise(${ei})">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polyline points="3 6 5 6 21 6"/>
-          <path d="M19 6l-1 14H6L5 6"/>
-          <path d="M10 11v6"/><path d="M14 11v6"/>
-        </svg>
-      </button>
+      <div style="display:flex;align-items:center;gap:3px;flex-shrink:0" onclick="event.stopPropagation()">
+        ${ei>0?`<button class="reorder-btn" onclick="editMoveExercise(${ei},-1)">▲</button>`:''}
+        ${ei<editingWorkout.exercises.length-1?`<button class="reorder-btn" onclick="editMoveExercise(${ei},1)">▼</button>`:''}
+        <button class="del-btn" onclick="editRemoveExercise(${ei})">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="3 6 5 6 21 6"/>
+            <path d="M19 6l-1 14H6L5 6"/>
+            <path d="M10 11v6"/><path d="M14 11v6"/>
+          </svg>
+        </button>
+      </div>
     </div>
+    <div class="ex-acc-body">
     <div class="sets-header">
       <span>Set</span><span>Wt (${unit})</span><span>Reps</span><span>~1RM</span><span></span>
     </div>
@@ -2013,6 +2083,7 @@ function renderEditExercisesHTML() {
     </div>`;
     }).join('')}
     <button class="btn btn-secondary btn-sm" style="margin-top:8px" onclick="editAddSet(${ei})">+ Add Set</button>
+    </div>
   </div>`;
   }).join('');
 }
@@ -2057,6 +2128,10 @@ function editRemoveSet(ei, si) {
 }
 function editRemoveExercise(ei) {
   editingWorkout.exercises.splice(ei,1);
+  // keep accordion open-state aligned with the shifted indices
+  const ns = new Set();
+  editOpenEx.forEach(i => { if(i<ei) ns.add(i); else if(i>ei) ns.add(i-1); });
+  editOpenEx = ns;
   editRefreshExSection();
 }
 function editOpenAddExModal() {
@@ -2564,13 +2639,19 @@ function deleteGoal(id) {
 // MODAL
 // ═══════════════════════════════════════════════════════
 function openModal() {
+  const m = document.getElementById('modal');
+  m.style.transform = '';        // clear any leftover swipe transform
+  m.scrollTop = 0;
+  document.getElementById('modal-overlay').style.background = '';
   document.getElementById('modal-overlay').classList.add('open');
   applyLang();
+  updateScrollFab();
 }
 function closeModal() {
   document.getElementById('modal-overlay').classList.remove('open');
   if(prChart && currentView!=='prs') { prChart.destroy(); prChart=null }
   editingWorkout = null;
+  updateScrollFab();
 }
 function closeModalOutside(e) {
   if(e.target!==document.getElementById('modal-overlay')) return;
@@ -2694,10 +2775,100 @@ function importData() {
 function esc(s) { return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'") }
 
 // ═══════════════════════════════════════════════════════
+// UX ENHANCEMENTS — reorder, accordion, scroll-to-top, swipe-to-dismiss
+// ═══════════════════════════════════════════════════════
+function moveExercise(ei, dir) {
+  const arr = currentLog.exercises, ni = ei + dir;
+  if (ni < 0 || ni >= arr.length) return;
+  [arr[ei], arr[ni]] = [arr[ni], arr[ei]];
+  refreshExSection();
+}
+function editMoveExercise(ei, dir) {
+  const arr = editingWorkout.exercises, ni = ei + dir;
+  if (ni < 0 || ni >= arr.length) return;
+  [arr[ei], arr[ni]] = [arr[ni], arr[ei]];
+  // keep accordion open-state attached to the moved cards
+  const a = editOpenEx.has(ei), b = editOpenEx.has(ni);
+  b ? editOpenEx.add(ei) : editOpenEx.delete(ei);
+  a ? editOpenEx.add(ni) : editOpenEx.delete(ni);
+  editRefreshExSection();
+}
+function toggleEditEx(ei) {
+  editOpenEx.has(ei) ? editOpenEx.delete(ei) : editOpenEx.add(ei);
+  editRefreshExSection();
+}
+
+function activeScrollEl() {
+  const overlay = document.getElementById('modal-overlay');
+  return overlay.classList.contains('open')
+    ? document.getElementById('modal')
+    : document.getElementById('main');
+}
+function scrollActiveTop() {
+  activeScrollEl().scrollTo({ top: 0, behavior: 'smooth' });
+}
+function updateScrollFab() {
+  const fab = document.getElementById('scroll-top-fab');
+  if (!fab) return;
+  fab.classList.toggle('show', activeScrollEl().scrollTop > 300);
+}
+
+function initEnhancements() {
+  const main  = document.getElementById('main');
+  const sheet = document.getElementById('modal');
+  main.addEventListener('scroll', updateScrollFab, { passive: true });
+  sheet.addEventListener('scroll', updateScrollFab, { passive: true });
+
+  // Swipe the bottom sheet down to dismiss it
+  const overlay = document.getElementById('modal-overlay');
+  let startY = null, delta = 0, dragging = false;
+  const reset = () => { sheet.style.transform = ''; overlay.style.background = ''; };
+
+  sheet.addEventListener('touchstart', e => {
+    if (e.touches.length !== 1 || sheet.scrollTop > 0) { dragging = false; startY = null; return; }
+    startY = e.touches[0].clientY; delta = 0; dragging = true;
+    sheet.style.transition = 'none';
+  }, { passive: true });
+
+  sheet.addEventListener('touchmove', e => {
+    if (!dragging || startY === null) return;
+    delta = e.touches[0].clientY - startY;
+    if (delta > 0 && sheet.scrollTop <= 0) {
+      e.preventDefault();
+      sheet.style.transform = `translateY(${delta}px)`;
+      overlay.style.background = `rgba(0,0,0,${Math.max(0, 0.75 - delta / 600)})`;
+    }
+  }, { passive: false });
+
+  sheet.addEventListener('touchend', () => {
+    if (!dragging) return;
+    dragging = false;
+    sheet.style.transition = 'transform .25s ease';
+    if (delta <= 110) { reset(); startY = null; delta = 0; return; }
+
+    if (editingWorkout && !document.getElementById('edit-exercises-section')) {
+      // inside the add-exercise sub-modal → go back to the edit modal
+      reset(); renderWorkoutEditModal();
+    } else if (editingWorkout) {
+      // the edit modal itself → confirm before discarding
+      reset();
+      if (confirm('Discard changes?')) cancelEditWorkout();
+    } else {
+      // any other modal → slide out, then close
+      sheet.style.transform = 'translateY(100%)';
+      overlay.style.background = '';
+      setTimeout(() => { closeModal(); sheet.style.transform = ''; }, 220);
+    }
+    startY = null; delta = 0;
+  });
+}
+
+// ═══════════════════════════════════════════════════════
 // BOOT
 // ═══════════════════════════════════════════════════════
 runMigrations();
 syncUnitToggle();
+initEnhancements();
 showView('dashboard');
 
 if ('serviceWorker' in navigator) {
