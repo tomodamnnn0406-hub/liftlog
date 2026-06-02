@@ -450,10 +450,12 @@ input:focus,textarea:focus,select:focus{border-color:var(--accent)}
     History
   </button>
   <button class="nav-btn" id="nav-prs" onclick="showView('prs')">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-      <polyline points="22,12 18,12 15,21 9,3 6,12 2,12"/>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M6.5 6.5l11 11"/><path d="M21 21l-1-1"/><path d="M3 3l1 1"/>
+      <path d="M18 12l3-3-2-2-3 3"/><path d="M6 12l-3 3 2 2 3-3"/>
+      <path d="M7 17l-3 3"/><path d="M17 7l3-3"/>
     </svg>
-    PRs
+    Exercises
   </button>
   <button class="nav-btn" id="nav-goals" onclick="showView('goals')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -604,7 +606,7 @@ const DEFAULT_EXERCISES = [
 const I18N = {
   ja: {
     // nav
-    'Dashboard':'ダッシュボード','Log':'記録','History':'履歴','PRs':'自己ベスト','Goals':'目標',
+    'Dashboard':'ダッシュボード','Log':'記録','History':'履歴','PRs':'自己ベスト','Exercises':'種目','Goals':'目標',
     // sections / headers
     'Last Workout':'前回のワークアウト','Body Stats':'身体データ','My Goals':'マイ目標',
     'Edit Goals':'目標を編集','Progress':'進捗','Target Muscle':'対象の筋肉',
@@ -2359,16 +2361,24 @@ function cancelEditWorkout() {
 // ═══════════════════════════════════════════════════════
 function renderPRs() {
   const prs   = getPRs();
-  const names = Object.keys(prs).filter(n=>prs[n].bestSet).sort();
+  // Every known exercise (manually added + ever logged), not only ones with a PR
+  const names = allExerciseNames();
   const unit  = DB.unit;
 
+  const headerHTML = `
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:4px">
+    <div style="font-size:22px;font-weight:800">Exercises</div>
+    <button class="btn btn-primary btn-sm" onclick="openExercisesAddModal()">+ Add Exercise</button>
+  </div>
+  <div style="font-size:12px;color:var(--muted);margin-bottom:16px">Tap a group to see all exercises · Tap exercise for progress chart</div>`;
+
   if(!names.length) {
-    document.getElementById('main').innerHTML = `
-    <div style="font-size:22px;font-weight:800;margin-bottom:16px">PRs & Progress</div>
+    document.getElementById('main').innerHTML = headerHTML + `
     <div class="empty">
       <div class="empty-icon">📈</div>
-      <div style="font-weight:600;margin-bottom:6px">No PRs yet</div>
-      <div style="font-size:13px">Log workouts to see your personal records</div>
+      <div style="font-weight:600;margin-bottom:6px">No exercises yet</div>
+      <div style="font-size:13px;margin-bottom:16px">Add an exercise or log a workout to start tracking the weight you can lift.</div>
+      <button class="btn btn-primary" onclick="openExercisesAddModal()">+ Add Exercise</button>
     </div>`;
     return;
   }
@@ -2392,9 +2402,7 @@ function renderPRs() {
     ...Object.keys(groups).filter(bp => !ORDER.includes(bp))
   ];
 
-  let html = `
-  <div style="font-size:22px;font-weight:800;margin-bottom:4px">PRs & Progress</div>
-  <div style="font-size:12px;color:var(--muted);margin-bottom:16px">Tap a group to see all exercises · Tap exercise for progress chart</div>`;
+  let html = headerHTML;
 
   for(const bp of sortedBPs) {
     const subGroups = groups[bp]; // { subName: [exerciseNames...] }
@@ -2405,13 +2413,13 @@ function renderPRs() {
     const allExInBP = Object.values(subGroups).flat();
     const totalCount = allExInBP.length;
 
-    // Best exercise (highest 1RM)
-    let bestName = allExInBP[0], bestRM = 0;
+    // Best exercise (highest 1RM among those with data)
+    let bestName = null, bestRM = 0;
     for(const n of allExInBP) {
-      if(prs[n]?.best1RM_kg > bestRM) { bestRM=prs[n].best1RM_kg; bestName=n }
+      if(prs[n]?.bestSet && prs[n].best1RM_kg > bestRM) { bestRM=prs[n].best1RM_kg; bestName=n }
     }
-    const bestPR   = prs[bestName];
-    const bestDisp = bestPR?.displayWeight || '—';
+    const bestPR   = bestName ? prs[bestName] : null;
+    const bestDisp = bestPR?.displayWeight ?? '—';
 
     // Check if selected exercise is in this group
     const selInGroup = selectedPREx && allExInBP.includes(selectedPREx);
@@ -2434,20 +2442,23 @@ function renderPRs() {
       }
 
       for (const name of exList) {
-        const pr  = prs[name];
-        const sel = name === selectedPREx;
+        const pr      = prs[name];
+        const hasData = !!pr?.bestSet;
+        const sel     = name === selectedPREx;
         bodyHtml += `
         <div class="bp-ex-row" onclick="selectPRExercise('${esc(name)}')"
           style="${sel?'background:var(--accent-dim);border-left:3px solid var(--accent);':''}">
           <div>
             <div class="bp-ex-name" style="${sel?'color:var(--accent)':''}">${name}</div>
-            <div class="bp-ex-date">${fmtDate(pr.date)}</div>
+            <div class="bp-ex-date">${hasData ? fmtDate(pr.date) : 'No data yet'}</div>
           </div>
+          ${hasData ? `
           <div class="bp-ex-pr">
             <div class="bp-ex-weight">${pr.displayWeight}<span style="font-size:11px;font-weight:500;color:var(--muted)">${unit}</span></div>
             <div class="bp-ex-reps">× ${pr.bestSet.reps} reps</div>
             <div class="bp-ex-1rm">est. 1RM ${pr.best1RM}${unit}</div>
-          </div>
+          </div>`
+          : `<div class="bp-ex-pr"><div style="font-size:12px;color:var(--muted)">— ${unit}</div><div class="bp-ex-reps" style="color:var(--accent)">Log to set</div></div>`}
         </div>`;
       }
     }
@@ -2470,13 +2481,13 @@ function renderPRs() {
           <div class="bp-group-emoji">${emoji}</div>
           <div>
             <div class="bp-group-name">${bp}</div>
-            <div class="bp-group-best">${totalCount} exercise${totalCount>1?'s':''} · Best: ${bestName}</div>
+            <div class="bp-group-best">${totalCount} exercise${totalCount>1?'s':''}${bestName?` · Best: ${bestName}`:''}</div>
           </div>
         </div>
         <div style="display:flex;align-items:center;gap:10px">
           <div style="text-align:right">
-            <div style="font-size:17px;font-weight:800;color:var(--accent)">${bestDisp}<span style="font-size:11px;font-weight:500;color:var(--muted)">${unit}</span></div>
-            <div style="font-size:10px;color:var(--muted)">× ${bestPR?.bestSet.reps||'—'} reps</div>
+            <div style="font-size:17px;font-weight:800;color:${bestPR?'var(--accent)':'var(--muted)'}">${bestDisp}<span style="font-size:11px;font-weight:500;color:var(--muted)">${unit}</span></div>
+            <div style="font-size:10px;color:var(--muted)">${bestPR?`× ${bestPR.bestSet.reps} reps`:'No data'}</div>
           </div>
           <div class="bp-group-chevron">▾</div>
         </div>
@@ -2524,6 +2535,86 @@ function selectPRExercise(name) {
     document.getElementById(`bpg-${bp.replace(/\s/g,'_')}`)
       ?.scrollIntoView({behavior:'smooth',block:'start'});
   },100);
+}
+
+// ── Add an exercise straight from the Exercises tab (no workout needed) ──
+function openExercisesAddModal() {
+  const known = new Set(allExerciseNames());
+  const avail = DEFAULT_EXERCISES.filter(e => !known.has(e));
+  document.getElementById('modal-content').innerHTML = `
+  <div style="font-size:18px;font-weight:700;margin-bottom:14px">Add Exercise</div>
+  <div class="input-wrapper" style="margin-bottom:8px;position:relative">
+    <input type="text" id="exadd-search" placeholder="Search or type a new exercise…"
+      oninput="filterExAddDropdown(this.value)" autocomplete="off"
+      autocapitalize="words" autocorrect="off" spellcheck="false"
+      onkeydown="if(event.key==='Enter'){const v=this.value.trim();if(v)pickExerciseAddName(v)}">
+    <div id="exadd-dropdown" class="ac-dropdown" style="display:none"></div>
+  </div>
+  <button class="btn btn-primary btn-full" style="margin-bottom:14px" onclick="pickExerciseAddName(document.getElementById('exadd-search').value.trim())">Next: Pick Muscle →</button>
+  ${avail.length ? `<div class="label">Common Exercises</div>
+  <div>${avail.map(e=>`<span class="ex-chip" onclick="pickExerciseAddName('${esc(e)}')">${e}</span>`).join('')}</div>` : ''}`;
+  openModal();
+  setTimeout(()=>document.getElementById('exadd-search')?.focus(), 100);
+}
+
+function filterExAddDropdown(q) {
+  const dd = document.getElementById('exadd-dropdown');
+  if(!q.trim()) { dd.style.display='none'; return }
+  const all     = allExerciseNames();
+  const lower   = all.map(e=>e.toLowerCase());
+  const matches = all.filter(e=>e.toLowerCase().includes(q.toLowerCase()));
+  const isNew   = q.trim() && !lower.includes(q.trim().toLowerCase());
+  const items   = [
+    ...matches.map(e=>`<div class="ac-item" onclick="pickExerciseAddName('${esc(e)}')">${e}</div>`),
+    isNew ? `<div class="ac-item" onclick="pickExerciseAddName('${esc(q.trim())}')" style="color:var(--accent)">+ Add "${q.trim()}"</div>` : ''
+  ].join('');
+  dd.innerHTML = items || `<div class="ac-item" style="color:var(--muted)">No matches</div>`;
+  dd.style.display = 'block';
+}
+
+function pickExerciseAddName(name) {
+  name = name.trim();
+  if (!name) { showToast('Enter an exercise name', false); return; }
+  const existingMuscle = DB.exerciseMuscles[name] || '';
+  let html = `
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+    <button class="btn btn-secondary btn-sm" onclick="openExercisesAddModal()" style="padding:8px 10px">← Back</button>
+    <div style="font-size:18px;font-weight:700">Target Muscle</div>
+  </div>
+  <div style="font-size:14px;color:var(--accent);font-weight:600;margin-bottom:14px">${name}</div>`;
+  for (const [bp, data] of Object.entries(MUSCLE_GROUPS)) {
+    html += `<div class="label" style="margin-bottom:6px">${data.emoji} ${bp}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">`;
+    for (const m of data.sub) {
+      const sel = m === existingMuscle;
+      html += `<span class="ex-chip" onclick="addExerciseToLibrary('${esc(name)}','${esc(m)}')"
+        style="${sel?'background:var(--accent);color:#fff;border-color:var(--accent)':''}">${m}</span>`;
+    }
+    html += `</div>`;
+  }
+  html += `<button class="btn btn-secondary btn-full" style="margin-top:4px" onclick="addExerciseToLibrary('${esc(name)}','')">Skip — don't tag a muscle</button>`;
+  document.getElementById('modal-content').innerHTML = html;
+}
+
+function addExerciseToLibrary(name, muscle) {
+  name = name.trim(); if(!name) return;
+  const exs = DB.exercises;
+  if(!exs.includes(name)) { exs.push(name); DB.saveExercises(exs); }
+  if (muscle) {
+    const muscles = DB.exerciseMuscles;
+    muscles[name] = muscle;
+    DB.saveExerciseMuscles(muscles);
+  }
+  closeModal();
+  // Open this exercise's group so the user sees it land
+  const bp = getBodyPartForExercise(name);
+  openBPGroups.add(bp);
+  renderPRs();
+  showToast('Exercise added 💪');
+  setTimeout(()=>{
+    document.getElementById(`bpg-${bp.replace(/\s/g,'_')}`)
+      ?.scrollIntoView({behavior:'smooth',block:'start'});
+  }, 120);
 }
 
 function renderInlineChart(progress, unit) {
