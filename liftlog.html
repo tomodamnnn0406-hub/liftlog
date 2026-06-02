@@ -208,6 +208,17 @@ input:focus,textarea:focus,select:focus{border-color:var(--accent)}
   100%{transform:translateY(105vh) rotate(720deg);opacity:.9}
 }
 
+/* ── Monthly goal reminder banner ── */
+.month-banner{
+  display:flex;align-items:center;gap:12px;
+  background:linear-gradient(135deg,rgba(249,115,22,.18),rgba(168,85,247,.14));
+  border:1px solid var(--accent);border-radius:14px;padding:14px 16px;margin-bottom:14px;
+  animation:fadeIn .3s ease;
+}
+.month-banner-emoji{font-size:26px;flex-shrink:0}
+.month-banner-x{background:none;border:none;color:var(--muted);cursor:pointer;
+  padding:4px;flex-shrink:0;-webkit-tap-highlight-color:transparent}
+
 /* ── Body-part PR groups ── */
 .bp-group{
   background:var(--card);border-radius:14px;margin-bottom:10px;
@@ -717,6 +728,9 @@ let selectedPREx   = null;
 let prChart        = null;
 let openBPGroups   = new Set(); // which body-part groups are expanded
 let editOpenEx     = new Set(); // expanded exercise accordions in the edit modal
+let timerRunning   = false;     // workout stopwatch state
+let timerInterval  = null;
+let timerStartTs   = null;      // epoch ms when the current run segment started
 
 // Dashboard chart state
 let dashChart         = null;
@@ -730,7 +744,14 @@ let historyMonth      = null;
 function getActiveLog() { return editingWorkout || currentLog; }
 
 function newLog() {
-  return { id: uid(), date: todayStr(), name: '', notes: '', exercises: [] };
+  return { id: uid(), date: todayStr(), name: '', notes: '', exercises: [], durationSec: 0 };
+}
+// Format seconds → "1h 05m 12s" / "12:05" style compact display
+function fmtDuration(sec) {
+  sec = Math.max(0, Math.round(sec));
+  const h = Math.floor(sec/3600), m = Math.floor((sec%3600)/60), s = sec%60;
+  if(h) return `${h}:${pad2(m)}:${pad2(s)}`;
+  return `${m}:${pad2(s)}`;
 }
 function uid()      { return Date.now().toString(36) + Math.random().toString(36).slice(2,6) }
 function todayStr() { return new Date().toISOString().slice(0,10) }
@@ -743,6 +764,17 @@ function daysAgo(d) {
   if(diff===0) return 'Today';
   if(diff===1) return 'Yesterday';
   return diff+'d ago';
+}
+// Countdown to a goal's target date: "5 days left", "Due today", "3 days overdue"
+function deadlineInfo(dateStr) {
+  if(!dateStr) return null;
+  const diff = Math.round((new Date(dateStr+'T12:00:00') - Date.now()) / 86400000);
+  const nice = new Date(dateStr+'T12:00:00').toLocaleDateString(L(),{month:'short',day:'numeric',year:'numeric'});
+  if(diff > 1)  return { label:`${diff} days left`,  overdue:false, date:nice };
+  if(diff === 1) return { label:`1 day left`,        overdue:false, date:nice };
+  if(diff === 0) return { label:`Due today`,         overdue:false, date:nice };
+  if(diff === -1) return { label:`1 day overdue`,    overdue:true,  date:nice };
+  return { label:`${-diff} days overdue`,            overdue:true,  date:nice };
 }
 
 // ═══════════════════════════════════════════════════════
@@ -1015,6 +1047,13 @@ function sparklineSVG(vals, w, h) {
 // ═══════════════════════════════════════════════════════
 function showView(view) {
   currentView = view;
+  // Leaving the Log tab: keep counting in the background by banking elapsed time
+  // into durationSec and pausing the visible 1s tick (resumes when you return).
+  if (view !== 'log' && timerRunning) {
+    currentLog.durationSec = currentDurationSec();
+    timerStartTs = Date.now();   // keep wall-clock anchor so time still accrues
+    clearInterval(timerInterval); timerInterval = null;
+  }
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   const navEl = document.getElementById('nav-'+view);
   if(navEl) navEl.classList.add('active');
@@ -1078,6 +1117,23 @@ function renderDashboard() {
       <div style="font-size:12px;color:var(--muted)">${now.toLocaleDateString(L(),{weekday:'long',month:'long',day:'numeric'})}</div>
     </div>
   </div>`;
+
+  // ── Monthly "set a new goal" reminder banner ───────────
+  if (shouldShowMonthlyGoalBanner()) {
+    const mName = now.toLocaleDateString(L(), { month: 'long' });
+    html += `
+    <div class="month-banner">
+      <div class="month-banner-emoji">🎯</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:700;font-size:14px;margin-bottom:2px">New month, new goals!</div>
+        <div style="font-size:12px;color:var(--muted)">It's ${mName} — set a fresh target to stay motivated.</div>
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();dismissMonthlyBanner();showView('goals');openAddGoalModal()">Set goal</button>
+      <button class="month-banner-x" onclick="event.stopPropagation();dismissMonthlyBanner();renderDashboard()" aria-label="Dismiss">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>`;
+  }
 
   // ── CHART (TOP) ────────────────────────────────────────
   if (allWithData.length) {
@@ -1197,9 +1253,9 @@ function renderDashboard() {
         <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;font-size:11px">
           ${gp.done
             ? `<span style="color:var(--green);font-weight:700">🎉 Goal reached!</span>`
-            : `<span style="color:var(--muted)">${timeStr || ''}</span>`}
-          ${!gp.done && weeks !== null
-            ? `<span style="color:var(--muted)">Est. ${timeStr} away</span>` : ''}
+            : `<span style="color:var(--muted)">${timeStr ? 'Est. '+timeStr+' away' : ''}</span>`}
+          ${(() => { const dl = deadlineInfo(goal.targetDate); return (!gp.done && dl)
+            ? `<span style="color:${dl.overdue?'var(--red)':'var(--muted)'};font-weight:600">📅 ${dl.label}</span>` : ''; })()}
         </div>
       </div>`;
     }
@@ -1435,6 +1491,22 @@ function renderLog() {
     </div>
   </div>
 
+  <div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+    <div>
+      <div class="label" style="margin-bottom:2px">Duration</div>
+      <div id="dur-display" style="font-size:26px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-.5px">${fmtDuration(currentLog.durationSec||0)}</div>
+    </div>
+    <div style="display:flex;gap:8px" id="dur-controls">
+      <button id="dur-toggle" class="btn ${timerRunning?'btn-danger':'btn-primary'}" style="min-width:104px;justify-content:center" onclick="toggleTimer()">
+        ${timerRunning ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg> Pause`
+                       : `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg> ${currentLog.durationSec ? 'Resume' : 'Start'}`}
+      </button>
+      <button class="btn btn-secondary" onclick="resetTimer()" title="Reset" aria-label="Reset timer" style="padding:12px 14px">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 12a9 9 0 1 0 9-9 9 9 0 0 0-6.36 2.64L3 8"/><path d="M3 3v5h5"/></svg>
+      </button>
+    </div>
+  </div>
+
   <div id="exercises-section">${renderExercisesHTML()}</div>
 
   <button class="btn btn-secondary btn-full" style="margin-bottom:12px" onclick="openAddExModal()">
@@ -1463,6 +1535,13 @@ function renderLog() {
       Save Workout
     </button>
   </div>`;
+
+  // Keep the live tick going if the stopwatch is running after a re-render
+  if (timerRunning) {
+    clearInterval(timerInterval);
+    timerInterval = setInterval(paintTimer, 1000);
+    paintTimer();
+  }
 }
 
 function handleSessionSelect(val) {
@@ -1475,6 +1554,48 @@ function handleSessionSelect(val) {
     customInput.style.display = 'none';
     currentLog.name = val;
   }
+}
+
+// ── Workout duration stopwatch ─────────────────────────
+function currentDurationSec() {
+  let s = currentLog.durationSec || 0;
+  if (timerRunning && timerStartTs) s += (Date.now() - timerStartTs) / 1000;
+  return s;
+}
+function paintTimer() {
+  const d = document.getElementById('dur-display');
+  if (d) d.textContent = fmtDuration(currentDurationSec());
+}
+function toggleTimer() {
+  if (timerRunning) {
+    // pause: bank elapsed time
+    currentLog.durationSec = currentDurationSec();
+    timerRunning = false;
+    timerStartTs = null;
+    clearInterval(timerInterval); timerInterval = null;
+  } else {
+    timerRunning = true;
+    timerStartTs = Date.now();
+    clearInterval(timerInterval);
+    timerInterval = setInterval(paintTimer, 1000);
+  }
+  if (currentView === 'log') renderLog();
+}
+function resetTimer() {
+  if ((currentLog.durationSec || timerRunning) && !confirm('Reset the timer to 0:00?')) return;
+  timerRunning = false;
+  timerStartTs = null;
+  clearInterval(timerInterval); timerInterval = null;
+  currentLog.durationSec = 0;
+  if (currentView === 'log') renderLog();
+}
+function stopTimerAndBank() {
+  if (timerRunning) {
+    currentLog.durationSec = currentDurationSec();
+    timerRunning = false;
+    timerStartTs = null;
+  }
+  clearInterval(timerInterval); timerInterval = null;
 }
 
 function renderExercisesHTML() {
@@ -1702,12 +1823,14 @@ function saveWorkout() {
   if(nameEl && nameEl.value !== '__custom__') currentLog.name = nameEl.value;
   if(custEl && custEl.style.display !== 'none') currentLog.name = custEl.value;
   if(notesEl) currentLog.notes = notesEl.value;
+  stopTimerAndBank();                          // freeze the stopwatch into durationSec
 
   if(!currentLog.exercises.length) { showToast('Add at least one exercise!', false); return }
 
   const cleaned = {
     ...currentLog,
     name:     currentLog.name || 'Workout',
+    durationSec: Math.round(currentLog.durationSec || 0),
     dataUnit: DB.unit,                        // ← tag with current unit
     exercises: currentLog.exercises.map(ex=>({
       ...ex,
@@ -1717,12 +1840,17 @@ function saveWorkout() {
 
   DB.addWorkout(cleaned);
   showToast('Workout saved! 💪');
+  timerRunning = false; timerStartTs = null;
+  clearInterval(timerInterval); timerInterval = null;
   currentLog = newLog();
   showView('dashboard');
 }
 
 function clearLog() {
   if(currentLog.exercises.length && !confirm('Clear this workout?')) return;
+  stopTimerAndBank();
+  timerRunning = false; timerStartTs = null;
+  clearInterval(timerInterval); timerInterval = null;
   currentLog = newLog();
   renderLog();
 }
@@ -1929,7 +2057,7 @@ function showWorkoutDetail(id) {
   <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px">
     <div>
       <div style="font-size:20px;font-weight:800">${w.name||'Workout'}</div>
-      <div style="font-size:13px;color:var(--muted)">${fmtDate(w.date)}</div>
+      <div style="font-size:13px;color:var(--muted)">${fmtDate(w.date)}${w.durationSec?` · ⏱️ ${fmtDuration(w.durationSec)}`:''}</div>
     </div>
     <div style="display:flex;gap:8px">
       <button class="btn btn-secondary btn-sm" onclick="openEditWorkoutModal('${id}')">
@@ -2542,7 +2670,12 @@ function renderGoals() {
       <div class="goal-celebrate"><span class="trophy">🏆</span><span>Goal reached!</span></div>
       <button class="goal-cta" onclick="raiseGoalTarget('${goal.id}')">Set a New Target →</button>
       ` : `
-      <div class="goal-meta">${etaText}</div>`}
+      <div class="goal-meta">
+        <span>${etaText}</span>
+        ${(() => { const dl = deadlineInfo(goal.targetDate); return dl
+          ? `<span style="display:inline-flex;align-items:center;gap:4px;color:${dl.overdue?'var(--red)':'var(--muted)'}">📅 ${dl.date} · <strong style="color:${dl.overdue?'var(--red)':'var(--accent)'}">${dl.label}</strong></span>`
+          : ''; })()}
+      </div>`}
     </div>`;
   }
 
@@ -2587,6 +2720,11 @@ function openAddGoalModal(prefillExercise) {
     </div>
   </div>
 
+  <div class="input-group">
+    <div class="label">Target Date (optional)</div>
+    <input type="date" id="goal-target-date" min="${todayStr()}">
+  </div>
+
   <button class="btn btn-primary btn-full" style="margin-top:8px" onclick="saveGoal()">Save Goal</button>`;
 
   openModal();
@@ -2615,6 +2753,7 @@ function saveGoal() {
   const exercise     = document.getElementById('goal-exercise').value;
   const targetDisp   = +document.getElementById('goal-target-weight').value;
   const targetReps   = +document.getElementById('goal-target-reps').value || 5;
+  const targetDate   = document.getElementById('goal-target-date').value || '';
   if(!exercise) { showToast('Pick an exercise', false); return }
   if(!targetDisp || targetDisp <= 0) { showToast('Enter a target weight', false); return }
 
@@ -2624,9 +2763,9 @@ function saveGoal() {
   // Replace if same exercise already has a goal, else add
   const existing = goals.findIndex(g => g.exercise === exercise);
   if(existing >= 0) {
-    goals[existing] = { ...goals[existing], targetWeightKg, targetReps };
+    goals[existing] = { ...goals[existing], targetWeightKg, targetReps, targetDate };
   } else {
-    goals.push({ id: uid(), exercise, targetWeightKg, targetReps });
+    goals.push({ id: uid(), exercise, targetWeightKg, targetReps, targetDate });
   }
   DB.saveGoals(goals);
   closeModal();
@@ -2657,6 +2796,11 @@ function openEditGoalModal(id) {
     </div>
   </div>
 
+  <div class="input-group">
+    <div class="label">Target Date (optional)</div>
+    <input type="date" id="goal-edit-date" value="${goal.targetDate||''}" min="${todayStr()}">
+  </div>
+
   <button class="btn btn-primary btn-full" style="margin-top:8px" onclick="updateGoal('${id}')">Update Goal</button>
   <button class="btn btn-danger btn-full" style="margin-top:8px" onclick="deleteGoal('${id}')">Delete Goal</button>`;
   openModal();
@@ -2672,6 +2816,7 @@ function updateGoal(id) {
   if(i<0) return;
   goals[i].targetWeightKg = toKg(targetDisp, DB.unit);
   goals[i].targetReps     = targetReps;
+  goals[i].targetDate     = document.getElementById('goal-edit-date').value || '';
   DB.saveGoals(goals);
   closeModal();
   showToast('Goal updated!');
@@ -2735,6 +2880,33 @@ function showToast(msg, ok=true) {
 // ═══════════════════════════════════════════════════════
 const DATA_KEYS = ['ll_workouts','ll_exercises','ll_unit','ll_profile','ll_goals','ll_migrated_v2','ll_migrated_v3','ll_exercise_muscles'];
 
+function notifSettingHTML() {
+  if (!('Notification' in window)) {
+    return `<div style="font-size:12px;color:var(--muted)">📅 In-app banner only</div>`;
+  }
+  const p = Notification.permission;
+  if (p === 'granted') {
+    return `<div style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--green);font-weight:600">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+      Reminders on
+    </div>`;
+  }
+  if (p === 'denied') {
+    return `<div style="font-size:12px;color:var(--muted)">Notifications are blocked in your browser/OS settings. The in-app banner will still appear.</div>`;
+  }
+  return `<button class="btn btn-secondary btn-full" onclick="enableMonthlyReminders()">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+    Enable Notifications
+  </button>`;
+}
+async function enableMonthlyReminders() {
+  await setupMonthlyNotification(true);
+  const row = document.getElementById('notif-row');
+  if (row) row.innerHTML = notifSettingHTML();
+  if (Notification.permission === 'granted') showToast('Monthly reminders enabled 🔔');
+  else if (Notification.permission === 'denied') showToast('Notifications blocked in settings', false);
+}
+
 function openDataModal() {
   const workoutCount = DB.workouts.length;
   document.getElementById('modal-content').innerHTML = `
@@ -2748,6 +2920,15 @@ function openDataModal() {
   </div>
 
   <div class="divider" style="margin:0 0 20px"></div>
+
+  <div style="font-size:13px;font-weight:600;margin-bottom:6px">Monthly goal reminder</div>
+  <div style="font-size:12px;color:var(--muted);margin-bottom:12px">
+    Get a nudge on the 1st of each month to set a fresh workout goal.
+    ${('Notification' in window) ? '' : 'Notifications aren\'t supported on this device — you\'ll still see the in-app banner.'}
+  </div>
+  <div id="notif-row">${notifSettingHTML()}</div>
+
+  <div class="divider" style="margin:20px 0"></div>
 
   <div style="font-size:13px;font-weight:600;margin-bottom:10px">Backup your data</div>
   <div style="font-size:12px;color:var(--muted);margin-bottom:12px">
@@ -2964,12 +3145,71 @@ function raiseGoalTarget(id) {
 }
 
 // ═══════════════════════════════════════════════════════
+// MONTHLY GOAL REMINDER  (in-app banner + optional OS push)
+// ═══════════════════════════════════════════════════════
+function monthKey(d = new Date()) {
+  return d.getFullYear() + '-' + pad2(d.getMonth() + 1);
+}
+// Show the banner during the first 5 days of a month, until dismissed for that month.
+function shouldShowMonthlyGoalBanner() {
+  const now = new Date();
+  if (now.getDate() > 5) return false;
+  return localStorage.getItem('ll_month_banner_dismissed') !== monthKey(now);
+}
+function dismissMonthlyBanner() {
+  localStorage.setItem('ll_month_banner_dismissed', monthKey());
+}
+
+// OS push: ask once, then (re)schedule a one-shot reminder for the next 1st-of-month.
+async function setupMonthlyNotification(askPermission) {
+  if (!('Notification' in window)) return;
+  if (askPermission && Notification.permission === 'default') {
+    try { await Notification.requestPermission(); } catch (e) {}
+  }
+  if (Notification.permission !== 'granted') return;
+
+  // Fire if we've crossed into a new month and haven't notified for it yet.
+  const now = new Date();
+  if (now.getDate() === 1 && localStorage.getItem('ll_month_notified') !== monthKey(now)) {
+    notifyNewMonth();
+    localStorage.setItem('ll_month_notified', monthKey(now));
+  }
+
+  // Schedule an in-session timer for the next 1st 09:00 (covers app left open across midnight).
+  const next = new Date(now.getFullYear(), now.getMonth() + 1, 1, 9, 0, 0, 0);
+  const ms = next - now;
+  clearTimeout(window.__monthNotifyTO);
+  if (ms > 0 && ms < 2147483647) {   // setTimeout max ~24.8 days; only arm when within range
+    window.__monthNotifyTO = setTimeout(() => {
+      if (localStorage.getItem('ll_month_notified') !== monthKey(new Date())) {
+        notifyNewMonth();
+        localStorage.setItem('ll_month_notified', monthKey(new Date()));
+      }
+      setupMonthlyNotification(false);
+    }, ms);
+  }
+}
+function notifyNewMonth() {
+  try {
+    const body = "A new month is here — set a fresh workout goal to stay on track. 🎯";
+    if (navigator.serviceWorker && navigator.serviceWorker.ready) {
+      navigator.serviceWorker.ready.then(reg =>
+        reg.showNotification('Lift Log', { body, icon: './icon-192.png', badge: './icon-192.png', tag: 'monthly-goal' })
+      ).catch(() => new Notification('Lift Log', { body, icon: './icon-192.png' }));
+    } else {
+      new Notification('Lift Log', { body, icon: './icon-192.png' });
+    }
+  } catch (e) {}
+}
+
+// ═══════════════════════════════════════════════════════
 // BOOT
 // ═══════════════════════════════════════════════════════
 runMigrations();
 syncUnitToggle();
 initEnhancements();
 showView('dashboard');
+setupMonthlyNotification(false);   // re-arm push (won't prompt; just schedules if already granted)
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
