@@ -78,6 +78,8 @@ body{
 .btn-primary{background:var(--accent);color:#fff}
 .btn-secondary{background:var(--card2);color:var(--text);border:1px solid var(--border)}
 .btn-danger{background:rgba(239,68,68,.15);color:var(--red);border:none}
+.btn-accent-outline{background:var(--accent-dim);color:var(--accent);border:1px solid var(--accent)}
+.btn-pause{background:rgba(239,68,68,.12);color:var(--red);border:1px solid var(--red)}
 .btn-ghost{background:none;border:none;color:var(--muted);padding:8px 10px}
 .btn-sm{padding:8px 12px;font-size:12px;border-radius:8px;min-height:36px}
 .btn-full{width:100%;justify-content:center}
@@ -1497,7 +1499,7 @@ function renderLog() {
       <div id="dur-display" style="font-size:26px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-.5px">${fmtDuration(currentLog.durationSec||0)}</div>
     </div>
     <div style="display:flex;gap:8px" id="dur-controls">
-      <button id="dur-toggle" class="btn ${timerRunning?'btn-danger':'btn-primary'}" style="min-width:104px;justify-content:center" onclick="toggleTimer()">
+      <button id="dur-toggle" class="btn ${timerRunning?'btn-pause':'btn-accent-outline'}" style="min-width:104px;justify-content:center" onclick="toggleTimer()">
         ${timerRunning ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg> Pause`
                        : `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg> ${currentLog.durationSec ? 'Resume' : 'Start'}`}
       </button>
