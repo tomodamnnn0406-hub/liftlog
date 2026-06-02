@@ -2368,7 +2368,7 @@ function renderPRs() {
   const headerHTML = `
   <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:4px">
     <div style="font-size:22px;font-weight:800">Exercises</div>
-    <button class="btn btn-primary btn-sm" onclick="openExercisesAddModal()">+ Add Exercise</button>
+    <button class="btn btn-secondary btn-sm" onclick="showView('goals')" style="white-space:nowrap">🎯 Manage Goals</button>
   </div>
   <div style="font-size:12px;color:var(--muted);margin-bottom:16px">Tap a group to see all exercises · Tap exercise for progress chart</div>`;
 
@@ -2496,13 +2496,14 @@ function renderPRs() {
     </div>`;
   }
 
-  // Add goal section
+  // Add-exercise button at the bottom
   html += `
-  <div style="text-align:center;margin-top:8px;padding-bottom:4px">
-    <button class="btn btn-secondary btn-sm" onclick="showView('goals')" style="font-size:13px">
-      🎯 Manage Goals
-    </button>
-  </div>`;
+  <button class="btn btn-primary btn-full" style="margin-top:8px;margin-bottom:8px" onclick="openExercisesAddModal()">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+      <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+    </svg>
+    Add Exercise
+  </button>`;
 
   document.getElementById('main').innerHTML = html;
 
@@ -2687,7 +2688,6 @@ function renderGoals() {
   let html = `
   <div class="section-header">
     <div style="font-size:22px;font-weight:800">Goals</div>
-    <button class="btn btn-primary btn-sm" onclick="openAddGoalModal()">+ Add Goal</button>
   </div>`;
 
   if(!goals.length) {
@@ -2733,7 +2733,7 @@ function renderGoals() {
           : `<span style="color:var(--muted)">~${weeksLeft}w away</span>`;
 
     html += `
-    <div class="goal-card${done?' goal-reached':''}">
+    <div class="goal-card${done?' goal-reached':''}" style="cursor:pointer" onclick="openEditGoalModal('${goal.id}')">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
         <div style="flex:1;min-width:0">
           <div style="font-size:16px;font-weight:700;margin-bottom:6px">${goal.exercise}</div>
@@ -2747,7 +2747,7 @@ function renderGoals() {
           </div>
         </div>
         ${done?'<span class="goal-done-badge" style="margin-left:8px;flex-shrink:0">✓ REACHED</span>':''}
-        <button class="del-btn" onclick="openEditGoalModal('${goal.id}')" style="color:var(--muted);margin-left:8px;flex-shrink:0">
+        <button class="del-btn" onclick="event.stopPropagation();openEditGoalModal('${goal.id}')" style="color:var(--muted);margin-left:8px;flex-shrink:0">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
             <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
@@ -2761,7 +2761,7 @@ function renderGoals() {
 
       ${done ? `
       <div class="goal-celebrate"><span class="trophy">🏆</span><span>Goal reached!</span></div>
-      <button class="goal-cta" onclick="raiseGoalTarget('${goal.id}')">Set a New Target →</button>
+      <button class="goal-cta" onclick="event.stopPropagation();raiseGoalTarget('${goal.id}')">Set a New Target →</button>
       ` : `
       <div class="goal-meta">
         <span>${etaText}</span>
@@ -2771,6 +2771,12 @@ function renderGoals() {
       </div>`}
     </div>`;
   }
+
+  // Add-goal button centered below the list
+  html += `
+  <div style="display:flex;justify-content:center;margin-top:8px;padding-bottom:4px">
+    <button class="btn btn-primary btn-sm" onclick="openAddGoalModal()">+ Add Goal</button>
+  </div>`;
 
   document.getElementById('main').innerHTML = html;
   checkGoalCelebrations();
