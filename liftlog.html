@@ -337,6 +337,10 @@ input:focus,textarea:focus,select:focus{border-color:var(--accent)}
   bottom:calc(62px + env(safe-area-inset-bottom));
   width:100%;max-width:480px;display:flex;gap:10px;
   padding:10px 20px;background:var(--bg);border-top:1px solid var(--border);z-index:50}
+.sticky-action-bar{position:fixed;left:50%;transform:translateX(-50%);
+  bottom:calc(62px + env(safe-area-inset-bottom));
+  width:100%;max-width:480px;display:flex;gap:10px;
+  padding:10px 20px;background:var(--bg);border-top:1px solid var(--border);z-index:50}
 .modal-action-bar{position:sticky;bottom:0;display:flex;gap:10px;
   margin:12px -20px -20px;padding:14px 20px calc(14px + env(safe-area-inset-bottom));
   background:var(--card);border-top:1px solid var(--border);z-index:5}
@@ -2496,14 +2500,17 @@ function renderPRs() {
     </div>`;
   }
 
-  // Add-exercise button at the bottom
+  // Sticky add-exercise button pinned at the bottom
   html += `
-  <button class="btn btn-primary btn-full" style="margin-top:8px;margin-bottom:8px" onclick="openExercisesAddModal()">
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-      <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-    </svg>
-    Add Exercise
-  </button>`;
+  <div style="height:64px"></div>
+  <div class="sticky-action-bar">
+    <button class="btn btn-primary btn-full" onclick="openExercisesAddModal()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+      </svg>
+      Add Exercise
+    </button>
+  </div>`;
 
   document.getElementById('main').innerHTML = html;
 
@@ -2772,10 +2779,16 @@ function renderGoals() {
     </div>`;
   }
 
-  // Add-goal button centered below the list
+  // Sticky add-goal button pinned at the bottom (matches Exercises tab)
   html += `
-  <div style="display:flex;justify-content:center;margin-top:8px;padding-bottom:4px">
-    <button class="btn btn-primary btn-sm" onclick="openAddGoalModal()">+ Add Goal</button>
+  <div style="height:64px"></div>
+  <div class="sticky-action-bar">
+    <button class="btn btn-primary btn-full" onclick="openAddGoalModal()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+      </svg>
+      Add Goal
+    </button>
   </div>`;
 
   document.getElementById('main').innerHTML = html;
