@@ -1374,11 +1374,14 @@ function renderDashboardChart() {
   const progress = getProgressByMode(exercise, dashChartMode);
   const goal     = DB.goals.find(g => g.exercise === exercise);
 
-  if (progress.length < 2) {
+  if (!progress.length) {
+    const what = dashChartMode === '1rm'
+      ? 'No 1-rep sets logged yet for'
+      : `No sets of ${dashChartMode}+ reps logged yet for`;
     wrap.innerHTML = `
       <div style="height:200px;display:flex;align-items:center;justify-content:center;
                   color:var(--muted);font-size:13px;text-align:center;line-height:1.6">
-        Log at least 2 sessions with<br><strong style="color:var(--text)">${exercise}</strong><br>to see your chart
+        ${what}<br><strong style="color:var(--text)">${exercise}</strong>
       </div>`;
     return;
   }
