@@ -631,7 +631,7 @@ const I18N = {
     'Manage Goals':'目標を管理',
     // labels
     'Current':'現在','Target':'目標値','Goal reached!':'目標達成！','Active':'選択中','Chart':'グラフ',
-    'Top Weight':'最高重量','5 Rep':'5レップ','8 Rep':'8レップ','Est. 1RM':'推定1RM',
+    'Top Weight':'最高重量','1 Rep':'1レップ','5 Rep':'5レップ','8 Rep':'8レップ','Est. 1RM':'推定1RM',
     'days trained':'トレーニング日数','days / week':'週あたり日数',
     'sessions':'セッション','session':'セッション','sessions this day':'この日のセッション',
     'Notes':'メモ','Workout':'ワークアウト','No data yet':'データがありません','No exercises':'種目なし',
@@ -886,7 +886,8 @@ function allExerciseNames() {
 // ═══════════════════════════════════════════════════════
 
 // Returns [{date, weightKg}] for an exercise in the chosen mode:
-//   '1rm' → heaviest actual weight lifted per session (true current 1RM, not estimated)
+//   '1rm' → best estimated 1RM per session (a 120×5 set counts as ~140 single-rep
+//            strength, so rep-work days don't look like strength regressions)
 //   '5'   → best weight where reps >= 5 per session
 //   '8'   → best weight where reps >= 8 per session
 function getProgressByMode(name, mode) {
@@ -900,8 +901,8 @@ function getProgressByMode(name, mode) {
       let best = 0;
       for (const s of ex.sets) {
         if (s.weight && s.reps && !s.failed) {
-          const wKg = toKg(+s.weight, du);
-          if (wKg > best) best = wKg;
+          const oneRM_kg = calc1RM(toKg(+s.weight, du), +s.reps);
+          if (oneRM_kg > best) best = oneRM_kg;
         }
       }
       if (best > 0) data.push({ date: workout.date, weightKg: best });
@@ -940,19 +941,23 @@ function estimateWeeks(exercise, targetKg) {
 // GOALS ENGINE
 // ═══════════════════════════════════════════════════════
 
-// Returns est. 1RM in kg implied by this goal (weight × reps)
+// Returns est. 1RM in kg implied by this goal (weight × reps).
+// Matches calc1RM: a 1-rep goal IS the weight itself.
 function goalTarget1RM_kg(goal) {
   if (goal.targetWeightKg && goal.targetReps) {
+    if (+goal.targetReps === 1) return goal.targetWeightKg;
     return goal.targetWeightKg * (1 + goal.targetReps / 30);
   }
   return goal.targetKg || 0; // backward compat
 }
 
 // For chart: returns the goal reference line value (in display unit).
-// Uses the goal's actual target weight so the line matches the displayed
-// "Target: X kg × N reps" (e.g. 100kg target → 100kg line, not est-1RM 103kg).
+// In 1-Rep mode the data is est. 1RM, so the line is the goal's est-1RM
+// equivalent; in 5/8-rep modes it stays the raw target weight.
 function goalLineForMode(goal, mode) {
-  const tw_kg = goal.targetWeightKg || goalTarget1RM_kg(goal);
+  const tw_kg = mode === '1rm'
+    ? goalTarget1RM_kg(goal)
+    : (goal.targetWeightKg || goalTarget1RM_kg(goal));
   return Math.round(dispW(tw_kg, 'kg') * 10) / 10;
 }
 
@@ -1169,7 +1174,7 @@ function renderDashboard() {
         </div>
         <div style="display:flex;gap:4px;flex-shrink:0">
           <button id="dm-1rm" class="btn btn-sm ${dashChartMode==='1rm'?'btn-primary':'btn-secondary'}"
-            style="padding:6px 10px;font-size:11px" onclick="setDashChartMode('1rm')">Top Weight</button>
+            style="padding:6px 10px;font-size:11px" onclick="setDashChartMode('1rm')">1 Rep</button>
           <button id="dm-5" class="btn btn-sm ${dashChartMode==='5'?'btn-primary':'btn-secondary'}"
             style="padding:6px 10px;font-size:11px" onclick="setDashChartMode('5')">5 Rep</button>
           <button id="dm-8" class="btn btn-sm ${dashChartMode==='8'?'btn-primary':'btn-secondary'}"
@@ -1393,7 +1398,7 @@ function renderDashboardChart() {
   const weights = progress.map(p => Math.round(dispW(p.weightKg,'kg') * 10) / 10);
 
   const modeLabel = dashChartMode === '1rm'
-    ? `Top weight (${unit})`
+    ? `Est. 1RM (${unit})`
     : `Best weight @ ${dashChartMode}+ reps (${unit})`;
 
   const datasets = [{
