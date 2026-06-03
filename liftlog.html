@@ -438,6 +438,13 @@ input:focus,textarea:focus,select:focus{border-color:var(--accent)}
     </svg>
     Dashboard
   </button>
+  <button class="nav-btn" id="nav-history" onclick="showView('history')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M12 8v4l3 3"/>
+      <circle cx="12" cy="12" r="9"/>
+    </svg>
+    History
+  </button>
   <button class="nav-btn" id="nav-log" onclick="showView('log')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
       <circle cx="12" cy="12" r="9"/>
@@ -445,13 +452,6 @@ input:focus,textarea:focus,select:focus{border-color:var(--accent)}
       <line x1="8" y1="12" x2="16" y2="12"/>
     </svg>
     Log
-  </button>
-  <button class="nav-btn" id="nav-history" onclick="showView('history')">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-      <path d="M12 8v4l3 3"/>
-      <circle cx="12" cy="12" r="9"/>
-    </svg>
-    History
   </button>
   <button class="nav-btn" id="nav-prs" onclick="showView('prs')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -525,8 +525,16 @@ const MUSCLE_GROUPS = {
   'Abs':       { emoji:'🔥', sub:['Rectus Abdominis','Obliques','Lower Abs'] },
 };
 
+// Muscles per exercise — stored as an array (legacy entries may be a string)
+function getMusclesForExercise(name) {
+  const v = DB.exerciseMuscles[name];
+  if (!v) return [];
+  return Array.isArray(v) ? v : [v];
+}
+// Display label: all tagged muscles joined, e.g. "Lats · Hamstrings"
 function getMuscleForExercise(name) {
-  return DB.exerciseMuscles[name] || null;
+  const ms = getMusclesForExercise(name);
+  return ms.length ? ms.join(' · ') : null;
 }
 function getBodyPartForMuscle(muscle) {
   for (const [bp, data] of Object.entries(MUSCLE_GROUPS)) {
@@ -535,8 +543,8 @@ function getBodyPartForMuscle(muscle) {
   return null;
 }
 function getBodyPartForExercise(name) {
-  const m = getMuscleForExercise(name);
-  if (m) return getBodyPartForMuscle(m) || 'Other';
+  const ms = getMusclesForExercise(name);
+  if (ms.length) return getBodyPartForMuscle(ms[0]) || 'Other';
   return getBodyPart(name);
 }
 
@@ -1658,6 +1666,10 @@ function renderExercisesHTML() {
     </div>`;
     }).join('')}
     <button class="btn btn-secondary btn-sm" style="margin-top:8px" onclick="addSet(${ei})">+ Add Set</button>
+    <input type="text" class="ex-note-input" placeholder="Note for this exercise… (grip, tempo, how it felt)"
+      value="${(ex.note||'').replace(/"/g,'&quot;')}"
+      oninput="currentLog.exercises[${ei}].note=this.value"
+      style="margin-top:10px;font-size:13px;padding:9px 12px;min-height:38px">
   </div>`).join('');
 }
 
@@ -1748,30 +1760,56 @@ function openAddExModal() {
   setTimeout(()=>document.getElementById('ex-search')?.focus(), 100);
 }
 
-function pickExerciseName(name) {
-  name = name.trim();
-  if (!name) { showToast('Enter an exercise name', false); return; }
-  const existingMuscle = DB.exerciseMuscles[name] || '';
-
+// Multi-select muscle picker (shared by log flow and Exercises-tab flow)
+let pickedMuscles = new Set();
+function renderMusclePicker(name, backFn, confirmFn) {
   let html = `
   <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
-    <button class="btn btn-secondary btn-sm" onclick="openAddExModal()" style="padding:8px 10px">← Back</button>
-    <div style="font-size:18px;font-weight:700">Target Muscle</div>
+    <button class="btn btn-secondary btn-sm" onclick="${backFn}" style="padding:8px 10px">← Back</button>
+    <div style="font-size:18px;font-weight:700">Target Muscles</div>
   </div>
-  <div style="font-size:14px;color:var(--accent);font-weight:600;margin-bottom:14px">${name}</div>`;
+  <div style="font-size:14px;color:var(--accent);font-weight:600;margin-bottom:4px">${name}</div>
+  <div style="font-size:12px;color:var(--muted);margin-bottom:14px">Tap all the muscles this exercise hits — e.g. Deadlift → Lats + Hamstrings + Glutes</div>`;
 
   for (const [bp, data] of Object.entries(MUSCLE_GROUPS)) {
     html += `<div class="label" style="margin-bottom:6px">${data.emoji} ${bp}</div>
     <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">`;
     for (const m of data.sub) {
-      const sel = m === existingMuscle;
-      html += `<span class="ex-chip" onclick="addExercise('${esc(name)}','${esc(m)}')"
-        style="${sel?'background:var(--accent);color:#fff;border-color:var(--accent)':''}">${m}</span>`;
+      const sel = pickedMuscles.has(m);
+      html += `<span class="ex-chip" id="mchip-${m.replace(/\s/g,'_')}" onclick="toggleMuscleChip('${esc(m)}')"
+        style="${sel?'background:var(--accent);color:#fff;border-color:var(--accent)':''}">${sel?'✓ ':''}${m}</span>`;
     }
     html += `</div>`;
   }
-  html += `<button class="btn btn-secondary btn-full" style="margin-top:4px" onclick="addExercise('${esc(name)}','')">Skip — don't tag a muscle</button>`;
+  html += `
+  <button class="btn btn-primary btn-full" style="margin-top:4px" onclick="${confirmFn}">
+    Add Exercise<span id="mcount">${pickedMuscles.size?` (${pickedMuscles.size} muscle${pickedMuscles.size>1?'s':''})`:''}</span>
+  </button>
+  <button class="btn btn-secondary btn-full" style="margin-top:8px" onclick="pickedMuscles.clear();${confirmFn}">Skip — don't tag muscles</button>`;
   document.getElementById('modal-content').innerHTML = html;
+}
+function toggleMuscleChip(m) {
+  pickedMuscles.has(m) ? pickedMuscles.delete(m) : pickedMuscles.add(m);
+  const chip = document.getElementById(`mchip-${m.replace(/\s/g,'_')}`);
+  if (chip) {
+    const on = pickedMuscles.has(m);
+    chip.style.background  = on ? 'var(--accent)' : '';
+    chip.style.color       = on ? '#fff' : '';
+    chip.style.borderColor = on ? 'var(--accent)' : '';
+    chip.textContent       = (on ? '✓ ' : '') + m;
+  }
+  const c = document.getElementById('mcount');
+  if (c) c.textContent = pickedMuscles.size ? ` (${pickedMuscles.size} muscle${pickedMuscles.size>1?'s':''})` : '';
+}
+
+function pickExerciseName(name) {
+  name = name.trim();
+  if (!name) { showToast('Enter an exercise name', false); return; }
+  pickedMuscles = new Set(getMusclesForExercise(name));
+  renderMusclePicker(name, 'openAddExModal()', `confirmAddExercise('${esc(name)}')`);
+}
+function confirmAddExercise(name) {
+  addExercise(name, [...pickedMuscles]);
 }
 
 function filterExDropdown(q) {
@@ -1794,10 +1832,11 @@ function addExercise(name, muscle) {
   // Save to known exercises list
   const exs = DB.exercises;
   if(!exs.includes(name)) { exs.push(name); DB.saveExercises(exs) }
-  // Save muscle mapping if provided
-  if (muscle) {
+  // Save muscle mapping if provided (array of muscles)
+  const mList = Array.isArray(muscle) ? muscle : (muscle ? [muscle] : []);
+  if (mList.length) {
     const muscles = DB.exerciseMuscles;
-    muscles[name] = muscle;
+    muscles[name] = mList;
     DB.saveExerciseMuscles(muscles);
   }
 
@@ -2082,7 +2121,8 @@ function showWorkoutDetail(id) {
   for(const ex of w.exercises) {
     html += `
     <div style="margin-bottom:16px">
-      <div style="font-size:15px;font-weight:700;margin-bottom:8px;color:var(--accent)">${ex.name}</div>
+      <div style="font-size:15px;font-weight:700;margin-bottom:${ex.note?'2px':'8px'};color:var(--accent)">${ex.name}</div>
+      ${ex.note?`<div style="font-size:12px;color:var(--muted);font-style:italic;margin-bottom:8px">💬 ${ex.note}</div>`:''}
       <div class="sets-header">
         <span>Set</span><span>Wt (${unit})</span><span>Reps</span><span>~1RM</span><span></span>
       </div>
@@ -2265,6 +2305,10 @@ function renderEditExercisesHTML() {
     </div>`;
     }).join('')}
     <button class="btn btn-secondary btn-sm" style="margin-top:8px" onclick="editAddSet(${ei})">+ Add Set</button>
+    <input type="text" class="ex-note-input" placeholder="Note for this exercise…"
+      value="${(ex.note||'').replace(/"/g,'&quot;')}"
+      oninput="editingWorkout.exercises[${ei}].note=this.value"
+      style="margin-top:10px;font-size:13px;padding:9px 12px;min-height:38px">
     </div>
   </div>`;
   }).join('');
@@ -2387,16 +2431,21 @@ function renderPRs() {
     return;
   }
 
-  // Group by body part → sub-muscle
-  // groups = { 'Chest': { 'Upper Chest': ['Incline Bench', ...], 'General': [...] } }
+  // Group by body part → sub-muscle. A multi-tagged exercise (e.g. Deadlift →
+  // Lats + Hamstrings) appears under EVERY tagged body part.
   const groups = {};
-  for(const name of names) {
-    const muscle = getMuscleForExercise(name);
-    const bp     = muscle ? (getBodyPartForMuscle(muscle) || 'Other') : getBodyPart(name);
-    const sub    = muscle || 'General';
+  const addTo = (bp, sub, name) => {
     if(!groups[bp]) groups[bp] = {};
     if(!groups[bp][sub]) groups[bp][sub] = [];
-    groups[bp][sub].push(name);
+    if(!groups[bp][sub].includes(name)) groups[bp][sub].push(name);
+  };
+  for(const name of names) {
+    const muscles = getMusclesForExercise(name);
+    if (muscles.length) {
+      for (const m of muscles) addTo(getBodyPartForMuscle(m) || 'Other', m, name);
+    } else {
+      addTo(getBodyPart(name), 'General', name);
+    }
   }
 
   // Order body parts: known ones first, then Other
@@ -2583,34 +2632,21 @@ function filterExAddDropdown(q) {
 function pickExerciseAddName(name) {
   name = name.trim();
   if (!name) { showToast('Enter an exercise name', false); return; }
-  const existingMuscle = DB.exerciseMuscles[name] || '';
-  let html = `
-  <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
-    <button class="btn btn-secondary btn-sm" onclick="openExercisesAddModal()" style="padding:8px 10px">← Back</button>
-    <div style="font-size:18px;font-weight:700">Target Muscle</div>
-  </div>
-  <div style="font-size:14px;color:var(--accent);font-weight:600;margin-bottom:14px">${name}</div>`;
-  for (const [bp, data] of Object.entries(MUSCLE_GROUPS)) {
-    html += `<div class="label" style="margin-bottom:6px">${data.emoji} ${bp}</div>
-    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">`;
-    for (const m of data.sub) {
-      const sel = m === existingMuscle;
-      html += `<span class="ex-chip" onclick="addExerciseToLibrary('${esc(name)}','${esc(m)}')"
-        style="${sel?'background:var(--accent);color:#fff;border-color:var(--accent)':''}">${m}</span>`;
-    }
-    html += `</div>`;
-  }
-  html += `<button class="btn btn-secondary btn-full" style="margin-top:4px" onclick="addExerciseToLibrary('${esc(name)}','')">Skip — don't tag a muscle</button>`;
-  document.getElementById('modal-content').innerHTML = html;
+  pickedMuscles = new Set(getMusclesForExercise(name));
+  renderMusclePicker(name, 'openExercisesAddModal()', `confirmAddExerciseToLibrary('${esc(name)}')`);
+}
+function confirmAddExerciseToLibrary(name) {
+  addExerciseToLibrary(name, [...pickedMuscles]);
 }
 
 function addExerciseToLibrary(name, muscle) {
   name = name.trim(); if(!name) return;
   const exs = DB.exercises;
   if(!exs.includes(name)) { exs.push(name); DB.saveExercises(exs); }
-  if (muscle) {
+  const mList = Array.isArray(muscle) ? muscle : (muscle ? [muscle] : []);
+  if (mList.length) {
     const muscles = DB.exerciseMuscles;
-    muscles[name] = muscle;
+    muscles[name] = mList;
     DB.saveExerciseMuscles(muscles);
   }
   closeModal();
