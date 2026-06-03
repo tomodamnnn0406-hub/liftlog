@@ -1,9 +1,9 @@
-// Lift Log — Service Worker v19
+// Lift Log — Service Worker v20
 // Strategy:
 //   liftlog.html  → network-first (always get the latest version)
 //   everything else → cache-first (icons, Chart.js — safe to cache long-term)
 
-const CACHE_NAME = 'liftlog-v19';
+const CACHE_NAME = 'liftlog-v20';
 const STATIC_ASSETS = [
   './manifest.json',
   './icon-192.png',
