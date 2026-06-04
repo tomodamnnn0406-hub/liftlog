@@ -563,11 +563,12 @@ const MUSCLE_GROUPS = {
   'Abs':       { emoji:'🔥', sub:['Rectus Abdominis','Obliques','Lower Abs'] },
 };
 
-// Muscles per exercise — stored as an array (legacy entries may be a string)
+// Muscles per exercise — stored as an array (legacy entries may be a string).
+// User tags take priority; built-in DEFAULT_MUSCLES fill the gaps.
 function getMusclesForExercise(name) {
   const v = DB.exerciseMuscles[name];
-  if (!v) return [];
-  return Array.isArray(v) ? v : [v];
+  if (v) return Array.isArray(v) ? v : [v];
+  return DEFAULT_MUSCLES[name] || [];
 }
 // Display label: all tagged muscles joined, e.g. "Lats · Hamstrings"
 function getMuscleForExercise(name) {
@@ -647,11 +648,74 @@ const DB = {
 };
 
 const DEFAULT_EXERCISES = [
-  'Squat','Bench Press','Deadlift','Overhead Press','Barbell Row',
-  'Pull-up','Chin-up','Dip','Bicep Curl','Tricep Extension',
-  'Leg Press','Romanian Deadlift','Incline Bench','Cable Row','Lateral Raise',
-  'Hip Thrust','Face Pull','Hammer Curl','Skull Crusher','Arnold Press'
+  // Chest
+  'Bench Press','Incline Bench Press','Decline Bench Press','Dumbbell Bench Press',
+  'Incline Dumbbell Press','Dumbbell Fly','Cable Fly','Cable Crossover','Pec Deck',
+  'Chest Press Machine','Push-up','Dip',
+  // Back
+  'Deadlift','Sumo Deadlift','Rack Pull','Barbell Row','Pendlay Row','Dumbbell Row',
+  'T-Bar Row','Seated Cable Row','Cable Row','Machine Row','Chest Supported Row',
+  'Pull-up','Chin-up','Lat Pulldown','Close Grip Lat Pulldown','Straight Arm Pulldown',
+  'Pull Over','Back Extension','Good Morning','Shrug',
+  // Shoulders
+  'Overhead Press','Military Press','Push Press','Dumbbell Shoulder Press',
+  'Arnold Press','Machine Shoulder Press','Lateral Raise','Cable Lateral Raise',
+  'Front Raise','Rear Delt Fly','Reverse Pec Deck','Face Pull','Upright Row',
+  // Legs
+  'Squat','Front Squat','Goblet Squat','Hack Squat','Smith Machine Squat',
+  'Bulgarian Split Squat','Lunge','Walking Lunge','Leg Press','Romanian Deadlift',
+  'Stiff Leg Deadlift','Leg Extension','Leg Curl','Seated Leg Curl','Hip Thrust',
+  'Glute Bridge','Hip Abduction','Hip Adduction','Calf Raise','Seated Calf Raise',
+  // Arms
+  'Bicep Curl','Barbell Curl','EZ Bar Curl','Dumbbell Curl','Hammer Curl',
+  'Incline Dumbbell Curl','Preacher Curl','Concentration Curl','Cable Curl',
+  'Tricep Extension','Overhead Tricep Extension','Skull Crusher','Tricep Pushdown',
+  'Cable Press Down','Rope Pushdown','Close Grip Bench Press','Wrist Curl',
+  // Abs / Core
+  'Crunch','Cable Crunch','Decline Crunch','Sit-up','Plank','Side Plank',
+  'Hanging Leg Raise','Leg Raise','Russian Twist','Ab Wheel Rollout','Mountain Climber',
+  // Cardio / Other
+  'Treadmill','Incline Walk','Running','Cycling','Rowing Machine','Stair Climber',
+  'Elliptical','Jump Rope','Farmer\'s Walk','Kettlebell Swing','Burpee'
 ];
+
+// Muscle tags for the default exercises (used for body-part grouping).
+// Users' own tags in DB.exerciseMuscles always take priority over these.
+const DEFAULT_MUSCLES = {
+  'Bench Press':['Middle Chest'],'Incline Bench Press':['Upper Chest'],'Decline Bench Press':['Lower Chest'],
+  'Dumbbell Bench Press':['Middle Chest'],'Incline Dumbbell Press':['Upper Chest'],'Dumbbell Fly':['Middle Chest'],
+  'Cable Fly':['Middle Chest'],'Cable Crossover':['Middle Chest'],'Pec Deck':['Middle Chest'],
+  'Chest Press Machine':['Middle Chest'],'Push-up':['Middle Chest'],'Dip':['Lower Chest','Triceps'],
+  'Deadlift':['Lats','Glutes','Hamstrings'],'Sumo Deadlift':['Glutes','Hamstrings'],'Rack Pull':['Traps','Lats'],
+  'Barbell Row':['Lats','Rhomboids'],'Pendlay Row':['Lats','Rhomboids'],'Dumbbell Row':['Lats'],
+  'T-Bar Row':['Lats','Rhomboids'],'Seated Cable Row':['Lats','Rhomboids'],'Cable Row':['Lats','Rhomboids'],
+  'Machine Row':['Lats','Rhomboids'],'Chest Supported Row':['Lats','Rhomboids'],
+  'Pull-up':['Lats'],'Chin-up':['Lats','Biceps'],'Lat Pulldown':['Lats'],'Close Grip Lat Pulldown':['Lats'],
+  'Straight Arm Pulldown':['Lats'],'Pull Over':['Lats'],'Back Extension':['Glutes','Hamstrings'],
+  'Good Morning':['Hamstrings','Glutes'],'Shrug':['Traps'],
+  'Overhead Press':['Front Delt'],'Military Press':['Front Delt'],'Push Press':['Front Delt'],
+  'Dumbbell Shoulder Press':['Front Delt','Middle Delt'],'Arnold Press':['Front Delt','Middle Delt'],
+  'Machine Shoulder Press':['Front Delt','Middle Delt'],'Lateral Raise':['Middle Delt'],
+  'Cable Lateral Raise':['Middle Delt'],'Front Raise':['Front Delt'],'Rear Delt Fly':['Rear Delt'],
+  'Reverse Pec Deck':['Rear Delt'],'Face Pull':['Rear Delt','Traps'],'Upright Row':['Middle Delt','Traps'],
+  'Squat':['Quads','Glutes'],'Front Squat':['Quads'],'Goblet Squat':['Quads','Glutes'],
+  'Hack Squat':['Quads'],'Smith Machine Squat':['Quads','Glutes'],'Bulgarian Split Squat':['Quads','Glutes'],
+  'Lunge':['Quads','Glutes'],'Walking Lunge':['Quads','Glutes'],'Leg Press':['Quads','Glutes'],
+  'Romanian Deadlift':['Hamstrings','Glutes'],'Stiff Leg Deadlift':['Hamstrings'],
+  'Leg Extension':['Quads'],'Leg Curl':['Hamstrings'],'Seated Leg Curl':['Hamstrings'],
+  'Hip Thrust':['Glutes'],'Glute Bridge':['Glutes'],'Hip Abduction':['Glutes'],'Hip Adduction':['Glutes'],
+  'Calf Raise':['Calves'],'Seated Calf Raise':['Calves'],
+  'Bicep Curl':['Biceps'],'Barbell Curl':['Biceps'],'EZ Bar Curl':['Biceps'],'Dumbbell Curl':['Biceps'],
+  'Hammer Curl':['Biceps','Forearms'],'Incline Dumbbell Curl':['Biceps'],'Preacher Curl':['Biceps'],
+  'Concentration Curl':['Biceps'],'Cable Curl':['Biceps'],
+  'Tricep Extension':['Triceps'],'Overhead Tricep Extension':['Triceps'],'Skull Crusher':['Triceps'],
+  'Tricep Pushdown':['Triceps'],'Cable Press Down':['Triceps'],'Rope Pushdown':['Triceps'],
+  'Close Grip Bench Press':['Triceps','Middle Chest'],'Wrist Curl':['Forearms'],
+  'Crunch':['Rectus Abdominis'],'Cable Crunch':['Rectus Abdominis'],'Decline Crunch':['Rectus Abdominis'],
+  'Sit-up':['Rectus Abdominis'],'Plank':['Rectus Abdominis'],'Side Plank':['Obliques'],
+  'Hanging Leg Raise':['Lower Abs'],'Leg Raise':['Lower Abs'],'Russian Twist':['Obliques'],
+  'Ab Wheel Rollout':['Rectus Abdominis'],'Mountain Climber':['Rectus Abdominis']
+};
 
 // ═══════════════════════════════════════════════════════
 // I18N — English (source) + Japanese
@@ -772,6 +836,20 @@ function runMigrations() {
       }));
     }
     localStorage.setItem('ll_migrated_v3', '1');
+  }
+
+  // v4 — merge the expanded built-in exercise list into saved lists, so
+  // existing users get the new defaults without losing their own exercises.
+  if (!localStorage.getItem('ll_migrated_v4')) {
+    if (localStorage.getItem('ll_exercises')) {
+      const cur = DB.exercises;
+      const lower = new Set(cur.map(e => e.toLowerCase()));
+      for (const e of DEFAULT_EXERCISES) {
+        if (!lower.has(e.toLowerCase())) cur.push(e);
+      }
+      DB.saveExercises(cur);
+    }
+    localStorage.setItem('ll_migrated_v4', '1');
   }
 }
 
@@ -3335,7 +3413,7 @@ function showToast(msg, ok=true) {
 // ═══════════════════════════════════════════════════════
 // DATA EXPORT / IMPORT
 // ═══════════════════════════════════════════════════════
-const DATA_KEYS = ['ll_workouts','ll_exercises','ll_unit','ll_profile','ll_goals','ll_migrated_v2','ll_migrated_v3','ll_exercise_muscles','ll_templates'];
+const DATA_KEYS = ['ll_workouts','ll_exercises','ll_unit','ll_profile','ll_goals','ll_migrated_v2','ll_migrated_v3','ll_migrated_v4','ll_exercise_muscles','ll_templates'];
 
 function notifSettingHTML() {
   if (!('Notification' in window)) {
