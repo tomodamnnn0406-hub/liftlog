@@ -2602,7 +2602,8 @@ function renderPRs() {
     <div style="font-size:22px;font-weight:800">Exercises</div>
     <button class="btn btn-secondary btn-sm" onclick="showView('goals')" style="white-space:nowrap">🎯 Manage Goals</button>
   </div>
-  <div style="font-size:12px;color:var(--muted);margin-bottom:16px">Tap a group to see all exercises · Tap exercise for progress chart</div>`;
+  <div style="font-size:12px;color:var(--muted);margin-bottom:16px">Tap a group to see all exercises · Tap exercise for progress chart</div>
+  ${templatesSectionHTML()}`;
 
   if(!names.length) {
     document.getElementById('main').innerHTML = headerHTML + `
@@ -2821,6 +2822,101 @@ function pickExerciseAddName(name) {
 }
 function confirmAddExerciseToLibrary(name) {
   addExerciseToLibrary(name, [...pickedMuscles]);
+}
+
+// ── Templates section (top of Exercises tab) ─────────────
+function templatesSectionHTML() {
+  const t = DB.templates, keys = Object.keys(t);
+  let rows = '';
+  for (const k of keys) {
+    rows += `
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">
+      <div style="min-width:0;flex:1;cursor:pointer" onclick="openTemplateBuilder('${esc(k)}')">
+        <div style="font-size:14px;font-weight:700">${k}</div>
+        <div style="font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t[k].join(' · ')}</div>
+      </div>
+      <button class="btn btn-secondary btn-sm" style="flex-shrink:0;padding:6px 10px;font-size:11px" onclick="openTemplateBuilder('${esc(k)}')">Edit</button>
+    </div>`;
+  }
+  return `
+  <div class="card" style="margin-bottom:16px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:${keys.length?'4px':'8px'}">
+      <div style="font-size:15px;font-weight:800">📋 Workout Templates</div>
+    </div>
+    ${keys.length ? rows : `<div style="font-size:12px;color:var(--muted);margin-bottom:10px">Save your menu per session type — like Push or Pull — and load it in one tap when logging.</div>`}
+    <button class="btn btn-accent-outline btn-full btn-sm" style="margin-top:${keys.length?'12px':'4px'}" onclick="openTemplateBuilder()">+ Create Template</button>
+  </div>`;
+}
+
+// Template builder modal — pick a session type, tick exercises
+let tplBuilder = { name:'', picked:[] };
+function openTemplateBuilder(name) {
+  tplBuilder = {
+    name: name || '',
+    picked: name && DB.templates[name] ? [...DB.templates[name]] : []
+  };
+  renderTemplateBuilder();
+}
+function renderTemplateBuilder() {
+  const isEdit  = !!(tplBuilder.name && DB.templates[tplBuilder.name]);
+  const allEx   = allExerciseNames();
+  const presets = SESSION_PRESETS.map(p =>
+    `<option value="${p}" ${tplBuilder.name===p?'selected':''}>${p}</option>`).join('');
+  const showCustom = tplBuilder.name && !SESSION_PRESETS.includes(tplBuilder.name);
+
+  document.getElementById('modal-content').innerHTML = `
+  <div style="font-size:18px;font-weight:700;margin-bottom:4px">${isEdit?'Edit':'Create'} Template</div>
+  <div style="font-size:12px;color:var(--muted);margin-bottom:14px">Pick a session type, then tick the exercises in your menu.</div>
+
+  <div class="input-group">
+    <div class="label">Session Type</div>
+    <div class="select-wrap">
+      <select onchange="tplBuilder.name=this.value==='__custom__'?'':this.value;renderTemplateBuilder()">
+        <option value="" ${!tplBuilder.name?'selected':''}>Select session type…</option>
+        ${presets}
+        <option value="__custom__" ${showCustom?'selected':''}>✏️ Custom…</option>
+      </select>
+    </div>
+  </div>
+  ${showCustom?`<input type="text" placeholder="Type session name…" value="${tplBuilder.name}"
+    oninput="tplBuilder.name=this.value" style="margin:-4px 0 12px" autocapitalize="words">`:''}
+
+  <div class="label" style="margin-bottom:6px">Exercises (${tplBuilder.picked.length} selected)</div>
+  <div style="margin-bottom:6px">
+    ${tplBuilder.picked.map(n=>`<span class="ex-chip" style="background:var(--accent);color:#fff;border-color:var(--accent)" onclick="tplToggle('${esc(n)}')">✓ ${n}</span>`).join('')}
+  </div>
+  <div style="max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:12px">
+    ${allEx.filter(n=>!tplBuilder.picked.includes(n)).map(n=>`<span class="ex-chip" onclick="tplToggle('${esc(n)}')">${n}</span>`).join('') || '<div style="font-size:12px;color:var(--muted)">All exercises selected</div>'}
+  </div>
+
+  <button class="btn btn-primary btn-full" onclick="saveTemplateFromBuilder()">${isEdit?'Update':'Save'} Template</button>
+  ${isEdit?`<button class="btn btn-danger btn-full" style="margin-top:8px" onclick="deleteTemplateFromBuilder('${esc(tplBuilder.name)}')">Delete Template</button>`:''}`;
+  openModal();
+}
+function tplToggle(n) {
+  const i = tplBuilder.picked.indexOf(n);
+  if (i >= 0) tplBuilder.picked.splice(i, 1); else tplBuilder.picked.push(n);
+  renderTemplateBuilder();
+}
+function saveTemplateFromBuilder() {
+  const name = (tplBuilder.name || '').trim();
+  if (!name) { showToast('Pick a session type', false); return; }
+  if (!tplBuilder.picked.length) { showToast('Select at least one exercise', false); return; }
+  const t = DB.templates;
+  t[name] = [...tplBuilder.picked];
+  DB.saveTemplates(t);
+  closeModal();
+  showToast(`${name} template saved 📋`);
+  if (currentView === 'prs') renderPRs(); else showView('prs');
+}
+function deleteTemplateFromBuilder(name) {
+  if (!confirm(`Delete the "${name}" template?`)) return;
+  const t = DB.templates;
+  delete t[name];
+  DB.saveTemplates(t);
+  closeModal();
+  renderPRs();
+  showToast('Template deleted');
 }
 
 function addExerciseToLibrary(name, muscle) {
@@ -3574,7 +3670,7 @@ function gsSteps() {
     { id:'goal',     title:t2('Set a goal'),              sub:t2('A target weight to chase, e.g. 100kg × 1 rep'),
       done: DB.goals.length > 0, go:() => { showView('goals'); if(!DB.goals.length) setTimeout(openAddGoalModal, 150); } },
     { id:'template', title:t2('Save a workout template'), sub:t2('So next time your menu loads in one tap'),
-      done: Object.keys(DB.templates).length > 0, go:() => showView('log') },
+      done: Object.keys(DB.templates).length > 0, go:() => { showView('prs'); setTimeout(openTemplateBuilder, 150); } },
     { id:'stats',    title:t2('Add your body stats'),     sub:t2('Height & weight unlock BMI and BW sets'),
       done: !!(DB.profile.height || DB.profile.bodyweight), go:() => { showView('dashboard'); setTimeout(openProfileModal, 150); } }
   ];
