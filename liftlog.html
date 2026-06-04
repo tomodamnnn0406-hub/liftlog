@@ -602,6 +602,9 @@ const DB = {
   saveGoals(g)         { localStorage.setItem('ll_goals', JSON.stringify(g)) },
   get exerciseMuscles(){ return JSON.parse(localStorage.getItem('ll_exercise_muscles') || '{}') },
   saveExerciseMuscles(m){ localStorage.setItem('ll_exercise_muscles', JSON.stringify(m)) },
+  // templates = { 'Push': ['Bench Press','Lateral Raise', ...], ... }
+  get templates()      { return JSON.parse(localStorage.getItem('ll_templates') || '{}') },
+  saveTemplates(t)     { localStorage.setItem('ll_templates', JSON.stringify(t)) },
   addWorkout(w)    { const arr = this.workouts; arr.push(w); this.save(arr) },
   removeWorkout(id){ this.save(this.workouts.filter(w => w.id !== id)) }
 };
@@ -1509,9 +1512,12 @@ function renderLog() {
         value="${showCustom ? currentLog.name : ''}"
         style="${showCustom?'':'display:none'}"
         oninput="currentLog.name=this.value"
+        onchange="if(!currentLog.exercises.length)renderLog()"
         autocapitalize="words" autocorrect="off">
     </div>
   </div>
+
+  ${templateSuggestionHTML()}
 
   <div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:12px">
     <div>
@@ -1537,6 +1543,8 @@ function renderLog() {
     </svg>
     Add Exercise
   </button>
+
+  ${saveTemplateOfferHTML()}
 
   <div class="card">
     <div class="input-group" style="margin-bottom:0">
@@ -1575,7 +1583,126 @@ function handleSessionSelect(val) {
   } else {
     customInput.style.display = 'none';
     currentLog.name = val;
+    // Re-render so the template / repeat-last suggestion appears
+    if (!currentLog.exercises.length) renderLog();
   }
+}
+
+// Suggestion banner under Session Type: template first, last-session fallback
+function templateSuggestionHTML() {
+  const name = currentLog.name;
+  if (!name || currentLog.exercises.length) return '';
+  const tpl = DB.templates[name];
+  if (tpl && tpl.length) {
+    return `
+    <div class="card" style="border-color:var(--green);background:rgba(34,197,94,.06)">
+      <div style="font-size:13px;font-weight:700;color:var(--green);margin-bottom:3px">📋 Your ${name} template</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px">${tpl.join(' · ')}</div>
+      <button class="btn btn-primary btn-full" style="background:var(--green)" onclick="applyTemplateToLog()">Load ${tpl.length} exercise${tpl.length>1?'s':''}</button>
+    </div>`;
+  }
+  const last = lastSessionNamed(name);
+  if (last && last.exercises.length) {
+    return `
+    <div class="card" style="border-color:var(--accent);background:var(--accent-dim)">
+      <div style="font-size:13px;font-weight:700;color:var(--accent);margin-bottom:3px">⟳ Repeat last ${name}? (${fmtDate(last.date)})</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px">${last.exercises.map(e=>e.name).join(' · ')}</div>
+      <button class="btn btn-primary btn-full" onclick="applyLastSessionToLog()">Load ${last.exercises.length} exercise${last.exercises.length>1?'s':''}</button>
+    </div>`;
+  }
+  return '';
+}
+// "Save as template" offer — shown when exercises exist and differ from saved template
+function saveTemplateOfferHTML() {
+  const name = currentLog.name;
+  if (!name || !currentLog.exercises.length) return '';
+  const cur = currentLog.exercises.map(e => e.name);
+  const tpl = DB.templates[name] || [];
+  if (tpl.length === cur.length && tpl.every((n,i) => n === cur[i])) return '';
+  return `
+  <button class="btn btn-secondary btn-full btn-sm" style="margin-bottom:12px" onclick="saveCurrentAsTemplate()">
+    📋 ${tpl.length ? 'Update' : 'Save as'} ${name} template
+  </button>`;
+}
+
+// ── Templates & repeat-last-session ────────────────────
+// Most recent workout with this session name (exact match)
+function lastSessionNamed(name) {
+  if (!name) return null;
+  const sorted = [...DB.workouts].filter(w => w.name === name)
+    .sort((a,b) => b.date.localeCompare(a.date));
+  return sorted[0] || null;
+}
+// Last sets for an exercise across all workouts → placeholder values in display unit
+function lastSetsFor(exName) {
+  const sorted = [...DB.workouts].sort((a,b) => b.date.localeCompare(a.date));
+  for (const w of sorted) {
+    const ex = w.exercises.find(e => e.name === exName);
+    if (ex && ex.sets.length) {
+      const du = wUnit(w);
+      return ex.sets.map(s => ({
+        phW: s.weight ? Math.round(dispW(+s.weight, du) * 10) / 10 : '',
+        phR: s.reps || ''
+      }));
+    }
+  }
+  return null;
+}
+// Build a fresh exercise entry with placeholder sets from history
+function exerciseWithPlaceholders(name) {
+  const last = lastSetsFor(name);
+  const sets = last
+    ? last.map(p => ({ weight:'', reps:'', phW:p.phW, phR:p.phR }))
+    : [{ weight:'', reps:'' }];
+  return { name, sets };
+}
+function applyTemplateToLog() {
+  const tpl = DB.templates[currentLog.name];
+  if (!tpl || !tpl.length) return;
+  currentLog.exercises = tpl.map(exerciseWithPlaceholders);
+  renderLog();
+  showToast(`Loaded your ${currentLog.name} template 📋`);
+}
+function applyLastSessionToLog() {
+  const last = lastSessionNamed(currentLog.name);
+  if (!last) return;
+  currentLog.exercises = last.exercises.map(ex => {
+    const du = wUnit(last);
+    return { name: ex.name, sets: ex.sets.map(s => ({
+      weight:'', reps:'',
+      phW: s.weight ? Math.round(dispW(+s.weight, du) * 10) / 10 : '',
+      phR: s.reps || ''
+    })) };
+  });
+  renderLog();
+  showToast(`Loaded last ${currentLog.name} session ⟳`);
+}
+// Tap an empty input → accept the placeholder value, selected for easy bump
+function phFill(el, ei, si, field) {
+  if (!el.value && el.placeholder && el.placeholder !== '0') {
+    el.value = el.placeholder;
+    updateSet(ei, si, field, el.value);
+    refreshRM(ei, si);
+    el.select();
+  }
+}
+function saveCurrentAsTemplate() {
+  const name = currentLog.name;
+  const exNames = currentLog.exercises.map(e => e.name);
+  if (!name || !exNames.length) return;
+  const t = DB.templates;
+  t[name] = exNames;
+  DB.saveTemplates(t);
+  showToast(`Saved as your ${name} template 📋`);
+  renderLog();
+}
+function deleteTemplate(name) {
+  if (!confirm(`Delete the "${name}" template?`)) return;
+  const t = DB.templates;
+  delete t[name];
+  DB.saveTemplates(t);
+  openDataModal();
+  showToast('Template deleted');
 }
 
 // ── Workout duration stopwatch ─────────────────────────
@@ -1652,14 +1779,16 @@ function renderExercisesHTML() {
     <div class="set-row">
       <div class="set-num">${si+1}</div>
       <div class="set-cell">
-        <input type="number" inputmode="decimal" min="0" step="0.5" value="${set.weight||''}" placeholder="0"
+        <input type="number" inputmode="decimal" min="0" step="0.5" value="${set.weight||''}" placeholder="${set.phW||0}"
           id="w-${ei}-${si}"
+          onfocus="phFill(this,${ei},${si},'weight')"
           oninput="updateSet(${ei},${si},'weight',this.value);refreshRM(${ei},${si})">
         <button class="set-qbtn${set._bw?' bw-on':''}" onclick="setBW(${ei},${si})">BW</button>
       </div>
       <div class="set-cell">
-        <input type="number" inputmode="decimal" min="0" step="0.5" value="${set.reps||''}" placeholder="0"
+        <input type="number" inputmode="decimal" min="0" step="0.5" value="${set.reps||''}" placeholder="${set.phR||0}"
           id="r-${ei}-${si}" ${isFailed?'style="opacity:0.4;pointer-events:none"':''}
+          onfocus="phFill(this,${ei},${si},'reps')"
           oninput="updateSet(${ei},${si},'reps',this.value);refreshRM(${ei},${si})">
         <button class="set-qbtn${isFailed?' fail-on':''}" onclick="toggleFailed(${ei},${si})">Failed</button>
       </div>
@@ -1856,8 +1985,8 @@ function addExercise(name, muscle) {
         ?.scrollIntoView({behavior:'smooth',block:'start'});
     }, 120);
   } else {
-    // Log mode
-    currentLog.exercises.push({name, sets:[{weight:'',reps:''}]});
+    // Log mode — pre-fill placeholder sets from this exercise's last session
+    currentLog.exercises.push(exerciseWithPlaceholders(name));
     closeModal();
     refreshExSection();
     setTimeout(()=>{
@@ -1888,6 +2017,7 @@ function saveWorkout() {
     exercises: currentLog.exercises.map(ex=>({
       ...ex,
       sets: ex.sets.filter(s=>s.weight||s.reps)
+                   .map(({phW, phR, ...s}) => s)   // drop placeholder hints
     })).filter(ex=>ex.sets.length)
   };
 
@@ -3032,7 +3162,7 @@ function showToast(msg, ok=true) {
 // ═══════════════════════════════════════════════════════
 // DATA EXPORT / IMPORT
 // ═══════════════════════════════════════════════════════
-const DATA_KEYS = ['ll_workouts','ll_exercises','ll_unit','ll_profile','ll_goals','ll_migrated_v2','ll_migrated_v3','ll_exercise_muscles'];
+const DATA_KEYS = ['ll_workouts','ll_exercises','ll_unit','ll_profile','ll_goals','ll_migrated_v2','ll_migrated_v3','ll_exercise_muscles','ll_templates'];
 
 function notifSettingHTML() {
   if (!('Notification' in window)) {
@@ -3074,6 +3204,29 @@ function openDataModal() {
   </div>
 
   <div class="divider" style="margin:0 0 20px"></div>
+
+  <div style="font-size:13px;font-weight:600;margin-bottom:6px">Workout templates</div>
+  <div style="font-size:12px;color:var(--muted);margin-bottom:12px">
+    Saved menus per session type. Build one from the Log screen: pick a session type, add exercises, then tap "Save as template".
+  </div>
+  ${(() => {
+    const t = DB.templates, keys = Object.keys(t);
+    if (!keys.length) return `<div style="font-size:12px;color:var(--muted);margin-bottom:4px">No templates yet</div>`;
+    return keys.map(k => `
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;background:var(--card2);border:1px solid var(--border);border-radius:10px;margin-bottom:8px">
+      <div style="min-width:0">
+        <div style="font-size:13px;font-weight:700">${k}</div>
+        <div style="font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t[k].join(' · ')}</div>
+      </div>
+      <button class="del-btn" style="flex-shrink:0;width:36px;height:36px" onclick="deleteTemplate('${esc(k)}')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
+        </svg>
+      </button>
+    </div>`).join('');
+  })()}
+
+  <div class="divider" style="margin:20px 0"></div>
 
   <div style="font-size:13px;font-weight:600;margin-bottom:6px">Monthly goal reminder</div>
   <div style="font-size:12px;color:var(--muted);margin-bottom:12px">
