@@ -763,8 +763,8 @@ const I18N = {
     'How is Lift Log so far?':'Lift Logの使い心地は？',
     'What should we improve or add?':'改善してほしい点・欲しい機能',
     'Missing features, bugs, ideas…':'足りない機能、バグ、アイデアなど…',
-    'Email (optional, for replies)':'メール（任意・返信用）','Send':'送信',
-    'Add a rating or a comment first':'評価かコメントを入力してください',
+    'Email, for replies':'メール（返信用）','Send':'送信','optional':'任意',
+    'Please tap a star rating':'★評価をタップしてください',
     'Thank you! Feedback sent 🙏':'ありがとうございます！送信しました 🙏',
     'Enjoying Lift Log?':'Lift Logは気に入りましたか？',
     '30 seconds of feedback helps us decide what to build next.':'30秒のフィードバックが、次に作る機能の判断に役立ちます。',
@@ -3479,16 +3479,16 @@ function openFeedbackModal(src) {
   document.getElementById('modal-content').innerHTML = `
   <div style="font-size:18px;font-weight:700;margin-bottom:6px">${t('Send feedback')}</div>
   <div style="font-size:12px;color:var(--muted);margin-bottom:16px">${t('Help shape Lift Log — every reply is read.')}</div>
-  <div class="label">${t('How is Lift Log so far?')}</div>
+  <div class="label">${t('How is Lift Log so far?')} <span style="color:var(--accent);font-size:13px">*</span></div>
   <div id="fb-stars" style="display:flex;gap:6px;margin-bottom:14px">
-    ${[1,2,3,4,5].map(n=>`<button class="btn btn-secondary" style="flex:1;font-size:20px;padding:8px 0" id="fb-star-${n}" onclick="setFbRating(${n})">☆</button>`).join('')}
+    ${[1,2,3,4,5].map(n=>`<button class="btn btn-secondary" style="flex:1;font-size:20px;padding:0;display:flex;align-items:center;justify-content:center;line-height:1" id="fb-star-${n}" onclick="setFbRating(${n})">☆</button>`).join('')}
   </div>
   <div class="input-group">
-    <div class="label">${t('What should we improve or add?')}</div>
+    <div class="label">${t('What should we improve or add?')} <span style="text-transform:none;letter-spacing:0">(${t('optional')})</span></div>
     <textarea id="fb-text" rows="4" placeholder="${t('Missing features, bugs, ideas…')}"></textarea>
   </div>
   <div class="input-group">
-    <div class="label">${t('Email (optional, for replies)')}</div>
+    <div class="label">${t('Email, for replies')} <span style="text-transform:none;letter-spacing:0">(${t('optional')})</span></div>
     <input id="fb-email" type="email" placeholder="you@example.com">
   </div>
   <button class="btn btn-primary btn-full" onclick="submitFeedback('${src||'settings'}')">${t('Send')}</button>`;
@@ -3507,7 +3507,7 @@ function setFbRating(n) {
 async function submitFeedback(src) {
   const text  = (document.getElementById('fb-text').value || '').trim();
   const email = (document.getElementById('fb-email').value || '').trim();
-  if (!fbRating && !text) { showToast(t('Add a rating or a comment first'), false); return; }
+  if (!fbRating) { showToast(t('Please tap a star rating'), false); return; }
   const meta = JSON.stringify({
     src, lang: DB.lang, unit: DB.unit, workouts: DB.workouts.length,
     ts: new Date().toISOString(), ua: navigator.userAgent.slice(0, 80)
