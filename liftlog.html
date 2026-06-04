@@ -769,6 +769,9 @@ const I18N = {
     'Enjoying Lift Log?':'Lift Logは気に入りましたか？',
     '30 seconds of feedback helps us decide what to build next.':'30秒のフィードバックが、次に作る機能の判断に役立ちます。',
     'Later':'あとで',"Don't ask again":'今後表示しない',
+    'Nice work! Got 30 seconds?':'お見事です！30秒だけいいですか？',
+    'Help shape Lift Log':'Lift Logの改善にご協力を',
+    'Tell us what to improve — 30 seconds.':'改善点を教えてください。30秒で完了。',
     'Found a bug or missing a feature? Tell us — it shapes what gets built next.':'バグや欲しい機能があれば教えてください。今後の開発に反映されます。'
   }
 };
@@ -1287,6 +1290,9 @@ function renderDashboard() {
       </button>
     </div>`;
   }
+
+  // ── Feedback nudge card (until sent or dismissed) ──────
+  html += fbCardHTML();
 
   // ── CHART (TOP) ────────────────────────────────────────
   if (allWithData.length) {
@@ -3533,11 +3539,30 @@ async function submitFeedback(src) {
   showToast(t('Thank you! Feedback sent 🙏'));
 }
 
+// Shared bottom-sheet ask. Records the day so we never ask twice in one day.
+function showFeedbackSheet(title, src) {
+  localStorage.setItem('ll_fb_last_ask', todayStr());
+  document.getElementById('modal-content').innerHTML = `
+  <div style="text-align:center;padding:6px 0 2px">
+    <div style="font-size:34px;margin-bottom:8px">💬</div>
+    <div style="font-size:17px;font-weight:800;margin-bottom:6px">${title}</div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:16px">${t('30 seconds of feedback helps us decide what to build next.')}</div>
+    <button class="btn btn-primary btn-full" style="margin-bottom:8px" onclick="openFeedbackModal('${src}')">${t('Send feedback')}</button>
+    <button class="btn btn-secondary btn-full" style="margin-bottom:8px" onclick="closeModal()">${t('Later')}</button>
+    <button class="btn btn-ghost btn-full" onclick="localStorage.setItem('ll_fb_never','1');closeModal();renderDashboard?.()">${t("Don't ask again")}</button>
+  </div>`;
+  openModal();
+}
+
+function fbEligible() {
+  return localStorage.getItem('ll_fb_sent') !== '1' &&
+         localStorage.getItem('ll_fb_never') !== '1';
+}
+
 // One-time prompt after the 3rd saved workout (and again at the 10th
 // if they tapped "Later"). Never shown again once sent or opted out.
 function maybeAskFeedback() {
-  if (localStorage.getItem('ll_fb_sent') === '1')  return;
-  if (localStorage.getItem('ll_fb_never') === '1') return;
+  if (!fbEligible()) return;
   const n = DB.workouts.length;
   const stage = localStorage.getItem('ll_fb_stage') || '';
   let due = null;
@@ -3545,18 +3570,43 @@ function maybeAskFeedback() {
   else if (n >= 3 && !stage)     due = '3';
   if (!due) return;
   localStorage.setItem('ll_fb_stage', due);
-  setTimeout(() => {
-    document.getElementById('modal-content').innerHTML = `
-    <div style="text-align:center;padding:6px 0 2px">
-      <div style="font-size:34px;margin-bottom:8px">💬</div>
-      <div style="font-size:17px;font-weight:800;margin-bottom:6px">${t('Enjoying Lift Log?')}</div>
-      <div style="font-size:13px;color:var(--muted);margin-bottom:16px">${t('30 seconds of feedback helps us decide what to build next.')}</div>
-      <button class="btn btn-primary btn-full" style="margin-bottom:8px" onclick="openFeedbackModal('prompt')">${t('Send feedback')}</button>
-      <button class="btn btn-secondary btn-full" style="margin-bottom:8px" onclick="closeModal()">${t('Later')}</button>
-      <button class="btn btn-ghost btn-full" onclick="localStorage.setItem('ll_fb_never','1');closeModal()">${t("Don't ask again")}</button>
-    </div>`;
-    openModal();
-  }, 900);
+  setTimeout(() => showFeedbackSheet(t('Enjoying Lift Log?'), 'prompt'), 900);
+}
+
+// Celebration-moment ask: fires once ever, right after goal-reached
+// confetti, and never on the same day as another ask.
+function askFeedbackAfterCelebration() {
+  if (!fbEligible()) return;
+  if (localStorage.getItem('ll_fb_celebr') === '1') return;
+  if (localStorage.getItem('ll_fb_last_ask') === todayStr()) return;
+  localStorage.setItem('ll_fb_celebr', '1');
+  showFeedbackSheet(t('Nice work! Got 30 seconds?'), 'celebration');
+}
+
+// Persistent dashboard nudge card (until sent or dismissed)
+function fbCardVisible() {
+  return fbEligible() &&
+         DB.workouts.length >= 1 &&
+         localStorage.getItem('ll_fb_card_x') !== '1';
+}
+function dismissFbCard() {
+  localStorage.setItem('ll_fb_card_x', '1');
+  renderDashboard();
+}
+function fbCardHTML() {
+  if (!fbCardVisible()) return '';
+  return `
+  <div class="card" style="display:flex;align-items:center;gap:12px;padding:12px 14px;margin-bottom:14px">
+    <div style="font-size:22px;flex-shrink:0">💬</div>
+    <div style="flex:1;min-width:0">
+      <div style="font-size:13px;font-weight:700">${t('Help shape Lift Log')}</div>
+      <div style="font-size:11px;color:var(--muted)">${t('Tell us what to improve — 30 seconds.')}</div>
+    </div>
+    <button class="btn btn-primary btn-sm" style="flex-shrink:0" onclick="openFeedbackModal('dashboard')">${t('Send')}</button>
+    <button class="month-banner-x" onclick="dismissFbCard()" aria-label="Dismiss">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>`;
 }
 
 function openDataModal() {
@@ -3825,6 +3875,7 @@ function checkGoalCelebrations() {
   if (fresh) {
     fireConfetti();
     showToast('🎉 Goal reached! Set a new target to keep going');
+    setTimeout(askFeedbackAfterCelebration, 3200);
   }
 }
 
