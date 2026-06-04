@@ -756,7 +756,20 @@ const I18N = {
     'Traps':'僧帽筋','Lats':'広背筋','Teres Major':'大円筋','Rhomboids':'菱形筋',
     'Quads':'大腿四頭筋','Hamstrings':'ハムストリング','Glutes':'臀筋','Calves':'ふくらはぎ',
     'Biceps':'上腕二頭筋','Triceps':'上腕三頭筋','Forearms':'前腕',
-    'Rectus Abdominis':'腹直筋','Obliques':'腹斜筋','Lower Abs':'下腹部'
+    'Rectus Abdominis':'腹直筋','Obliques':'腹斜筋','Lower Abs':'下腹部',
+    // feedback
+    'Feedback':'フィードバック','Send feedback':'フィードバックを送る',
+    'Help shape Lift Log — every reply is read.':'Lift Logの改善にご協力ください。すべて読んでいます。',
+    'How is Lift Log so far?':'Lift Logの使い心地は？',
+    'What should we improve or add?':'改善してほしい点・欲しい機能',
+    'Missing features, bugs, ideas…':'足りない機能、バグ、アイデアなど…',
+    'Email (optional, for replies)':'メール（任意・返信用）','Send':'送信',
+    'Add a rating or a comment first':'評価かコメントを入力してください',
+    'Thank you! Feedback sent 🙏':'ありがとうございます！送信しました 🙏',
+    'Enjoying Lift Log?':'Lift Logは気に入りましたか？',
+    '30 seconds of feedback helps us decide what to build next.':'30秒のフィードバックが、次に作る機能の判断に役立ちます。',
+    'Later':'あとで',"Don't ask again":'今後表示しない',
+    'Found a bug or missing a feature? Tell us — it shapes what gets built next.':'バグや欲しい機能があれば教えてください。今後の開発に反映されます。'
   }
 };
 
@@ -2152,6 +2165,7 @@ function saveWorkout() {
   clearInterval(timerInterval); timerInterval = null;
   currentLog = newLog();
   showView('dashboard');
+  maybeAskFeedback();
 }
 
 function clearLog() {
@@ -3442,6 +3456,109 @@ async function enableMonthlyReminders() {
   else if (Notification.permission === 'denied') showToast('Notifications blocked in settings', false);
 }
 
+// ═══════════════════════════════════════════════════════
+// FEEDBACK — in-app modal → Google Form (Sheet) silent POST
+// Setup: create a Google Form with 4 fields (rating, feedback,
+// email, meta), then paste the form ID + entry IDs below.
+// Until configured, falls back to a pre-filled email.
+// ═══════════════════════════════════════════════════════
+const FB_FORM = {
+  formId: '1FAIpQLSfpJEvwBUEsM9IXqVP2SP-Hfv1ukMO3csgwJa0S16cgYuRxLA',
+  entries: {
+    rating: 'entry.749302461',
+    text:   'entry.218355395',
+    email:  'entry.2064370819',
+    meta:   'entry.1046233533'
+  }
+};
+const FB_EMAIL = 'tomodamnnn0406@gmail.com';
+let fbRating = 0;
+
+function openFeedbackModal(src) {
+  fbRating = 0;
+  document.getElementById('modal-content').innerHTML = `
+  <div style="font-size:18px;font-weight:700;margin-bottom:6px">${t('Send feedback')}</div>
+  <div style="font-size:12px;color:var(--muted);margin-bottom:16px">${t('Help shape Lift Log — every reply is read.')}</div>
+  <div class="label">${t('How is Lift Log so far?')}</div>
+  <div id="fb-stars" style="display:flex;gap:6px;margin-bottom:14px">
+    ${[1,2,3,4,5].map(n=>`<button class="btn btn-secondary" style="flex:1;font-size:20px;padding:8px 0" id="fb-star-${n}" onclick="setFbRating(${n})">☆</button>`).join('')}
+  </div>
+  <div class="input-group">
+    <div class="label">${t('What should we improve or add?')}</div>
+    <textarea id="fb-text" rows="4" placeholder="${t('Missing features, bugs, ideas…')}"></textarea>
+  </div>
+  <div class="input-group">
+    <div class="label">${t('Email (optional, for replies)')}</div>
+    <input id="fb-email" type="email" placeholder="you@example.com">
+  </div>
+  <button class="btn btn-primary btn-full" onclick="submitFeedback('${src||'settings'}')">${t('Send')}</button>`;
+  openModal();
+}
+
+function setFbRating(n) {
+  fbRating = n;
+  for (let i = 1; i <= 5; i++) {
+    const b = document.getElementById('fb-star-' + i);
+    b.textContent = i <= n ? '★' : '☆';
+    b.style.color = i <= n ? 'var(--accent)' : 'var(--muted)';
+  }
+}
+
+async function submitFeedback(src) {
+  const text  = (document.getElementById('fb-text').value || '').trim();
+  const email = (document.getElementById('fb-email').value || '').trim();
+  if (!fbRating && !text) { showToast(t('Add a rating or a comment first'), false); return; }
+  const meta = JSON.stringify({
+    src, lang: DB.lang, unit: DB.unit, workouts: DB.workouts.length,
+    ts: new Date().toISOString(), ua: navigator.userAgent.slice(0, 80)
+  });
+  if (FB_FORM.formId) {
+    const body = new URLSearchParams();
+    if (FB_FORM.entries.rating) body.append(FB_FORM.entries.rating, fbRating || '');
+    if (FB_FORM.entries.text)   body.append(FB_FORM.entries.text, text);
+    if (FB_FORM.entries.email)  body.append(FB_FORM.entries.email, email);
+    if (FB_FORM.entries.meta)   body.append(FB_FORM.entries.meta, meta);
+    try {
+      await fetch(`https://docs.google.com/forms/d/e/${FB_FORM.formId}/formResponse`, {
+        method: 'POST', mode: 'no-cors',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body.toString()
+      });
+    } catch (e) { /* opaque response expected with no-cors */ }
+  } else {
+    location.href = `mailto:${FB_EMAIL}?subject=${encodeURIComponent('Lift Log feedback (' + (fbRating || '-') + '/5)')}&body=${encodeURIComponent(text + '\n\n—\n' + meta)}`;
+  }
+  localStorage.setItem('ll_fb_sent', '1');
+  closeModal();
+  showToast(t('Thank you! Feedback sent 🙏'));
+}
+
+// One-time prompt after the 3rd saved workout (and again at the 10th
+// if they tapped "Later"). Never shown again once sent or opted out.
+function maybeAskFeedback() {
+  if (localStorage.getItem('ll_fb_sent') === '1')  return;
+  if (localStorage.getItem('ll_fb_never') === '1') return;
+  const n = DB.workouts.length;
+  const stage = localStorage.getItem('ll_fb_stage') || '';
+  let due = null;
+  if (n >= 10 && stage !== '10') due = '10';
+  else if (n >= 3 && !stage)     due = '3';
+  if (!due) return;
+  localStorage.setItem('ll_fb_stage', due);
+  setTimeout(() => {
+    document.getElementById('modal-content').innerHTML = `
+    <div style="text-align:center;padding:6px 0 2px">
+      <div style="font-size:34px;margin-bottom:8px">💬</div>
+      <div style="font-size:17px;font-weight:800;margin-bottom:6px">${t('Enjoying Lift Log?')}</div>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:16px">${t('30 seconds of feedback helps us decide what to build next.')}</div>
+      <button class="btn btn-primary btn-full" style="margin-bottom:8px" onclick="openFeedbackModal('prompt')">${t('Send feedback')}</button>
+      <button class="btn btn-secondary btn-full" style="margin-bottom:8px" onclick="closeModal()">${t('Later')}</button>
+      <button class="btn btn-ghost btn-full" onclick="localStorage.setItem('ll_fb_never','1');closeModal()">${t("Don't ask again")}</button>
+    </div>`;
+    openModal();
+  }, 900);
+}
+
 function openDataModal() {
   const workoutCount = DB.workouts.length;
   document.getElementById('modal-content').innerHTML = `
@@ -3459,6 +3576,14 @@ function openDataModal() {
   <div style="font-size:13px;font-weight:600;margin-bottom:10px">Help</div>
   <button class="btn btn-secondary btn-full" style="margin-bottom:8px" onclick="openHelpModal()">▶ Take the guided tour</button>
   ${gsDismissed() ? `<button class="btn btn-secondary btn-full" onclick="localStorage.removeItem('ll_gs_dismissed');closeModal();showView('dashboard');showToast('Checklist restored')">🚀 Show getting-started checklist</button>` : ''}
+
+  <div class="divider" style="margin:20px 0"></div>
+
+  <div style="font-size:13px;font-weight:600;margin-bottom:6px">${t('Feedback')}</div>
+  <div style="font-size:12px;color:var(--muted);margin-bottom:12px">
+    ${t('Found a bug or missing a feature? Tell us — it shapes what gets built next.')}
+  </div>
+  <button class="btn btn-accent-outline btn-full" onclick="openFeedbackModal('settings')">💬 ${t('Send feedback')}</button>
 
   <div class="divider" style="margin:20px 0"></div>
 
