@@ -2848,23 +2848,25 @@ function templatesSectionHTML() {
   </div>`;
 }
 
-// Template builder modal — pick a session type, tick exercises
-let tplBuilder = { name:'', picked:[] };
+// Template builder modal — pick a session type, search & tick exercises
+let tplBuilder = { name:'', picked:[], query:'' };
 function openTemplateBuilder(name) {
   tplBuilder = {
     name: name || '',
-    picked: name && DB.templates[name] ? [...DB.templates[name]] : []
+    picked: name && DB.templates[name] ? [...DB.templates[name]] : [],
+    query: ''
   };
   renderTemplateBuilder();
+  setTimeout(()=>document.getElementById('tpl-search')?.focus(), 150);
 }
 function renderTemplateBuilder() {
   const isEdit  = !!(tplBuilder.name && DB.templates[tplBuilder.name]);
-  const allEx   = allExerciseNames();
   const presets = SESSION_PRESETS.map(p =>
     `<option value="${p}" ${tplBuilder.name===p?'selected':''}>${p}</option>`).join('');
   const showCustom = tplBuilder.name && !SESSION_PRESETS.includes(tplBuilder.name);
 
   document.getElementById('modal-content').innerHTML = `
+  <div style="min-height:80vh;display:flex;flex-direction:column">
   <div style="font-size:18px;font-weight:700;margin-bottom:4px">${isEdit?'Edit':'Create'} Template</div>
   <div style="font-size:12px;color:var(--muted);margin-bottom:14px">Pick a session type, then tick the exercises in your menu.</div>
 
@@ -2881,22 +2883,49 @@ function renderTemplateBuilder() {
   ${showCustom?`<input type="text" placeholder="Type session name…" value="${tplBuilder.name}"
     oninput="tplBuilder.name=this.value" style="margin:-4px 0 12px" autocapitalize="words">`:''}
 
-  <div class="label" style="margin-bottom:6px">Exercises (${tplBuilder.picked.length} selected)</div>
-  <div style="margin-bottom:6px">
+  <div class="label" style="margin-bottom:6px">Exercises (<span id="tpl-count">${tplBuilder.picked.length}</span> selected)</div>
+  <div id="tpl-picked" style="margin-bottom:8px">
     ${tplBuilder.picked.map(n=>`<span class="ex-chip" style="background:var(--accent);color:#fff;border-color:var(--accent)" onclick="tplToggle('${esc(n)}')">✓ ${n}</span>`).join('')}
   </div>
-  <div style="max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:12px">
-    ${allEx.filter(n=>!tplBuilder.picked.includes(n)).map(n=>`<span class="ex-chip" onclick="tplToggle('${esc(n)}')">${n}</span>`).join('') || '<div style="font-size:12px;color:var(--muted)">All exercises selected</div>'}
-  </div>
 
-  <button class="btn btn-primary btn-full" onclick="saveTemplateFromBuilder()">${isEdit?'Update':'Save'} Template</button>
-  ${isEdit?`<button class="btn btn-danger btn-full" style="margin-top:8px" onclick="deleteTemplateFromBuilder('${esc(tplBuilder.name)}')">Delete Template</button>`:''}`;
+  <input type="text" id="tpl-search" placeholder="Search exercises…" value="${tplBuilder.query.replace(/"/g,'&quot;')}"
+    oninput="tplBuilder.query=this.value;tplRefreshList()"
+    autocomplete="off" autocapitalize="words" autocorrect="off" spellcheck="false"
+    style="margin-bottom:10px">
+
+  <div id="tpl-list" style="flex:1;margin-bottom:14px">${tplListHTML()}</div>
+
+  <div style="margin-top:auto">
+    <button class="btn btn-primary btn-full" onclick="saveTemplateFromBuilder()">${isEdit?'Update':'Save'} Template</button>
+    ${isEdit?`<button class="btn btn-danger btn-full" style="margin-top:8px" onclick="deleteTemplateFromBuilder('${esc(tplBuilder.name)}')">Delete Template</button>`:''}
+  </div>
+  </div>`;
   openModal();
+}
+function tplListHTML() {
+  const q = (tplBuilder.query || '').trim().toLowerCase();
+  const avail = allExerciseNames().filter(n => !tplBuilder.picked.includes(n))
+    .filter(n => !q || n.toLowerCase().includes(q));
+  if (!avail.length) {
+    return q
+      ? `<div style="font-size:12px;color:var(--muted);padding:8px 2px">No match for "${tplBuilder.query}". Add it from the Exercises tab first.</div>`
+      : `<div style="font-size:12px;color:var(--muted);padding:8px 2px">All exercises selected</div>`;
+  }
+  return avail.map(n=>`<span class="ex-chip" onclick="tplToggle('${esc(n)}')">${n}</span>`).join('');
+}
+function tplRefreshList() {
+  const el = document.getElementById('tpl-list');
+  if (el) el.innerHTML = tplListHTML();
 }
 function tplToggle(n) {
   const i = tplBuilder.picked.indexOf(n);
   if (i >= 0) tplBuilder.picked.splice(i, 1); else tplBuilder.picked.push(n);
-  renderTemplateBuilder();
+  // Update picked chips, count, and list in place (keeps search focus & keyboard)
+  const picked = document.getElementById('tpl-picked');
+  if (picked) picked.innerHTML = tplBuilder.picked.map(x=>`<span class="ex-chip" style="background:var(--accent);color:#fff;border-color:var(--accent)" onclick="tplToggle('${esc(x)}')">✓ ${x}</span>`).join('');
+  const count = document.getElementById('tpl-count');
+  if (count) count.textContent = tplBuilder.picked.length;
+  tplRefreshList();
 }
 function saveTemplateFromBuilder() {
   const name = (tplBuilder.name || '').trim();
