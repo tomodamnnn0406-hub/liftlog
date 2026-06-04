@@ -3622,7 +3622,6 @@ const LOG_TOUR = [
   { el:'tour-session',  emoji:'🗓️', text:'Pick a <strong>session type</strong> first — Push, Pull, Legs… If you saved a template, your whole menu loads in one tap.' },
   { el:'tour-duration', emoji:'⏱️', text:'Tap <strong>▶ Start</strong> when you begin training. Your workout time is saved automatically.' },
   { el:'tour-addex',    emoji:'➕', text:'Add your exercises here, then type the <strong>weight × reps</strong> for each set. Last time\'s numbers appear faintly — tap to accept.' },
-  { el:'tour-nav',      emoji:'🧭', text:'<strong>Exercises</strong> shows your best lifts & charts. <strong>Goals</strong> tracks targets. <strong>History</strong> keeps every session.' },
   { el:'tour-finish',   emoji:'🏁', text:'Done training? <strong>Finish Workout</strong> saves everything and updates your records. That\'s it — go lift! 💪' }
 ];
 let tourStep = -1;
@@ -3633,7 +3632,7 @@ function startLogTour() {
   setTimeout(showTourStep, 200);
 }
 function tourTargetEl(id) {
-  return id === 'tour-nav' ? document.getElementById('nav') : document.getElementById(id);
+  return document.getElementById(id);
 }
 function showTourStep() {
   clearTourHighlight();
