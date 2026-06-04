@@ -1575,12 +1575,11 @@ function renderLog() {
     </div>
   </div>
 
-  ${!currentLog.exercises.length && !currentLog.name ? `
-  <div style="text-align:center;padding:14px 16px;margin-bottom:12px;border:1px dashed var(--border);border-radius:14px">
-    <div style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:10px">
-      <strong style="color:var(--text)">New here?</strong> Let me show you around.
-    </div>
-    <button class="btn btn-accent-outline btn-sm" onclick="startLogTour()">▶ Take a 20-second tour</button>
+  ${!currentLog.exercises.length && !currentLog.name && !DB.workouts.length ? `
+  <div style="text-align:center;margin-bottom:12px">
+    <button onclick="startLogTour()" style="background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;padding:4px 8px">
+      New here? <span style="color:var(--accent);font-weight:600">▶ Take a quick tour</span>
+    </button>
   </div>` : ''}
 
   <div id="exercises-section">${renderExercisesHTML()}</div>
@@ -3677,12 +3676,15 @@ function showTourStep() {
       </div>
     </div>`;
 
-  // Place the tip opposite the highlighted element (top vs bottom half)
+  // Keep the tip in the lower half: above the nav normally, or floated just
+  // above the highlighted element when that element sits near the bottom.
   setTimeout(() => {
     const r = el.getBoundingClientRect();
     const mid = window.innerHeight / 2;
-    tip.style.top = r.top > mid ? '16px' : '';
-    tip.style.bottom = r.top > mid ? '' : 'calc(76px + env(safe-area-inset-bottom))';
+    tip.style.top = '';
+    tip.style.bottom = r.top > mid
+      ? (window.innerHeight - r.top + 12) + 'px'
+      : 'calc(76px + env(safe-area-inset-bottom))';
   }, 60);
 }
 function nextTourStep() { tourStep++; showTourStep(); }
