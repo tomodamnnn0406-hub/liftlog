@@ -210,6 +210,17 @@ input:focus,textarea:focus,select:focus{border-color:var(--accent)}
   100%{transform:translateY(105vh) rotate(720deg);opacity:.9}
 }
 
+/* ── Spotlight tour (coach marks) ── */
+#tour-block{position:fixed;inset:0;z-index:300}
+.tour-spot{z-index:301!important;border-radius:12px;
+  box-shadow:0 0 0 3px var(--accent),0 0 0 9999px rgba(0,0,0,.78)!important;
+  pointer-events:none}
+#tour-tip{position:fixed;left:50%;transform:translateX(-50%);
+  width:calc(100% - 32px);max-width:440px;z-index:302;
+  background:var(--card);border:1px solid var(--accent);border-radius:14px;
+  padding:14px 16px;box-shadow:0 8px 30px rgba(0,0,0,.5);
+  animation:fadeIn .2s ease}
+
 /* ── Getting-started checklist ── */
 .gs-card{background:var(--card);border:1px solid var(--green);border-radius:14px;
   padding:14px 16px;margin-bottom:14px}
@@ -1522,7 +1533,7 @@ function renderLog() {
     <div style="font-size:22px;font-weight:800">Log Workout</div>
   </div>
 
-  <div class="card">
+  <div class="card" id="tour-session">
     <div class="input-group">
       <div class="label">Date</div>
       <input type="date" id="log-date" value="${currentLog.date}" onchange="currentLog.date=this.value">
@@ -1548,7 +1559,7 @@ function renderLog() {
 
   ${templateSuggestionHTML()}
 
-  <div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+  <div class="card" id="tour-duration" style="display:flex;align-items:center;justify-content:space-between;gap:12px">
     <div>
       <div class="label" style="margin-bottom:2px">Duration</div>
       <div id="dur-display" style="font-size:26px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-.5px">${fmtDuration(currentLog.durationSec||0)}</div>
@@ -1566,15 +1577,15 @@ function renderLog() {
 
   ${!currentLog.exercises.length && !currentLog.name ? `
   <div style="text-align:center;padding:14px 16px;margin-bottom:12px;border:1px dashed var(--border);border-radius:14px">
-    <div style="font-size:13px;color:var(--muted);line-height:1.6">
-      <strong style="color:var(--text)">New here?</strong> Pick a session type above,<br>
-      then add exercises and type your weight × reps.
+    <div style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:10px">
+      <strong style="color:var(--text)">New here?</strong> Let me show you around.
     </div>
+    <button class="btn btn-accent-outline btn-sm" onclick="startLogTour()">▶ Take a 20-second tour</button>
   </div>` : ''}
 
   <div id="exercises-section">${renderExercisesHTML()}</div>
 
-  <button class="btn btn-secondary btn-full" style="margin-bottom:12px" onclick="openAddExModal()">
+  <button class="btn btn-secondary btn-full" id="tour-addex" style="margin-bottom:12px" onclick="openAddExModal()">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
       <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
     </svg>
@@ -1592,7 +1603,7 @@ function renderLog() {
 
   <div style="height:64px"></div>
 
-  <div class="log-action-bar">
+  <div class="log-action-bar" id="tour-finish">
     <button class="btn btn-secondary" style="flex:1" onclick="clearLog()">Clear</button>
     <button class="btn btn-primary" style="flex:2" onclick="saveWorkout()">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
@@ -3244,7 +3255,7 @@ function openDataModal() {
   <div class="divider" style="margin:0 0 20px"></div>
 
   <div style="font-size:13px;font-weight:600;margin-bottom:10px">Help</div>
-  <button class="btn btn-secondary btn-full" style="margin-bottom:8px" onclick="openHelpModal()">❓ How to use Lift Log</button>
+  <button class="btn btn-secondary btn-full" style="margin-bottom:8px" onclick="openHelpModal()">▶ Take the guided tour</button>
   ${gsDismissed() ? `<button class="btn btn-secondary btn-full" onclick="localStorage.removeItem('ll_gs_dismissed');closeModal();showView('dashboard');showToast('Checklist restored')">🚀 Show getting-started checklist</button>` : ''}
 
   <div class="divider" style="margin:20px 0"></div>
@@ -3607,57 +3618,91 @@ function gettingStartedHTML() {
   </div>`;
 }
 
-// On-demand "how to use" guide (the ? button in the header)
+// ── Spotlight tour (coach marks on the real Log screen) ──
+const LOG_TOUR = [
+  { el:'tour-session',  emoji:'🗓️', text:'Pick a <strong>session type</strong> first — Push, Pull, Legs… If you saved a template, your whole menu loads in one tap.' },
+  { el:'tour-duration', emoji:'⏱️', text:'Tap <strong>▶ Start</strong> when you begin training. Your workout time is saved automatically.' },
+  { el:'tour-addex',    emoji:'➕', text:'Add your exercises here, then type the <strong>weight × reps</strong> for each set. Last time\'s numbers appear faintly — tap to accept.' },
+  { el:'tour-nav',      emoji:'🧭', text:'<strong>Exercises</strong> shows your best lifts & charts. <strong>Goals</strong> tracks targets. <strong>History</strong> keeps every session.' },
+  { el:'tour-finish',   emoji:'🏁', text:'Done training? <strong>Finish Workout</strong> saves everything and updates your records. That\'s it — go lift! 💪' }
+];
+let tourStep = -1;
+
+function startLogTour() {
+  if (currentView !== 'log') showView('log');
+  tourStep = 0;
+  setTimeout(showTourStep, 200);
+}
+function tourTargetEl(id) {
+  return id === 'tour-nav' ? document.getElementById('nav') : document.getElementById(id);
+}
+function showTourStep() {
+  clearTourHighlight();
+  if (tourStep < 0 || tourStep >= LOG_TOUR.length) { endLogTour(); return; }
+  const step = LOG_TOUR[tourStep];
+  const el = tourTargetEl(step.el);
+  if (!el) { tourStep++; showTourStep(); return; }
+
+  // Blocker swallows stray taps (advance instead of pressing buttons mid-tour)
+  let block = document.getElementById('tour-block');
+  if (!block) {
+    block = document.createElement('div');
+    block.id = 'tour-block';
+    block.onclick = (e) => { e.stopPropagation(); nextTourStep(); };
+    document.body.appendChild(block);
+  }
+
+  // Static elements need positioning for z-index to lift them above the dim
+  if (getComputedStyle(el).position === 'static') {
+    el.dataset.tourPos = '1';
+    el.style.position = 'relative';
+  }
+  el.classList.add('tour-spot');
+  el.scrollIntoView({ behavior:'smooth', block:'center' });
+
+  let tip = document.getElementById('tour-tip');
+  if (!tip) { tip = document.createElement('div'); tip.id = 'tour-tip'; document.body.appendChild(tip); }
+  const last = tourStep === LOG_TOUR.length - 1;
+  tip.innerHTML = `
+    <div style="display:flex;gap:10px;align-items:flex-start">
+      <div style="font-size:24px;flex-shrink:0">${step.emoji}</div>
+      <div style="font-size:13.5px;line-height:1.55;color:var(--text)">${step.text}</div>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px">
+      <div style="display:flex;gap:5px">${LOG_TOUR.map((_,i)=>
+        `<div style="width:6px;height:6px;border-radius:50%;background:${i===tourStep?'var(--accent)':'var(--border)'}"></div>`).join('')}</div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-ghost btn-sm" onclick="endLogTour()" style="font-size:12px">Skip</button>
+        <button class="btn btn-primary btn-sm" onclick="nextTourStep()" style="min-width:84px;justify-content:center">${last?'Done ✓':'Next →'}</button>
+      </div>
+    </div>`;
+
+  // Place the tip opposite the highlighted element (top vs bottom half)
+  setTimeout(() => {
+    const r = el.getBoundingClientRect();
+    const mid = window.innerHeight / 2;
+    tip.style.top = r.top > mid ? '16px' : '';
+    tip.style.bottom = r.top > mid ? '' : 'calc(76px + env(safe-area-inset-bottom))';
+  }, 60);
+}
+function nextTourStep() { tourStep++; showTourStep(); }
+function clearTourHighlight() {
+  document.querySelectorAll('.tour-spot').forEach(e => {
+    e.classList.remove('tour-spot');
+    if (e.dataset.tourPos) { e.style.position = ''; delete e.dataset.tourPos; }
+  });
+}
+function endLogTour() {
+  tourStep = -1;
+  clearTourHighlight();
+  document.getElementById('tour-tip')?.remove();
+  document.getElementById('tour-block')?.remove();
+}
+
+// "?" header button → start the tour on the Log screen
 function openHelpModal() {
-  document.getElementById('modal-content').innerHTML = `
-  <div style="font-size:18px;font-weight:700;margin-bottom:14px">How to use Lift Log</div>
-
-  <div class="card-sm">
-    <div style="font-size:13px;font-weight:700;color:var(--accent);margin-bottom:4px">➕ Log a workout</div>
-    <div style="font-size:12.5px;color:var(--muted);line-height:1.6">
-      Tap <strong style="color:var(--text)">Log</strong> (center button) → pick a session type like Push or Pull →
-      add exercises → type the weight and reps for each set. Tap
-      <strong style="color:var(--text)">▶ Start</strong> to time your session, and
-      <strong style="color:var(--text)">Finish Workout</strong> when you're done.
-    </div>
-  </div>
-
-  <div class="card-sm">
-    <div style="font-size:13px;font-weight:700;color:var(--accent);margin-bottom:4px">📋 Templates save you time</div>
-    <div style="font-size:12.5px;color:var(--muted);line-height:1.6">
-      After building a workout, tap <strong style="color:var(--text)">Save as template</strong>.
-      Next time you pick that session type, your whole menu loads in one tap —
-      with last time's weights shown faintly in each set. Tap a field to accept the number, then bump it up.
-    </div>
-  </div>
-
-  <div class="card-sm">
-    <div style="font-size:13px;font-weight:700;color:var(--accent);margin-bottom:4px">🏋️ Exercises & PRs</div>
-    <div style="font-size:12.5px;color:var(--muted);line-height:1.6">
-      The <strong style="color:var(--text)">Exercises</strong> tab shows your best lift for every exercise,
-      grouped by body part. Tap an exercise to see its progress chart over time.
-    </div>
-  </div>
-
-  <div class="card-sm">
-    <div style="font-size:13px;font-weight:700;color:var(--accent);margin-bottom:4px">🎯 Goals keep you motivated</div>
-    <div style="font-size:12.5px;color:var(--muted);line-height:1.6">
-      Set a target like 100kg × 1 rep with an optional deadline. The Dashboard tracks how close you are
-      after every session — and celebrates when you get there. 🎉
-    </div>
-  </div>
-
-  <div class="card-sm">
-    <div style="font-size:13px;font-weight:700;color:var(--accent);margin-bottom:4px">📊 Dashboard & History</div>
-    <div style="font-size:12.5px;color:var(--muted);line-height:1.6">
-      The chart on the Dashboard shows your strength over time (1 / 5 / 8-rep).
-      <strong style="color:var(--text)">History</strong> keeps every workout on a calendar —
-      tap a day to view or edit it. Swipe down to close any popup like this one.
-    </div>
-  </div>
-
-  <button class="btn btn-primary btn-full" style="margin-top:6px" onclick="closeModal();showView('log')">Start your first workout →</button>`;
-  openModal();
+  closeModal();
+  startLogTour();
 }
 
 // ═══════════════════════════════════════════════════════
