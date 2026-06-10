@@ -438,6 +438,20 @@ input:focus,textarea:focus,select:focus{border-color:var(--accent)}
 ::-webkit-scrollbar{width:4px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+
+/* ── Keep it portrait: on a phone held sideways, cover the app and ask to rotate
+   (iOS ignores manifest orientation, so this is the reliable fallback) ── */
+#rotate-warn{display:none}
+@media (orientation: landscape) and (max-height: 500px){
+  #rotate-warn{
+    display:flex;position:fixed;inset:0;z-index:9999;background:var(--bg);
+    flex-direction:column;align-items:center;justify-content:center;
+    text-align:center;padding:30px;gap:12px;
+  }
+  #rotate-warn .rw-emoji{font-size:46px}
+  #rotate-warn .rw-title{font-size:19px;font-weight:800}
+  #rotate-warn .rw-sub{font-size:13px;color:var(--muted);max-width:300px;line-height:1.5}
+}
 </style>
 </head>
 <body>
@@ -521,6 +535,12 @@ input:focus,textarea:focus,select:focus{border-color:var(--accent)}
 </div>
 
 <div id="toast"></div>
+
+<div id="rotate-warn">
+  <div class="rw-emoji">📲</div>
+  <div class="rw-title">Please rotate to portrait</div>
+  <div class="rw-sub">Lift Log is designed to be used upright. Turn your phone vertical to continue.</div>
+</div>
 
 <div id="confetti-layer"></div>
 
@@ -898,6 +918,30 @@ function getActiveLog() { return editingWorkout || currentLog; }
 function newLog() {
   return { id: uid(), date: todayStr(), name: '', notes: '', exercises: [], durationSec: 0 };
 }
+
+// ── In-progress workout draft ──────────────────────────
+// The active workout is held in memory; if the app is backgrounded/closed mid-
+// session (iOS does this aggressively) it would be lost. So we persist a draft
+// on every change and restore it on launch.
+function logHasContent(l) {
+  return !!(l && ((l.exercises && l.exercises.length) ||
+    (l.name && l.name.trim()) || (l.notes && l.notes.trim()) || l.durationSec));
+}
+function saveDraft() {
+  if (editingWorkout) return;   // only the new-log flow is a draft
+  try {
+    const snap = { ...currentLog, durationSec: currentDurationSec() };
+    if (logHasContent(snap)) localStorage.setItem('ll_draft', JSON.stringify(snap));
+    else localStorage.removeItem('ll_draft');
+  } catch (e) {}
+}
+function loadDraft() {
+  try {
+    const d = JSON.parse(localStorage.getItem('ll_draft') || 'null');
+    return logHasContent(d) ? d : null;
+  } catch (e) { return null; }
+}
+function clearDraft() { try { localStorage.removeItem('ll_draft'); } catch (e) {} }
 // Format seconds → "1h 05m 12s" / "12:05" style compact display
 function fmtDuration(sec) {
   sec = Math.max(0, Math.round(sec));
@@ -1654,7 +1698,7 @@ function renderLog() {
   <div class="card" id="tour-session">
     <div class="input-group">
       <div class="label">Date</div>
-      <input type="date" id="log-date" value="${currentLog.date}" onchange="currentLog.date=this.value">
+      <input type="date" id="log-date" value="${currentLog.date}" onchange="currentLog.date=this.value;saveDraft()">
     </div>
     <div class="input-group" style="margin-bottom:0">
       <div class="label">Session Type</div>
@@ -1669,7 +1713,7 @@ function renderLog() {
         placeholder="Type session name…"
         value="${showCustom ? currentLog.name : ''}"
         style="${showCustom?'':'display:none'}"
-        oninput="currentLog.name=this.value"
+        oninput="currentLog.name=this.value;saveDraft()"
         onchange="if(!currentLog.exercises.length)renderLog()"
         autocapitalize="words" autocorrect="off">
     </div>
@@ -1714,7 +1758,7 @@ function renderLog() {
   <div class="card">
     <div class="input-group" style="margin-bottom:0">
       <div class="label">Notes (optional)</div>
-      <textarea id="log-notes" rows="2" placeholder="How did it feel?" oninput="currentLog.notes=this.value">${currentLog.notes}</textarea>
+      <textarea id="log-notes" rows="2" placeholder="How did it feel?" oninput="currentLog.notes=this.value;saveDraft()">${currentLog.notes}</textarea>
     </div>
   </div>
 
@@ -1748,6 +1792,7 @@ function handleSessionSelect(val) {
   } else {
     customInput.style.display = 'none';
     currentLog.name = val;
+    saveDraft();
     // Re-render so the template / repeat-last suggestion appears
     if (!currentLog.exercises.length) renderLog();
   }
@@ -1968,17 +2013,19 @@ function renderExercisesHTML() {
     <button class="btn btn-secondary btn-sm" style="margin-top:8px" onclick="addSet(${ei})">+ Add Set</button>
     <input type="text" class="ex-note-input" placeholder="Note for this exercise… (grip, tempo, how it felt)"
       value="${(ex.note||'').replace(/"/g,'&quot;')}"
-      oninput="currentLog.exercises[${ei}].note=this.value"
+      oninput="currentLog.exercises[${ei}].note=this.value;saveDraft()"
       style="margin-top:10px;font-size:13px;padding:9px 12px;min-height:38px">
   </div>`).join('');
 }
 
 function refreshExSection() {
   document.getElementById('exercises-section').innerHTML = renderExercisesHTML();
+  saveDraft();
 }
 
 function updateSet(ei, si, field, val) {
   currentLog.exercises[ei].sets[si][field] = val;
+  saveDraft();
 }
 function refreshRM(ei, si) {
   const set = currentLog.exercises[ei].sets[si];
@@ -2191,6 +2238,7 @@ function saveWorkout() {
   timerRunning = false; timerStartTs = null;
   clearInterval(timerInterval); timerInterval = null;
   currentLog = newLog();
+  clearDraft();
   showView('dashboard');
   maybeAskFeedback();
 }
@@ -2201,6 +2249,7 @@ function clearLog() {
   timerRunning = false; timerStartTs = null;
   clearInterval(timerInterval); timerInterval = null;
   currentLog = newLog();
+  clearDraft();
   renderLog();
 }
 
@@ -4452,10 +4501,26 @@ function openHelpModal() {
 
 runMigrations();
 syncUnitToggle();
+
+// Restore an unsaved in-progress workout if the app was closed mid-session.
+const __draft = loadDraft();
+if (__draft) { currentLog = __draft; }
+
 initEnhancements();
 showView('dashboard');
+if (__draft) setTimeout(() => showToast('Picked up your unsaved workout 💪'), 600);
 setupMonthlyNotification(false);   // re-arm push (won't prompt; just schedules if already granted)
 gdBootstrap();                     // warm Google Drive token + sync if connected
+
+// Persist the in-progress workout whenever the app is hidden or closed.
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveDraft(); });
+window.addEventListener('pagehide', saveDraft);
+
+// Keep the screen upright where the platform allows it (Android/installed PWA).
+// iOS Safari ignores this — the CSS portrait notice covers that case.
+if (screen.orientation && screen.orientation.lock) {
+  screen.orientation.lock('portrait').catch(() => {});
+}
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
