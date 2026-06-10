@@ -3873,12 +3873,15 @@ function restoreFromString(raw, askConfirm) {
 // ═══════════════════════════════════════════════════════
 const GD_SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
 const GD_FILE  = 'liftlog-backup.json';
+// The app's built-in Google Client ID — users just tap Connect, no pasting.
+// (An OAuth Web client ID is not a secret; it's meant to ship in client code.)
+const GD_CLIENT_ID = '78446155323-isaqvdoe79jo8j0gdfff8jl7vo8v40b6.apps.googleusercontent.com';
 let gdTokenClient = null;
 let gdToken       = null;   // { access_token, expiry(ms) }
 let gdSyncTimer   = null;
 let gdSyncing     = false;
 
-function gdClientId()  { return (localStorage.getItem('ll_gd_client_id') || '').trim(); }
+function gdClientId()  { return (localStorage.getItem('ll_gd_client_id') || GD_CLIENT_ID || '').trim(); }
 function gdConnected() { return localStorage.getItem('ll_gd_connected') === '1' && !!gdClientId(); }
 function gdReady()     { return !!(window.google && window.google.accounts && google.accounts.oauth2); }
 
@@ -4049,12 +4052,9 @@ function gdSettingsHTML() {
     <button class="btn btn-danger btn-full" onclick="gdDisconnect()">Disconnect Google Drive</button>`;
   }
   return `
-  <div style="font-size:12px;color:var(--muted);margin-bottom:10px">
-    Sign in once and Lift Log saves a copy to your Google Drive automatically — no more manual backups.
-    <a href="#" onclick="openGDHelp();return false" style="color:var(--accent);font-weight:600">Setup guide →</a>
+  <div style="font-size:12px;color:var(--muted);margin-bottom:12px">
+    Sign in once with your Google account and Lift Log saves a copy to your own Google Drive automatically — no more manual backups. Your data goes only to your Drive.
   </div>
-  <input type="text" id="gd-client-id" placeholder="Paste your Google Client ID…" value="${esc(gdClientId())}"
-    autocapitalize="off" autocorrect="off" spellcheck="false" style="font-size:12px;margin-bottom:10px">
   <button class="btn btn-primary btn-full" onclick="gdConnect()">☁️ Connect Google Drive</button>`;
 }
 
