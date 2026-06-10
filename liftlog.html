@@ -429,6 +429,26 @@ input:focus,textarea:focus,select:focus{border-color:var(--accent)}
 }
 #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 
+/* ── Rest timer bar ── */
+#rest-bar{
+  position:fixed;left:50%;transform:translateX(-50%);
+  top:calc(env(safe-area-inset-top) + 64px);
+  width:calc(100% - 24px);max-width:456px;z-index:130;display:none;
+  background:var(--card);border:1px solid var(--accent);border-radius:14px;
+  padding:10px 14px;box-shadow:0 6px 24px rgba(0,0,0,.5);animation:fadeIn .2s ease;
+}
+#rest-bar.show{display:block}
+#rest-bar .rb-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
+#rest-bar .rb-label{font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)}
+#rest-bar .rb-time{font-size:24px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-.5px;color:var(--accent);line-height:1}
+#rest-bar .rb-btn{background:var(--card2);border:1px solid var(--border);color:var(--text);
+  border-radius:8px;padding:7px 11px;font-size:13px;font-weight:700;cursor:pointer;
+  -webkit-tap-highlight-color:transparent;touch-action:manipulation;min-height:36px}
+#rest-bar .rb-btn:active{opacity:.7}
+#rest-bar .rb-skip{color:var(--red);border-color:var(--red)}
+#rest-bar .rb-track{height:5px;background:var(--card2);border-radius:3px;margin-top:9px;overflow:hidden}
+#rest-bar .rb-fill{height:100%;background:linear-gradient(90deg,var(--accent),#fbbf24);border-radius:3px;transition:width .25s linear}
+
 /* ── Misc ── */
 .divider{height:1px;background:var(--border);margin:12px 0}
 .section-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
@@ -542,6 +562,8 @@ input:focus,textarea:focus,select:focus{border-color:var(--accent)}
   <div class="rw-title">Please rotate to portrait</div>
   <div class="rw-sub">Lift Log is designed to be used upright. Turn your phone vertical to continue.</div>
 </div>
+
+<div id="rest-bar"></div>
 
 <div id="confetti-layer"></div>
 
@@ -1958,6 +1980,115 @@ function stopTimerAndBank() {
   clearInterval(timerInterval); timerInterval = null;
 }
 
+// ═══════════════════════════════════════════════════════
+// REST TIMER  (between-set countdown)
+// ═══════════════════════════════════════════════════════
+let restInterval  = null;
+let restEndTs     = 0;
+let restTotal     = 0;     // planned length (s) — drives the progress bar
+let restRemaining = 0;
+let restAudioCtx  = null;
+
+function restDefault() { return Math.max(15, Math.min(600, +localStorage.getItem('ll_rest_default') || 90)); }
+
+// Unlock audio during the user's tap so the end-beep can play later (esp. iOS).
+function ensureRestAudio() {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (Ctx && !restAudioCtx) restAudioCtx = new Ctx();
+    if (restAudioCtx && restAudioCtx.state === 'suspended') restAudioCtx.resume();
+  } catch (e) {}
+}
+
+function startRest(sec) {
+  ensureRestAudio();
+  sec = sec || restDefault();
+  restTotal     = sec;
+  restRemaining = sec;
+  restEndTs     = Date.now() + sec * 1000;
+  clearInterval(restInterval);
+  restInterval = setInterval(tickRest, 250);
+  renderRestBar();
+}
+
+function tickRest() {
+  restRemaining = Math.max(0, Math.round((restEndTs - Date.now()) / 1000));
+  if (restRemaining <= 0) { finishRest(); return; }
+  paintRest();
+}
+
+function addRestTime(delta) {
+  if (restRemaining <= 0 && !restInterval) return;
+  restRemaining = Math.max(1, restRemaining + delta);
+  restTotal     = Math.max(restTotal + delta, restRemaining);
+  restEndTs     = Date.now() + restRemaining * 1000;
+  // Remember the adjusted length as the new default for next time.
+  localStorage.setItem('ll_rest_default', String(Math.max(15, Math.min(600, restDefault() + delta))));
+  renderRestBar();
+}
+
+function skipRest() {
+  clearInterval(restInterval); restInterval = null;
+  restRemaining = 0;
+  renderRestBar();
+}
+
+function finishRest() {
+  clearInterval(restInterval); restInterval = null;
+  restRemaining = 0;
+  restAlert();
+  renderRestBar();
+}
+
+function restAlert() {
+  try { if (navigator.vibrate) navigator.vibrate([180, 90, 180]); } catch (e) {}
+  // Two short rising beeps via Web Audio.
+  try {
+    if (restAudioCtx) {
+      const beep = (freq, when) => {
+        const o = restAudioCtx.createOscillator(), g = restAudioCtx.createGain();
+        o.connect(g); g.connect(restAudioCtx.destination);
+        o.type = 'sine'; o.frequency.value = freq;
+        const t = restAudioCtx.currentTime + when;
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(0.3, t + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.45);
+        o.start(t); o.stop(t + 0.45);
+      };
+      beep(880, 0); beep(1175, 0.22);
+    }
+  } catch (e) {}
+  showToast('Rest done — next set 💪');
+}
+
+function paintRest() {
+  const t = document.getElementById('rb-time');
+  const f = document.getElementById('rb-fill');
+  if (t) t.textContent = fmtDuration(restRemaining);
+  if (f) f.style.width = (restTotal ? Math.max(0, Math.min(100, restRemaining / restTotal * 100)) : 0) + '%';
+}
+
+function renderRestBar() {
+  const bar = document.getElementById('rest-bar');
+  if (!bar) return;
+  if (restRemaining <= 0 && !restInterval) { bar.classList.remove('show'); return; }
+  const pct = restTotal ? Math.max(0, Math.min(100, restRemaining / restTotal * 100)) : 0;
+  bar.innerHTML = `
+    <div class="rb-top">
+      <div>
+        <div class="rb-label">⏱ Rest</div>
+        <div class="rb-time" id="rb-time">${fmtDuration(restRemaining)}</div>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="rb-btn" onclick="addRestTime(-15)">−15</button>
+        <button class="rb-btn" onclick="addRestTime(15)">+15</button>
+        <button class="rb-btn rb-skip" onclick="skipRest()">Skip</button>
+      </div>
+    </div>
+    <div class="rb-track"><div class="rb-fill" id="rb-fill" style="width:${pct}%"></div></div>`;
+  bar.classList.add('show');
+}
+
 function renderExercisesHTML() {
   const unit = DB.unit;
   return currentLog.exercises.map((ex, ei) => `
@@ -2011,7 +2142,10 @@ function renderExercisesHTML() {
       </button>
     </div>`;
     }).join('')}
-    <button class="btn btn-secondary btn-sm" style="margin-top:8px" onclick="addSet(${ei})">+ Add Set</button>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button class="btn btn-secondary btn-sm" style="flex:1" onclick="addSet(${ei})">+ Add Set</button>
+      <button class="btn btn-secondary btn-sm" onclick="startRest()" title="Start rest timer">⏱ Rest</button>
+    </div>
     <input type="text" class="ex-note-input" placeholder="Note for this exercise… (grip, tempo, how it felt)"
       value="${(ex.note||'').replace(/"/g,'&quot;')}"
       oninput="currentLog.exercises[${ei}].note=this.value;saveDraft()"
@@ -2240,6 +2374,7 @@ function saveWorkout() {
   clearInterval(timerInterval); timerInterval = null;
   currentLog = newLog();
   clearDraft();
+  skipRest();
   showView('dashboard');
   maybeAskFeedback();
 }
