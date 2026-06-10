@@ -12,6 +12,7 @@
 <link rel="apple-touch-icon" href="icon-192.png">
 <title>Lift Log</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -3689,7 +3690,12 @@ function openDataModal() {
 
   <div class="divider" style="margin:20px 0"></div>
 
-  <div style="font-size:13px;font-weight:600;margin-bottom:10px">Backup your data</div>
+  <div style="font-size:13px;font-weight:600;margin-bottom:10px">☁️ Automatic cloud backup</div>
+  ${gdSettingsHTML()}
+
+  <div class="divider" style="margin:20px 0"></div>
+
+  <div style="font-size:13px;font-weight:600;margin-bottom:10px">Manual backup (file)</div>
   <div style="font-size:12px;color:var(--muted);margin-bottom:12px">
     Export saves all your workouts, PRs, and goals as a file.
     Keep it somewhere safe (Files, Notes, email yourself).
@@ -3730,13 +3736,18 @@ function openDataModal() {
   openModal();
 }
 
-async function exportData() {
+// Gather all app data into one JSON string (shared by file export + cloud sync).
+function buildBackupJSON(pretty) {
   const data = {};
   DATA_KEYS.forEach(k => {
     const v = localStorage.getItem(k);
     if (v !== null) data[k] = v;
   });
-  const json     = JSON.stringify(data, null, 2);
+  return JSON.stringify(data, null, pretty ? 2 : 0);
+}
+
+async function exportData() {
+  const json     = buildBackupJSON(true);
   const date     = new Date().toISOString().slice(0,10);
   const filename = `liftlog-backup-${date}.json`;
   const blob     = new Blob([json], { type: 'application/json' });
@@ -3822,22 +3833,28 @@ function importData() {
 }
 
 // Shared restore logic: validate, summarise, confirm, then overwrite.
-function applyImport(raw) {
-  let data;
-  try { data = JSON.parse(raw.trim()); }
-  catch(e) { showToast('Invalid JSON — check your backup file', false); return; }
-  if (!data.ll_workouts) { showToast('Doesn\'t look like a Lift Log backup', false); return; }
+function applyImport(raw) { restoreFromString(raw, true); }
 
-  // Build a plain-language summary so the user knows what they're about to replace.
-  let incoming = [];
-  try { incoming = JSON.parse(data.ll_workouts || '[]'); } catch(e) {}
-  const current   = DB.workouts.length;
-  const dates     = incoming.map(w => w.date).filter(Boolean).sort();
-  const range     = dates.length ? `${fmtDate(dates[0])} – ${fmtDate(dates[dates.length-1])}` : 'no dates';
-  const summary =
-    `This backup has ${incoming.length} workout${incoming.length!==1?'s':''} (${range}).\n` +
-    `It will REPLACE your current ${current} workout${current!==1?'s':''}.\n\nContinue?`;
-  if (!confirm(summary)) return;
+// Restore from a JSON string. askConfirm=false skips the prompt (used by cloud restore
+// flows that have already confirmed). Returns true on success.
+function restoreFromString(raw, askConfirm) {
+  let data;
+  try { data = JSON.parse(String(raw).trim()); }
+  catch(e) { showToast('Invalid JSON — check your backup file', false); return false; }
+  if (!data.ll_workouts) { showToast('Doesn\'t look like a Lift Log backup', false); return false; }
+
+  if (askConfirm) {
+    // Build a plain-language summary so the user knows what they're about to replace.
+    let incoming = [];
+    try { incoming = JSON.parse(data.ll_workouts || '[]'); } catch(e) {}
+    const current = DB.workouts.length;
+    const dates   = incoming.map(w => w.date).filter(Boolean).sort();
+    const range   = dates.length ? `${fmtDate(dates[0])} – ${fmtDate(dates[dates.length-1])}` : 'no dates';
+    const summary =
+      `This backup has ${incoming.length} workout${incoming.length!==1?'s':''} (${range}).\n` +
+      `It will REPLACE your current ${current} workout${current!==1?'s':''}.\n\nContinue?`;
+    if (!confirm(summary)) return false;
+  }
 
   DATA_KEYS.forEach(k => {
     if (data[k] !== undefined) localStorage.setItem(k, data[k]);
@@ -3846,6 +3863,236 @@ function applyImport(raw) {
   showToast('Data restored! 💪');
   runMigrations();
   showView('dashboard');
+  return true;
+}
+
+// ═══════════════════════════════════════════════════════
+// GOOGLE DRIVE AUTO-BACKUP
+// Serverless: signs in via Google Identity Services and stores ONE file in the
+// app's private "appDataFolder" (the app can't see any of your other Drive files).
+// ═══════════════════════════════════════════════════════
+const GD_SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
+const GD_FILE  = 'liftlog-backup.json';
+let gdTokenClient = null;
+let gdToken       = null;   // { access_token, expiry(ms) }
+let gdSyncTimer   = null;
+let gdSyncing     = false;
+
+function gdClientId()  { return (localStorage.getItem('ll_gd_client_id') || '').trim(); }
+function gdConnected() { return localStorage.getItem('ll_gd_connected') === '1' && !!gdClientId(); }
+function gdReady()     { return !!(window.google && window.google.accounts && google.accounts.oauth2); }
+
+function gdSetStatus(txt) {
+  const el = document.getElementById('gd-status');
+  if (el) el.textContent = txt;
+}
+function syncAgoLabel(ts) {
+  if (!ts) return 'not yet';
+  const m = Math.floor((Date.now() - ts) / 60000);
+  if (m < 1) return 'just now';
+  if (m < 60) return m + ' min ago';
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + 'h ago';
+  return Math.floor(h / 24) + 'd ago';
+}
+
+function gdInitClient() {
+  if (!gdClientId() || !gdReady()) return false;
+  if (gdTokenClient) return true;
+  gdTokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: gdClientId(),
+    scope: GD_SCOPE,
+    callback: () => {}   // set per-request in gdGetToken
+  });
+  return true;
+}
+
+// Resolve a valid access token. interactive=false attempts a silent refresh
+// (no popup) and rejects if the user would need to interact.
+function gdGetToken(interactive) {
+  return new Promise((resolve, reject) => {
+    if (gdToken && gdToken.expiry - 60000 > Date.now()) return resolve(gdToken.access_token);
+    if (!gdInitClient()) return reject(new Error('Google sign-in not ready yet'));
+    gdTokenClient.callback = (resp) => {
+      if (resp && resp.access_token) {
+        gdToken = { access_token: resp.access_token, expiry: Date.now() + (resp.expires_in || 3500) * 1000 };
+        resolve(resp.access_token);
+      } else {
+        reject(resp || new Error('No token'));
+      }
+    };
+    try { gdTokenClient.requestAccessToken({ prompt: interactive ? '' : 'none' }); }
+    catch (e) { reject(e); }
+  });
+}
+
+async function gdFindFileId(token) {
+  const url = 'https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&fields=files(id)&q=' +
+    encodeURIComponent(`name='${GD_FILE}'`);
+  const r = await fetch(url, { headers: { Authorization: 'Bearer ' + token } });
+  if (!r.ok) throw new Error('Drive list failed (' + r.status + ')');
+  const j = await r.json();
+  return (j.files && j.files[0]) ? j.files[0].id : null;
+}
+
+async function gdUpload(token, jsonStr) {
+  const id       = await gdFindFileId(token);
+  const metadata = id ? {} : { name: GD_FILE, parents: ['appDataFolder'] };
+  const boundary = 'llbnd' + Date.now();
+  const body =
+    `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n` +
+    JSON.stringify(metadata) +
+    `\r\n--${boundary}\r\nContent-Type: application/json\r\n\r\n` +
+    jsonStr +
+    `\r\n--${boundary}--`;
+  const url = id
+    ? `https://www.googleapis.com/upload/drive/v3/files/${id}?uploadType=multipart`
+    : 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
+  const r = await fetch(url, {
+    method: id ? 'PATCH' : 'POST',
+    headers: { Authorization: 'Bearer ' + token, 'Content-Type': `multipart/related; boundary=${boundary}` },
+    body
+  });
+  if (!r.ok) throw new Error('Drive upload failed (' + r.status + ')');
+}
+
+async function gdDownload(token) {
+  const id = await gdFindFileId(token);
+  if (!id) return null;
+  const r = await fetch(`https://www.googleapis.com/drive/v3/files/${id}?alt=media`,
+    { headers: { Authorization: 'Bearer ' + token } });
+  if (!r.ok) throw new Error('Drive download failed (' + r.status + ')');
+  return await r.text();
+}
+
+// Debounced auto-sync — called after any data change.
+function scheduleCloudBackup() {
+  if (!gdConnected()) return;
+  clearTimeout(gdSyncTimer);
+  gdSyncTimer = setTimeout(() => cloudBackupNow(true), 2500);
+}
+
+// Push current data to Drive. silent=true is the background path (no popups/toasts on token issues).
+async function cloudBackupNow(silent) {
+  if (!gdConnected() || gdSyncing) return;
+  gdSyncing = true;
+  gdSetStatus('syncing…');
+  try {
+    const token = await gdGetToken(!silent);   // background sync stays silent; manual taps may prompt
+    await gdUpload(token, buildBackupJSON(false));
+    const now = Date.now();
+    localStorage.setItem('ll_last_backup', now.toString());
+    localStorage.setItem('ll_gd_last_sync', now.toString());
+    gdSetStatus(syncAgoLabel(now));
+    if (!silent) showToast('Backed up to Google Drive ☁️');
+  } catch (e) {
+    gdSetStatus('reconnect needed');
+    if (!silent) showToast('Drive sync failed — try reconnecting', false);
+  } finally {
+    gdSyncing = false;
+  }
+}
+
+// First-time connect: sign in, then reconcile device vs. cloud data.
+async function gdConnect() {
+  const input = document.getElementById('gd-client-id');
+  if (input && input.value.trim()) localStorage.setItem('ll_gd_client_id', input.value.trim());
+  if (!gdClientId()) { showToast('Paste your Google Client ID first', false); return; }
+  if (!gdReady())    { showToast('Google sign-in still loading — try again in a second', false); return; }
+  gdTokenClient = null;   // re-init in case the Client ID changed
+  try {
+    const token = await gdGetToken(true);
+    localStorage.setItem('ll_gd_connected', '1');
+
+    const remote = await gdDownload(token);
+    let remoteCount = 0;
+    if (remote) { try { remoteCount = JSON.parse(JSON.parse(remote).ll_workouts || '[]').length; } catch (e) {} }
+    const localCount = DB.workouts.length;
+
+    if (remote && remoteCount > 0 && (localCount === 0 || remoteCount > localCount)) {
+      if (confirm(`Found a backup in Google Drive with ${remoteCount} workout${remoteCount!==1?'s':''} (this device has ${localCount}).\n\nRestore the Drive copy?`)) {
+        restoreFromString(remote, false);
+      } else {
+        await gdUpload(token, buildBackupJSON(false));   // keep device data, overwrite cloud
+      }
+    } else {
+      await gdUpload(token, buildBackupJSON(false));
+    }
+    const now = Date.now();
+    localStorage.setItem('ll_last_backup', now.toString());
+    localStorage.setItem('ll_gd_last_sync', now.toString());
+    showToast('Google Drive connected ☁️');
+    if (document.getElementById('modal-overlay').classList.contains('open')) openDataModal();
+  } catch (e) {
+    showToast('Couldn\'t connect to Google Drive', false);
+  }
+}
+
+function gdDisconnect() {
+  if (!confirm('Stop auto-backup to Google Drive?\n\nYour existing Drive backup file stays safe — the app just stops syncing.')) return;
+  localStorage.removeItem('ll_gd_connected');
+  gdToken = null;
+  showToast('Disconnected from Google Drive');
+  openDataModal();
+}
+
+// Settings UI block for the cloud-backup section.
+function gdSettingsHTML() {
+  if (gdConnected()) {
+    const last = +localStorage.getItem('ll_gd_last_sync');
+    return `
+    <div style="font-size:12px;color:var(--green);margin-bottom:10px">
+      ☁️ Auto-backup ON — saves to Google Drive after every workout.<br>
+      Last sync: <span id="gd-status">${syncAgoLabel(last)}</span>
+    </div>
+    <button class="btn btn-secondary btn-full" style="margin-bottom:8px" onclick="cloudBackupNow(false)">Back up now</button>
+    <button class="btn btn-danger btn-full" onclick="gdDisconnect()">Disconnect Google Drive</button>`;
+  }
+  return `
+  <div style="font-size:12px;color:var(--muted);margin-bottom:10px">
+    Sign in once and Lift Log saves a copy to your Google Drive automatically — no more manual backups.
+    <a href="#" onclick="openGDHelp();return false" style="color:var(--accent);font-weight:600">Setup guide →</a>
+  </div>
+  <input type="text" id="gd-client-id" placeholder="Paste your Google Client ID…" value="${esc(gdClientId())}"
+    autocapitalize="off" autocorrect="off" spellcheck="false" style="font-size:12px;margin-bottom:10px">
+  <button class="btn btn-primary btn-full" onclick="gdConnect()">☁️ Connect Google Drive</button>`;
+}
+
+// In-app setup walkthrough for getting a Google Client ID.
+function openGDHelp() {
+  const origin = location.origin;
+  document.getElementById('modal-content').innerHTML = `
+  <div style="font-size:18px;font-weight:700;margin-bottom:6px">Set up Google Drive backup</div>
+  <div style="font-size:12px;color:var(--muted);margin-bottom:16px">One-time, ~10 minutes. You only need to do this once.</div>
+  <ol style="font-size:13px;line-height:1.7;padding-left:20px;margin-bottom:16px">
+    <li>Go to <strong>console.cloud.google.com</strong> and create a new project (any name).</li>
+    <li>Open <strong>APIs &amp; Services → Library</strong>, search <strong>Google Drive API</strong>, click <strong>Enable</strong>.</li>
+    <li>Open <strong>APIs &amp; Services → OAuth consent screen</strong>. Choose <strong>External</strong>, fill the app name + your email, and add your own Google address under <strong>Test users</strong>.</li>
+    <li>Open <strong>APIs &amp; Services → Credentials → Create credentials → OAuth client ID</strong>. Pick <strong>Web application</strong>.</li>
+    <li>Under <strong>Authorized JavaScript origins</strong>, add exactly:<br>
+      <code style="display:inline-block;background:var(--card2);border:1px solid var(--border);border-radius:6px;padding:4px 8px;margin-top:4px;font-size:12px;word-break:break-all">${origin}</code></li>
+    <li>Click <strong>Create</strong>, copy the <strong>Client ID</strong>, paste it back here, and tap Connect.</li>
+  </ol>
+  <div style="font-size:11px;color:var(--muted);margin-bottom:14px">
+    The app only ever touches its own private backup file — it cannot see your other Drive files. The Client ID is not a secret.
+  </div>
+  <button class="btn btn-primary btn-full" onclick="openDataModal()">← Back to settings</button>`;
+  openModal();
+}
+
+// On launch: if connected, warm a silent token so background syncs work without a popup.
+function gdBootstrap() {
+  if (!gdConnected()) return;
+  let tries = 0;
+  const iv = setInterval(() => {
+    if (gdReady()) {
+      clearInterval(iv);
+      gdInitClient();
+      gdGetToken(false).then(() => cloudBackupNow(true)).catch(() => gdSetStatus('reconnect needed'));
+    } else if (++tries > 40) {
+      clearInterval(iv);   // give up after ~10s
+    }
+  }, 250);
 }
 
 // ═══════════════════════════════════════════════════════
@@ -4197,11 +4444,18 @@ function openHelpModal() {
 // ═══════════════════════════════════════════════════════
 // BOOT
 // ═══════════════════════════════════════════════════════
+// Trigger a debounced cloud backup after any data-saving operation.
+['save','saveExercises','saveProfile','saveGoals','saveExerciseMuscles','saveTemplates'].forEach(fn => {
+  const orig = DB[fn].bind(DB);
+  DB[fn] = function (...args) { const r = orig(...args); scheduleCloudBackup(); return r; };
+});
+
 runMigrations();
 syncUnitToggle();
 initEnhancements();
 showView('dashboard');
 setupMonthlyNotification(false);   // re-arm push (won't prompt; just schedules if already granted)
+gdBootstrap();                     // warm Google Drive token + sync if connected
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
