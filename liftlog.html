@@ -1291,6 +1291,26 @@ function renderDashboard() {
     </div>`;
   }
 
+  // ── Backup reminder banner (when overdue) ─────────────
+  if (shouldShowBackupBanner()) {
+    const d = daysSinceBackup();
+    const msg = d === null
+      ? 'You haven\'t backed up yet. Your data lives only on this device — save a copy so you don\'t lose it.'
+      : `Your last backup was ${d} days ago. Save a fresh copy so you don't lose your progress.`;
+    html += `
+    <div class="month-banner" style="background:linear-gradient(135deg,rgba(239,68,68,.16),rgba(249,115,22,.12));border-color:var(--red)">
+      <div class="month-banner-emoji">💾</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:700;font-size:14px;margin-bottom:2px">Back up your data</div>
+        <div style="font-size:12px;color:var(--muted)">${msg}</div>
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();dismissBackupBanner();exportData()">Back up</button>
+      <button class="month-banner-x" onclick="event.stopPropagation();dismissBackupBanner();renderDashboard()" aria-label="Dismiss">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>`;
+  }
+
   // ── Feedback nudge card (until sent or dismissed) ──────
   html += fbCardHTML();
 
@@ -3433,7 +3453,7 @@ function showToast(msg, ok=true) {
 // ═══════════════════════════════════════════════════════
 // DATA EXPORT / IMPORT
 // ═══════════════════════════════════════════════════════
-const DATA_KEYS = ['ll_workouts','ll_exercises','ll_unit','ll_profile','ll_goals','ll_migrated_v2','ll_migrated_v3','ll_migrated_v4','ll_exercise_muscles','ll_templates'];
+const DATA_KEYS = ['ll_workouts','ll_exercises','ll_unit','ll_lang','ll_profile','ll_goals','ll_migrated_v2','ll_migrated_v3','ll_migrated_v4','ll_exercise_muscles','ll_templates'];
 
 function notifSettingHTML() {
   if (!('Notification' in window)) {
@@ -3674,6 +3694,9 @@ function openDataModal() {
     Export saves all your workouts, PRs, and goals as a file.
     Keep it somewhere safe (Files, Notes, email yourself).
   </div>
+  <div style="font-size:12px;margin-bottom:12px;color:${backupOverdue()?'var(--red)':'var(--muted)'}">
+    ${lastBackupLabel()}
+  </div>
   <button class="btn btn-primary btn-full" onclick="exportData()">
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -3687,49 +3710,135 @@ function openDataModal() {
 
   <div style="font-size:13px;font-weight:600;margin-bottom:10px">Restore from backup</div>
   <div style="font-size:12px;color:var(--muted);margin-bottom:12px">
-    Paste your exported JSON below, then tap Import.
+    Choose your exported backup file to restore it.
     <strong style="color:var(--red)">This will overwrite your current data.</strong>
   </div>
-  <textarea id="import-json" rows="4" placeholder='Paste exported JSON here…'
-    style="font-size:12px;font-family:monospace;resize:none;margin-bottom:10px"></textarea>
-  <button class="btn btn-secondary btn-full" onclick="importData()">
+  <input type="file" id="import-file" accept="application/json,.json"
+    onchange="importFromFile(this)" style="display:none">
+  <button class="btn btn-secondary btn-full" style="margin-bottom:12px" onclick="document.getElementById('import-file').click()">
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
       <polyline points="7 10 12 15 17 10"/>
       <line x1="12" y1="15" x2="12" y2="3"/>
     </svg>
-    Import Data
-  </button>`;
+    Choose Backup File
+  </button>
+  <div style="font-size:11px;color:var(--muted);margin-bottom:8px">Or paste the JSON manually:</div>
+  <textarea id="import-json" rows="3" placeholder='Paste exported JSON here…'
+    style="font-size:12px;font-family:monospace;resize:none;margin-bottom:10px"></textarea>
+  <button class="btn btn-secondary btn-full" onclick="importData()">Import Pasted JSON</button>`;
   openModal();
 }
 
-function exportData() {
+async function exportData() {
   const data = {};
   DATA_KEYS.forEach(k => {
     const v = localStorage.getItem(k);
     if (v !== null) data[k] = v;
   });
-  const json    = JSON.stringify(data, null, 2);
-  const blob    = new Blob([json], { type: 'application/json' });
-  const url     = URL.createObjectURL(blob);
-  const date    = new Date().toISOString().slice(0,10);
-  const a       = document.createElement('a');
-  a.href        = url;
-  a.download    = `liftlog-backup-${date}.json`;
-  a.style.display = 'none';
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
+  const json     = JSON.stringify(data, null, 2);
+  const date     = new Date().toISOString().slice(0,10);
+  const filename = `liftlog-backup-${date}.json`;
+  const blob     = new Blob([json], { type: 'application/json' });
+
+  // Prefer the native share sheet on mobile (esp. iOS installed PWAs, where a
+  // plain download often just opens a preview). Falls back to file download.
+  let shared = false;
+  if (navigator.canShare) {
+    try {
+      const file = new File([blob], filename, { type: 'application/json' });
+      if (navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: 'Lift Log backup' });
+        shared = true;
+      }
+    } catch (e) {
+      // User cancelled the share sheet, or sharing failed — fall through to download.
+      if (e && e.name === 'AbortError') return;   // cancelled: don't mark as backed up
+    }
+  }
+
+  if (!shared) {
+    const url = URL.createObjectURL(blob);
+    const a   = document.createElement('a');
+    a.href        = url;
+    a.download    = filename;
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
+  }
+
+  localStorage.setItem('ll_last_backup', Date.now().toString());
   showToast('Backup saved! 📦');
+  if (currentView === 'dashboard') renderDashboard();
 }
 
+// ── Backup status helpers ──────────────────────────────
+function lastBackupTs() {
+  const v = +localStorage.getItem('ll_last_backup');
+  return v > 0 ? v : null;
+}
+function daysSinceBackup() {
+  const ts = lastBackupTs();
+  return ts === null ? null : Math.floor((Date.now() - ts) / 86400000);
+}
+// Overdue if there's data worth keeping and no backup in the last 7 days.
+function backupOverdue() {
+  if (!DB.workouts.length) return false;
+  const d = daysSinceBackup();
+  return d === null || d >= 7;
+}
+function lastBackupLabel() {
+  const d = daysSinceBackup();
+  if (d === null) return '⚠️ You haven\'t backed up yet — your data lives only on this device.';
+  if (d === 0)   return '✅ Last backup: today';
+  if (d === 1)   return '✅ Last backup: yesterday';
+  return `${d >= 7 ? '⚠️' : '✅'} Last backup: ${d} days ago`;
+}
+// Dashboard banner: nudge once per day while a backup is overdue.
+function shouldShowBackupBanner() {
+  if (!backupOverdue()) return false;
+  return localStorage.getItem('ll_backup_banner_dismissed') !== todayStr();
+}
+function dismissBackupBanner() {
+  localStorage.setItem('ll_backup_banner_dismissed', todayStr());
+}
+
+// Read a chosen .json backup file directly (no copy-paste needed).
+function importFromFile(input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => { applyImport(String(reader.result || '')); input.value = ''; };
+  reader.onerror = () => showToast('Couldn\'t read that file', false);
+  reader.readAsText(file);
+}
+
+// Restore from JSON pasted into the textarea (fallback path).
 function importData() {
   const raw = document.getElementById('import-json').value.trim();
-  if (!raw) { showToast('Paste your backup JSON first', false); return; }
+  if (!raw) { showToast('Choose a backup file or paste JSON first', false); return; }
+  applyImport(raw);
+}
+
+// Shared restore logic: validate, summarise, confirm, then overwrite.
+function applyImport(raw) {
   let data;
-  try { data = JSON.parse(raw); } catch(e) { showToast('Invalid JSON — check your backup file', false); return; }
+  try { data = JSON.parse(raw.trim()); }
+  catch(e) { showToast('Invalid JSON — check your backup file', false); return; }
   if (!data.ll_workouts) { showToast('Doesn\'t look like a Lift Log backup', false); return; }
-  if (!confirm('This will replace ALL current data with the backup. Continue?')) return;
+
+  // Build a plain-language summary so the user knows what they're about to replace.
+  let incoming = [];
+  try { incoming = JSON.parse(data.ll_workouts || '[]'); } catch(e) {}
+  const current   = DB.workouts.length;
+  const dates     = incoming.map(w => w.date).filter(Boolean).sort();
+  const range     = dates.length ? `${fmtDate(dates[0])} – ${fmtDate(dates[dates.length-1])}` : 'no dates';
+  const summary =
+    `This backup has ${incoming.length} workout${incoming.length!==1?'s':''} (${range}).\n` +
+    `It will REPLACE your current ${current} workout${current!==1?'s':''}.\n\nContinue?`;
+  if (!confirm(summary)) return;
+
   DATA_KEYS.forEach(k => {
     if (data[k] !== undefined) localStorage.setItem(k, data[k]);
   });
@@ -4098,6 +4207,12 @@ if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js').catch(() => {});
   });
+}
+
+// Ask the browser to keep our data persistent (reduces the chance the OS
+// silently evicts localStorage when storage runs low — esp. on iOS).
+if (navigator.storage && navigator.storage.persist) {
+  navigator.storage.persisted().then(p => { if (!p) navigator.storage.persist().catch(() => {}); }).catch(() => {});
 }
 </script>
 </body>
