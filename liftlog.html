@@ -449,6 +449,22 @@ input:focus,textarea:focus,select:focus{border-color:var(--accent)}
 #rest-bar .rb-track{height:5px;background:var(--card2);border-radius:3px;margin-top:9px;overflow:hidden}
 #rest-bar .rb-fill{height:100%;background:linear-gradient(90deg,var(--accent),#fbbf24);border-radius:3px;transition:width .25s linear}
 
+/* ── Floating workout-duration pill (visible on all screens while running) ── */
+#wk-timer{
+  position:fixed;top:calc(env(safe-area-inset-top) + 60px);left:50%;transform:translateX(-50%);
+  z-index:125;display:none;align-items:center;gap:8px;
+  background:var(--card);border:1px solid var(--accent);border-radius:999px;
+  padding:7px 15px 7px 13px;box-shadow:0 4px 16px rgba(0,0,0,.45);cursor:pointer;
+  -webkit-tap-highlight-color:transparent;touch-action:manipulation;animation:fadeIn .2s ease;
+}
+#wk-timer.show{display:inline-flex}
+#wk-timer .wk-dot{width:8px;height:8px;border-radius:50%;background:var(--accent);animation:wkPulse 1.4s ease-in-out infinite}
+#wk-timer .wk-lbl{font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);font-weight:700}
+#wk-timer .wk-time{font-size:15px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-.3px}
+@keyframes wkPulse{0%,100%{opacity:1}50%{opacity:.25}}
+/* When the workout pill is up, drop the rest bar below it so they don't overlap */
+body.wk-timer-on #rest-bar{top:calc(env(safe-area-inset-top) + 108px)}
+
 /* ── Misc ── */
 .divider{height:1px;background:var(--border);margin:12px 0}
 .section-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
@@ -564,6 +580,12 @@ input:focus,textarea:focus,select:focus{border-color:var(--accent)}
 </div>
 
 <div id="rest-bar"></div>
+
+<div id="wk-timer" onclick="showView('log')">
+  <span class="wk-dot"></span>
+  <span class="wk-lbl">Workout</span>
+  <span class="wk-time" id="wk-timer-time">0:00</span>
+</div>
 
 <div id="confetti-layer"></div>
 
@@ -1268,13 +1290,6 @@ function sparklineSVG(vals, w, h) {
 // ═══════════════════════════════════════════════════════
 function showView(view) {
   currentView = view;
-  // Leaving the Log tab: keep counting in the background by banking elapsed time
-  // into durationSec and pausing the visible 1s tick (resumes when you return).
-  if (view !== 'log' && timerRunning) {
-    currentLog.durationSec = currentDurationSec();
-    timerStartTs = Date.now();   // keep wall-clock anchor so time still accrues
-    clearInterval(timerInterval); timerInterval = null;
-  }
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   const navEl = document.getElementById('nav-'+view);
   if(navEl) navEl.classList.add('active');
@@ -1289,6 +1304,9 @@ function showView(view) {
   applyLang();
   document.getElementById('main').scrollTop = 0;
   updateScrollFab();
+  // Keep the workout clock ticking and visible on every screen while it runs.
+  ensureTimerTicking();
+  updateWkTimerChip();
 }
 
 function setUnit(u) {
@@ -1947,6 +1965,29 @@ function currentDurationSec() {
 function paintTimer() {
   const d = document.getElementById('dur-display');
   if (d) d.textContent = fmtDuration(currentDurationSec());
+  updateWkTimerChip();
+}
+
+// Keep a 1-second tick alive whenever the workout clock is running, regardless
+// of which screen is showing (so the floating pill stays accurate everywhere).
+function ensureTimerTicking() {
+  if (timerRunning && !timerInterval) {
+    timerInterval = setInterval(paintTimer, 1000);
+  }
+}
+
+// Floating "Workout mm:ss" pill — visible on every screen except Log (which
+// already shows the big duration), only while the stopwatch is running.
+function updateWkTimerChip() {
+  const chip = document.getElementById('wk-timer');
+  if (!chip) return;
+  const show = timerRunning && currentView !== 'log';
+  chip.classList.toggle('show', show);
+  document.body.classList.toggle('wk-timer-on', show);
+  if (show) {
+    const t = document.getElementById('wk-timer-time');
+    if (t) t.textContent = fmtDuration(currentDurationSec());
+  }
 }
 function toggleTimer() {
   if (timerRunning) {
