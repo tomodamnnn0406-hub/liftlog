@@ -951,8 +951,9 @@ let timerStartTs   = null;      // epoch ms when the current run segment started
 
 // Dashboard chart state
 let dashChart         = null;
-let dashChartMode     = '1rm';   // '1rm' | '5' | '8'
+let dashChartMode     = 'e1rm';  // 'e1rm' | '5' | '8'
 let dashChartExercise = null;
+let dashChartRange    = 'all';   // 'all' | '6m' | '3m' | '1m'
 
 // History calendar state — 'YYYY-MM' of the month currently shown (null = latest)
 let historyMonth      = null;
@@ -1111,8 +1112,8 @@ function allExerciseNames() {
 // ═══════════════════════════════════════════════════════
 
 // Returns [{date, weightKg}] for an exercise in the chosen mode:
-//   '1rm' → heaviest ACTUAL single-rep set per session (sessions without a
-//            1-rep set are skipped — no estimates, only real lifts)
+//   'e1rm' → estimated 1RM from the best set per session (every session with
+//            the exercise counts, giving a continuous trajectory)
 //   '5'   → best weight where reps >= 5 per session
 //   '8'   → best weight where reps >= 8 per session
 function getProgressByMode(name, mode) {
@@ -1122,26 +1123,26 @@ function getProgressByMode(name, mode) {
     const du = wUnit(workout);
     const ex = workout.exercises.find(e => e.name === name);
     if (!ex) continue;
-    if (mode === '1rm') {
-      let best = 0;
+    let best = 0;
+    if (mode === 'e1rm') {
+      // Estimated 1RM from the best set this session (any rep count) → every
+      // session with this exercise contributes a point, giving a full trajectory.
       for (const s of ex.sets) {
-        if (s.weight && +s.reps === 1 && !s.failed) {
-          const wKg = toKg(+s.weight, du);
-          if (wKg > best) best = wKg;
+        if (s.weight && s.reps && !s.failed) {
+          const e1Kg = toKg(calc1RM(+s.weight, +s.reps), du);
+          if (e1Kg > best) best = e1Kg;
         }
       }
-      if (best > 0) data.push({ date: workout.date, weightKg: best });
     } else {
       const minReps = +mode;
-      let best = 0;
       for (const s of ex.sets) {
         if (+s.reps >= minReps && s.weight && !s.failed) {
           const wKg = toKg(+s.weight, du);
           if (wKg > best) best = wKg;
         }
       }
-      if (best > 0) data.push({ date: workout.date, weightKg: best });
     }
+    if (best > 0) data.push({ date: workout.date, weightKg: best });
   }
   return data;
 }
@@ -1149,7 +1150,7 @@ function getProgressByMode(name, mode) {
 // Estimate weeks to hit targetKg (est-1RM) using linear regression on recent progress.
 // Returns integer weeks, 0 if already achieved, null if can't estimate.
 function estimateWeeks(exercise, targetKg) {
-  const progress = getProgressByMode(exercise, '1rm');
+  const progress = getProgressByMode(exercise, 'e1rm');
   if (progress.length < 2) return null;
   const current = progress[progress.length - 1].weightKg;
   if (current >= targetKg) return 0;
@@ -1179,8 +1180,11 @@ function goalTarget1RM_kg(goal) {
 // For chart: returns the goal reference line value (in display unit).
 // All modes plot real lifted weight, so the line is the goal's target weight.
 function goalLineForMode(goal, mode) {
-  const tw_kg = goal.targetWeightKg || goalTarget1RM_kg(goal);
-  return Math.round(dispW(tw_kg, 'kg') * 10) / 10;
+  // Est-1RM view compares against the goal's implied 1RM; rep views against the
+  // goal's target weight.
+  const kg = (mode === 'e1rm') ? goalTarget1RM_kg(goal)
+                               : (goal.targetWeightKg || goalTarget1RM_kg(goal));
+  return Math.round(dispW(kg, 'kg') * 10) / 10;
 }
 
 function getGoalProgress(goal) {
@@ -1417,13 +1421,20 @@ function renderDashboard() {
           </select>
         </div>
         <div style="display:flex;gap:4px;flex-shrink:0">
-          <button id="dm-1rm" class="btn btn-sm ${dashChartMode==='1rm'?'btn-primary':'btn-secondary'}"
-            style="padding:6px 10px;font-size:11px" onclick="setDashChartMode('1rm')">1 Rep</button>
+          <button id="dm-e1rm" class="btn btn-sm ${dashChartMode==='e1rm'?'btn-primary':'btn-secondary'}"
+            style="padding:6px 10px;font-size:11px" onclick="setDashChartMode('e1rm')">Est 1RM</button>
           <button id="dm-5" class="btn btn-sm ${dashChartMode==='5'?'btn-primary':'btn-secondary'}"
             style="padding:6px 10px;font-size:11px" onclick="setDashChartMode('5')">5 Rep</button>
           <button id="dm-8" class="btn btn-sm ${dashChartMode==='8'?'btn-primary':'btn-secondary'}"
             style="padding:6px 10px;font-size:11px" onclick="setDashChartMode('8')">8 Rep</button>
         </div>
+      </div>
+      <!-- Time-range selector -->
+      <div style="display:flex;gap:4px;margin-bottom:10px">
+        ${['1m','3m','6m','all'].map(r => `
+          <button id="dr-${r}" class="btn btn-sm ${dashChartRange===r?'btn-primary':'btn-secondary'}"
+            style="flex:1;padding:5px 0;font-size:11px" onclick="setDashChartRange('${r}')">
+            ${r==='all'?'All':r.toUpperCase()}</button>`).join('')}
       </div>
       <div id="dash-chart-wrap" style="position:relative;height:210px">
         <canvas id="dash-chart-canvas"></canvas>
@@ -1618,13 +1629,20 @@ function renderDashboardChart() {
   if (!exercise) return;
 
   const unit     = DB.unit;
-  const progress = getProgressByMode(exercise, dashChartMode);
+  let   progress = getProgressByMode(exercise, dashChartMode);
   const goal     = DB.goals.find(g => g.exercise === exercise);
 
+  // Filter to the chosen time range.
+  const cut = rangeCutoff(dashChartRange);
+  const allCount = progress.length;
+  if (cut) progress = progress.filter(p => new Date(p.date+'T12:00:00') >= cut);
+
   if (!progress.length) {
-    const what = dashChartMode === '1rm'
-      ? 'No 1-rep sets logged yet for'
-      : `No sets of ${dashChartMode}+ reps logged yet for`;
+    const what = allCount > 0
+      ? 'No data in this time range for'
+      : dashChartMode === 'e1rm'
+        ? 'No sets logged yet for'
+        : `No sets of ${dashChartMode}+ reps logged yet for`;
     wrap.innerHTML = `
       <div style="height:200px;display:flex;align-items:center;justify-content:center;
                   color:var(--muted);font-size:13px;text-align:center;line-height:1.6">
@@ -1644,8 +1662,8 @@ function renderDashboardChart() {
     new Date(p.date+'T12:00:00').toLocaleDateString(L(),{month:'short',day:'numeric'}));
   const weights = progress.map(p => Math.round(dispW(p.weightKg,'kg') * 10) / 10);
 
-  const modeLabel = dashChartMode === '1rm'
-    ? `1-rep max (${unit})`
+  const modeLabel = dashChartMode === 'e1rm'
+    ? `Est. 1-rep max (${unit})`
     : `Best weight @ ${dashChartMode}+ reps (${unit})`;
 
   const datasets = [{
@@ -1701,12 +1719,32 @@ function renderDashboardChart() {
 function setDashChartMode(mode) {
   dashChartMode = mode;
   // Update button styles without full re-render
-  ['1rm','5','8'].forEach(m => {
+  ['e1rm','5','8'].forEach(m => {
     const btn = document.getElementById('dm-' + m);
     if (!btn) return;
     btn.className = btn.className
       .replace('btn-primary','').replace('btn-secondary','').trim()
       + (m === mode ? ' btn-primary' : ' btn-secondary');
+  });
+  renderDashboardChart();
+}
+
+// Date cutoff for the chart time-range buttons (null = all time).
+function rangeCutoff(range) {
+  const months = { '1m': 1, '3m': 3, '6m': 6 }[range];
+  if (!months) return null;
+  const d = new Date();
+  d.setMonth(d.getMonth() - months);
+  return d;
+}
+function setDashChartRange(range) {
+  dashChartRange = range;
+  ['1m','3m','6m','all'].forEach(r => {
+    const btn = document.getElementById('dr-' + r);
+    if (!btn) return;
+    btn.className = btn.className
+      .replace('btn-primary','').replace('btn-secondary','').trim()
+      + (r === range ? ' btn-primary' : ' btn-secondary');
   });
   renderDashboardChart();
 }
@@ -3381,6 +3419,8 @@ function renderGoals() {
   const goals = DB.goals;
   const unit  = DB.unit;
   const prs   = getPRs();
+  syncGoalArchive();                 // capture any newly-reached goals
+  const achieved = achievedGoals();
 
   let html = `
   <div class="section-header">
@@ -3388,12 +3428,20 @@ function renderGoals() {
   </div>`;
 
   if(!goals.length) {
-    html += `<div class="empty">
-      <div class="empty-icon">🎯</div>
-      <div style="font-weight:600;margin-bottom:8px">Goals turn workouts into progress</div>
-      <div style="font-size:13px;margin-bottom:20px">Pick an exercise, a target weight × reps, and an optional deadline.<br>Every workout updates how close you are — with a celebration when you arrive. 🎉</div>
-      <button class="btn btn-primary" onclick="openAddGoalModal()">Set Your First Goal</button>
-    </div>`;
+    html += achieved.length
+      ? `<div class="card" style="text-align:center;padding:22px 20px">
+           <div style="font-size:30px;margin-bottom:6px">🎯</div>
+           <div style="font-weight:600;margin-bottom:6px">No active goals right now</div>
+           <div style="font-size:12px;color:var(--muted);margin-bottom:14px">Nice work hitting your past targets — set a new one to keep progressing.</div>
+           <button class="btn btn-primary btn-sm" onclick="openAddGoalModal()">Set a New Goal</button>
+         </div>`
+      : `<div class="empty">
+           <div class="empty-icon">🎯</div>
+           <div style="font-weight:600;margin-bottom:8px">Goals turn workouts into progress</div>
+           <div style="font-size:13px;margin-bottom:20px">Pick an exercise, a target weight × reps, and an optional deadline.<br>Every workout updates how close you are — with a celebration when you arrive. 🎉</div>
+           <button class="btn btn-primary" onclick="openAddGoalModal()">Set Your First Goal</button>
+         </div>`;
+    if (achieved.length) html += achievedSectionHTML(achieved);
     document.getElementById('main').innerHTML = html;
     return;
   }
@@ -3468,6 +3516,9 @@ function renderGoals() {
       </div>`}
     </div>`;
   }
+
+  // Achieved archive
+  if (achieved.length) html += achievedSectionHTML(achieved);
 
   // Sticky add-goal button pinned at the bottom (matches Exercises tab)
   html += `
@@ -3680,7 +3731,7 @@ function showToast(msg, ok=true) {
 // ═══════════════════════════════════════════════════════
 // DATA EXPORT / IMPORT
 // ═══════════════════════════════════════════════════════
-const DATA_KEYS = ['ll_workouts','ll_exercises','ll_unit','ll_lang','ll_profile','ll_goals','ll_migrated_v2','ll_migrated_v3','ll_migrated_v4','ll_exercise_muscles','ll_templates'];
+const DATA_KEYS = ['ll_workouts','ll_exercises','ll_unit','ll_lang','ll_profile','ll_goals','ll_goals_achieved','ll_migrated_v2','ll_migrated_v3','ll_migrated_v4','ll_exercise_muscles','ll_templates'];
 
 function notifSettingHTML() {
   if (!('Notification' in window)) {
@@ -4439,6 +4490,63 @@ function fireConfetti() {
   window.__confettiTO = setTimeout(() => { layer.classList.remove('show'); layer.innerHTML = ''; }, 4500);
 }
 
+// ── Completed-goal archive ─────────────────────────────
+function achievedGoals() {
+  try { return JSON.parse(localStorage.getItem('ll_goals_achieved') || '[]'); }
+  catch (e) { return []; }
+}
+function saveAchievedGoals(a) { localStorage.setItem('ll_goals_achieved', JSON.stringify(a)); }
+
+// Earliest workout date where this exercise hit the goal's target weight.
+function goalAchievedDate(goal) {
+  const targetKg = goal.targetWeightKg || goalTarget1RM_kg(goal);
+  if (!(targetKg > 0)) return todayStr();
+  const sorted = [...DB.workouts].sort((a, b) => a.date.localeCompare(b.date));
+  for (const w of sorted) {
+    const du = wUnit(w);
+    const ex = w.exercises.find(e => e.name === goal.exercise);
+    if (!ex) continue;
+    for (const s of ex.sets) {
+      if (s.weight && s.reps && !s.failed && toKg(+s.weight, du) >= targetKg) return w.date;
+    }
+  }
+  return todayStr();
+}
+// Record a reached goal once (re-records if the target was later raised & hit again).
+function archiveGoalIfNew(goal) {
+  const tgtKg = goal.targetWeightKg || goalTarget1RM_kg(goal);
+  const key   = goal.id + ':' + tgtKg + 'x' + (goal.targetReps || '');
+  const arr   = achievedGoals();
+  if (arr.some(a => a.key === key)) return;
+  arr.push({ key, exercise: goal.exercise, targetWeightKg: tgtKg,
+    targetReps: goal.targetReps || 1, date: goalAchievedDate(goal) });
+  saveAchievedGoals(arr);
+}
+function syncGoalArchive() {
+  for (const goal of DB.goals) if (getGoalProgress(goal).done) archiveGoalIfNew(goal);
+}
+// Render the "Achieved" list for the Goals tab.
+function achievedSectionHTML(list) {
+  const unit  = DB.unit;
+  const items = [...list].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  return `
+  <div class="label" style="margin:20px 0 8px">🏆 Achieved (${items.length})</div>
+  ${items.map(a => {
+    const w = Math.round(dispW(a.targetWeightKg || 0, 'kg') * 10) / 10;
+    return `
+    <div class="card-sm" style="display:flex;align-items:center;justify-content:space-between;border-color:var(--green)">
+      <div style="min-width:0">
+        <div style="font-size:14px;font-weight:700">${a.exercise}</div>
+        <div style="font-size:11px;color:var(--muted)">${w}${unit} × ${a.targetReps || 1} reps</div>
+      </div>
+      <div style="text-align:right;flex-shrink:0;margin-left:10px">
+        <span class="goal-done-badge">✓ DONE</span>
+        <div style="font-size:10px;color:var(--muted);margin-top:4px">${a.date ? fmtDate(a.date) : ''}</div>
+      </div>
+    </div>`;
+  }).join('')}`;
+}
+
 // Fire confetti once when a goal is newly reached. Re-arms if the target is raised.
 function checkGoalCelebrations() {
   let celebrated;
@@ -4449,6 +4557,7 @@ function checkGoalCelebrations() {
   for (const goal of DB.goals) {
     if (getGoalProgress(goal).done) {
       nowDone.push(goal.id);
+      archiveGoalIfNew(goal);
       if (!celebrated.includes(goal.id)) fresh = true;
     }
   }
