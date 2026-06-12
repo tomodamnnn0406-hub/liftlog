@@ -951,7 +951,7 @@ let timerStartTs   = null;      // epoch ms when the current run segment started
 
 // Dashboard chart state
 let dashChart         = null;
-let dashChartMode     = 'e1rm';  // 'e1rm' | '5' | '8'
+let dashChartMode     = '1rm';   // '1rm' (actual single) | 'e1rm' | '5' | '8'
 let dashChartExercise = null;
 let dashChartRange    = 'all';   // 'all' | '6m' | '3m' | '1m'
 
@@ -1124,7 +1124,15 @@ function getProgressByMode(name, mode) {
     const ex = workout.exercises.find(e => e.name === name);
     if (!ex) continue;
     let best = 0;
-    if (mode === 'e1rm') {
+    if (mode === '1rm') {
+      // Heaviest ACTUAL single-rep set this session — real lifts only.
+      for (const s of ex.sets) {
+        if (s.weight && +s.reps === 1 && !s.failed) {
+          const wKg = toKg(+s.weight, du);
+          if (wKg > best) best = wKg;
+        }
+      }
+    } else if (mode === 'e1rm') {
       // Estimated 1RM from the best set this session (any rep count) → every
       // session with this exercise contributes a point, giving a full trajectory.
       for (const s of ex.sets) {
@@ -1182,7 +1190,7 @@ function goalTarget1RM_kg(goal) {
 function goalLineForMode(goal, mode) {
   // Est-1RM view compares against the goal's implied 1RM; rep views against the
   // goal's target weight.
-  const kg = (mode === 'e1rm') ? goalTarget1RM_kg(goal)
+  const kg = (mode === 'e1rm' || mode === '1rm') ? goalTarget1RM_kg(goal)
                                : (goal.targetWeightKg || goalTarget1RM_kg(goal));
   return Math.round(dispW(kg, 'kg') * 10) / 10;
 }
@@ -1410,25 +1418,21 @@ function renderDashboard() {
       `<option value="${n}" ${n===dashChartExercise?'selected':''}>${n}</option>`
     ).join('');
 
+    const metricBtns = [['1rm','1RM'],['e1rm','Est'],['5','5 Rep'],['8','8 Rep']].map(([m,lbl]) =>
+      `<button id="dm-${m}" class="btn btn-sm ${dashChartMode===m?'btn-primary':'btn-secondary'}"
+        style="flex:1;padding:6px 0;font-size:11px" onclick="setDashChartMode('${m}')">${lbl}</button>`).join('');
+
     html += `
     <div class="card" style="margin-bottom:14px">
-      <!-- Exercise selector + mode toggles -->
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px">
-        <div class="select-wrap" style="flex:1;min-width:120px;max-width:180px">
-          <select id="dash-ex-select" onchange="setDashChartExercise(this.value)"
-            style="font-size:13px;font-weight:700;padding:8px 30px 8px 10px;height:36px">
-            ${exOpts}
-          </select>
-        </div>
-        <div style="display:flex;gap:4px;flex-shrink:0">
-          <button id="dm-e1rm" class="btn btn-sm ${dashChartMode==='e1rm'?'btn-primary':'btn-secondary'}"
-            style="padding:6px 10px;font-size:11px" onclick="setDashChartMode('e1rm')">Est 1RM</button>
-          <button id="dm-5" class="btn btn-sm ${dashChartMode==='5'?'btn-primary':'btn-secondary'}"
-            style="padding:6px 10px;font-size:11px" onclick="setDashChartMode('5')">5 Rep</button>
-          <button id="dm-8" class="btn btn-sm ${dashChartMode==='8'?'btn-primary':'btn-secondary'}"
-            style="padding:6px 10px;font-size:11px" onclick="setDashChartMode('8')">8 Rep</button>
-        </div>
+      <!-- Exercise selector -->
+      <div class="select-wrap" style="margin-bottom:8px">
+        <select id="dash-ex-select" onchange="setDashChartExercise(this.value)"
+          style="font-size:13px;font-weight:700;padding:8px 30px 8px 10px;height:38px">
+          ${exOpts}
+        </select>
       </div>
+      <!-- Metric toggles -->
+      <div style="display:flex;gap:4px;margin-bottom:8px">${metricBtns}</div>
       <!-- Time-range selector -->
       <div style="display:flex;gap:4px;margin-bottom:10px">
         ${['1m','3m','6m','all'].map(r => `
@@ -1640,9 +1644,11 @@ function renderDashboardChart() {
   if (!progress.length) {
     const what = allCount > 0
       ? 'No data in this time range for'
-      : dashChartMode === 'e1rm'
-        ? 'No sets logged yet for'
-        : `No sets of ${dashChartMode}+ reps logged yet for`;
+      : dashChartMode === '1rm'
+        ? 'No actual 1-rep sets logged yet for'
+        : dashChartMode === 'e1rm'
+          ? 'No sets logged yet for'
+          : `No sets of ${dashChartMode}+ reps logged yet for`;
     wrap.innerHTML = `
       <div style="height:200px;display:flex;align-items:center;justify-content:center;
                   color:var(--muted);font-size:13px;text-align:center;line-height:1.6">
@@ -1662,9 +1668,11 @@ function renderDashboardChart() {
     new Date(p.date+'T12:00:00').toLocaleDateString(L(),{month:'short',day:'numeric'}));
   const weights = progress.map(p => Math.round(dispW(p.weightKg,'kg') * 10) / 10);
 
-  const modeLabel = dashChartMode === 'e1rm'
-    ? `Est. 1-rep max (${unit})`
-    : `Best weight @ ${dashChartMode}+ reps (${unit})`;
+  const modeLabel = dashChartMode === '1rm'
+    ? `1-rep max (${unit})`
+    : dashChartMode === 'e1rm'
+      ? `Est. 1-rep max (${unit})`
+      : `Best weight @ ${dashChartMode}+ reps (${unit})`;
 
   const datasets = [{
     label:              modeLabel,
@@ -1719,7 +1727,7 @@ function renderDashboardChart() {
 function setDashChartMode(mode) {
   dashChartMode = mode;
   // Update button styles without full re-render
-  ['e1rm','5','8'].forEach(m => {
+  ['1rm','e1rm','5','8'].forEach(m => {
     const btn = document.getElementById('dm-' + m);
     if (!btn) return;
     btn.className = btn.className
@@ -3441,7 +3449,7 @@ function renderGoals() {
            <div style="font-size:13px;margin-bottom:20px">Pick an exercise, a target weight × reps, and an optional deadline.<br>Every workout updates how close you are — with a celebration when you arrive. 🎉</div>
            <button class="btn btn-primary" onclick="openAddGoalModal()">Set Your First Goal</button>
          </div>`;
-    if (achieved.length) html += achievedSectionHTML(achieved);
+    html += achievedSectionHTML(achieved);
     document.getElementById('main').innerHTML = html;
     return;
   }
@@ -3518,7 +3526,7 @@ function renderGoals() {
   }
 
   // Achieved archive
-  if (achieved.length) html += achievedSectionHTML(achieved);
+  html += achievedSectionHTML(achieved);
 
   // Sticky add-goal button pinned at the bottom (matches Exercises tab)
   html += `
@@ -3667,6 +3675,9 @@ function updateGoal(id) {
   const goals = DB.goals;
   const i = goals.findIndex(g=>g.id===id);
   if(i<0) return;
+  // If the current target was already reached, preserve it in the archive
+  // before we overwrite it with the new (higher) target.
+  if (getGoalProgress(goals[i]).done) archiveGoalIfNew(goals[i]);
   goals[i].targetWeightKg = toKg(targetDisp, DB.unit);
   goals[i].targetReps     = targetReps;
   goals[i].targetDate     = document.getElementById('goal-edit-date').value || '';
@@ -4530,8 +4541,12 @@ function achievedSectionHTML(list) {
   const unit  = DB.unit;
   const items = [...list].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   return `
-  <div class="label" style="margin:20px 0 8px">🏆 Achieved (${items.length})</div>
-  ${items.map(a => {
+  <div style="display:flex;align-items:center;justify-content:space-between;margin:20px 0 8px">
+    <div class="label" style="margin:0">🏆 Achieved (${items.length})</div>
+    <button class="btn btn-ghost btn-sm" onclick="openAddAchievementModal()"
+      style="font-size:12px;color:var(--accent);padding:4px 8px;font-weight:600">+ Add past</button>
+  </div>
+  ${items.length ? items.map(a => {
     const w = Math.round(dispW(a.targetWeightKg || 0, 'kg') * 10) / 10;
     return `
     <div class="card-sm" style="display:flex;align-items:center;justify-content:space-between;border-color:var(--green)">
@@ -4539,12 +4554,67 @@ function achievedSectionHTML(list) {
         <div style="font-size:14px;font-weight:700">${a.exercise}</div>
         <div style="font-size:11px;color:var(--muted)">${w}${unit} × ${a.targetReps || 1} reps</div>
       </div>
-      <div style="text-align:right;flex-shrink:0;margin-left:10px">
-        <span class="goal-done-badge">✓ DONE</span>
-        <div style="font-size:10px;color:var(--muted);margin-top:4px">${a.date ? fmtDate(a.date) : ''}</div>
+      <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;margin-left:10px">
+        <div style="text-align:right">
+          <span class="goal-done-badge">✓ DONE</span>
+          <div style="font-size:10px;color:var(--muted);margin-top:4px">${a.date ? fmtDate(a.date) : ''}</div>
+        </div>
+        <button class="del-btn" style="width:32px;height:32px" onclick="removeAchievement('${esc(a.key)}')" aria-label="Remove">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
       </div>
     </div>`;
-  }).join('')}`;
+  }).join('') : `<div style="font-size:12px;color:var(--muted);padding:4px 2px 2px">No achievements recorded yet. Reach a goal — or tap “+ Add past” to log one you already hit.</div>`}`;
+}
+
+function removeAchievement(key) {
+  saveAchievedGoals(achievedGoals().filter(a => a.key !== key));
+  renderGoals();
+}
+
+// Manually record a milestone the app didn't capture (e.g. a goal hit before this feature existed).
+function openAddAchievementModal() {
+  const unit = DB.unit;
+  const opts = allExerciseNames().map(n => `<option value="${esc(n)}">`).join('');
+  document.getElementById('modal-content').innerHTML = `
+  <div style="font-size:18px;font-weight:700;margin-bottom:16px">Add a past achievement</div>
+  <div class="input-group">
+    <div class="label">Exercise</div>
+    <input list="ach-ex-list" id="ach-ex" placeholder="e.g. Deadlift" autocapitalize="words" autocorrect="off">
+    <datalist id="ach-ex-list">${opts}</datalist>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+    <div class="input-group">
+      <div class="label">Weight (${unit})</div>
+      <input type="number" inputmode="decimal" id="ach-weight" min="1" step="2.5" placeholder="${unit==='kg'?'140':'300'}">
+    </div>
+    <div class="input-group">
+      <div class="label">Reps</div>
+      <input type="number" inputmode="numeric" id="ach-reps" min="1" max="30" step="1" value="1">
+    </div>
+  </div>
+  <div class="input-group">
+    <div class="label">Date achieved</div>
+    <input type="date" id="ach-date" value="${todayStr()}" max="${todayStr()}">
+  </div>
+  <button class="btn btn-primary btn-full" style="margin-top:8px" onclick="saveManualAchievement()">Add to Achieved 🏆</button>`;
+  openModal();
+  setTimeout(()=>document.getElementById('ach-ex')?.focus(), 100);
+}
+
+function saveManualAchievement() {
+  const exercise = (document.getElementById('ach-ex').value || '').trim();
+  const weight   = +document.getElementById('ach-weight').value;
+  const reps     = +document.getElementById('ach-reps').value || 1;
+  const date     = document.getElementById('ach-date').value || todayStr();
+  if (!exercise)       { showToast('Enter an exercise', false); return; }
+  if (!weight || weight <= 0) { showToast('Enter a valid weight', false); return; }
+  const arr = achievedGoals();
+  arr.push({ key: 'm' + uid(), exercise, targetWeightKg: toKg(weight, DB.unit), targetReps: reps, date });
+  saveAchievedGoals(arr);
+  closeModal();
+  showToast('Achievement added 🏆');
+  renderGoals();
 }
 
 // Fire confetti once when a goal is newly reached. Re-arms if the target is raised.
