@@ -1,9 +1,9 @@
-// Lift Log — Service Worker v39
+// Lift Log — Service Worker v40
 // Strategy:
 //   liftlog.html  → network-first (always get the latest version)
 //   everything else → cache-first (icons, Chart.js — safe to cache long-term)
 
-const CACHE_NAME = 'liftlog-v39';
+const CACHE_NAME = 'liftlog-v40';
 const STATIC_ASSETS = [
   './manifest.json',
   './icon-192.png',
@@ -65,4 +65,23 @@ self.addEventListener('fetch', event => {
       })
     );
   }
+});
+
+// ── Notification click: focus the app and route to the right view ───────────
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  const data   = event.notification.data || {};
+  const target = data.url || './liftlog.html';
+  const view   = data.view || null;
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(cls => {
+      for (const c of cls) {
+        if ('focus' in c) {
+          if (view) c.postMessage({ type: 'navigate', view });
+          return c.focus();
+        }
+      }
+      if (self.clients.openWindow) return self.clients.openWindow(target);
+    })
+  );
 });
