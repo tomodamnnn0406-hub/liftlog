@@ -364,6 +364,27 @@ input:focus,textarea:focus,select:focus{border-color:var(--accent)}
 .ex-acc-body{display:none;padding:0 14px 14px}
 .ex-acc.open .ex-acc-body{display:block}
 
+/* ── Drag-and-drop reorder ── */
+.drag-handle{cursor:grab;color:var(--muted);font-size:17px;line-height:1;
+  padding:4px 4px;flex-shrink:0;touch-action:none;user-select:none;-webkit-user-select:none;
+  -webkit-tap-highlight-color:transparent}
+.drag-handle:active{cursor:grabbing;color:var(--accent)}
+.drag-active{box-shadow:0 10px 28px rgba(0,0,0,.55);opacity:.97;transform:scale(1.015);
+  border-color:var(--accent)!important}
+.drag-placeholder{border:2px dashed var(--accent);border-radius:12px;
+  background:var(--accent-dim);box-sizing:border-box}
+.drag-indicator{position:absolute;left:2px;right:2px;height:3px;border-radius:3px;
+  background:var(--accent);z-index:150;pointer-events:none;box-shadow:0 0 8px var(--accent)}
+
+/* ── Dashboard customize toggle switch ── */
+.dash-toggle{width:46px;height:27px;border-radius:14px;border:1px solid var(--border);
+  background:var(--card2);position:relative;cursor:pointer;flex-shrink:0;padding:0;
+  transition:background .15s,border-color .15s;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+.dash-toggle span{position:absolute;top:2px;left:2px;width:21px;height:21px;border-radius:50%;
+  background:var(--muted);transition:transform .18s,background .18s}
+.dash-toggle.on{background:var(--accent-dim);border-color:var(--accent)}
+.dash-toggle.on span{transform:translateX(19px);background:var(--accent)}
+
 /* ── Sticky action bars ── */
 .log-action-bar{position:fixed;left:50%;transform:translateX(-50%);
   bottom:calc(62px + env(safe-area-inset-bottom));
@@ -709,6 +730,9 @@ const DB = {
   // templates = { 'Push': ['Bench Press','Lateral Raise', ...], ... }
   get templates()      { return JSON.parse(localStorage.getItem('ll_templates') || '{}') },
   saveTemplates(t)     { localStorage.setItem('ll_templates', JSON.stringify(t)) },
+  // dashLayout = [{id:'chart',on:true}, ...] — order + visibility of dashboard sections
+  get dashLayout()     { return JSON.parse(localStorage.getItem('ll_dash_layout') || 'null') },
+  saveDashLayout(l)    { localStorage.setItem('ll_dash_layout', JSON.stringify(l)) },
   addWorkout(w)    { const arr = this.workouts; arr.push(w); this.save(arr) },
   removeWorkout(id){ this.save(this.workouts.filter(w => w.id !== id)) }
 };
@@ -945,6 +969,8 @@ let selectedPREx   = null;
 let prChart        = null;
 let openBPGroups   = new Set(); // which body-part groups are expanded
 let editOpenEx     = new Set(); // expanded exercise accordions in the edit modal
+let openEx         = new Set(); // expanded exercise accordions on the Log screen
+let dashEditMode   = false;     // dashboard customize (reorder/show-hide) mode
 let timerRunning   = false;     // workout stopwatch state
 let timerInterval  = null;
 let timerStartTs   = null;      // epoch ms when the current run segment started
@@ -1387,7 +1413,21 @@ function renderDashboard() {
       <div style="font-size:22px;font-weight:800;margin-bottom:2px">Dashboard</div>
       <div style="font-size:12px;color:var(--muted)">${now.toLocaleDateString(L(),{weekday:'long',month:'long',day:'numeric'})}</div>
     </div>
+    <button class="btn btn-ghost btn-sm" onclick="toggleDashEdit()" aria-label="Customize dashboard"
+      style="font-size:12px;color:${dashEditMode?'var(--accent)':'var(--muted)'};padding:6px 10px;font-weight:600;display:flex;align-items:center;gap:5px">
+      ${dashEditMode
+        ? '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Done'
+        : '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg> Customize'}
+    </button>
   </div>`;
+
+  // ── Dashboard customize (edit) mode ────────────────────
+  if (dashEditMode) {
+    html += dashEditorHTML();
+    document.getElementById('main').innerHTML = html;
+    setTimeout(initDashEditDrag, 30);
+    return;
+  }
 
   // ── Getting-started checklist (auto-hides when complete) ─
   html += gettingStartedHTML();
@@ -1445,7 +1485,11 @@ function renderDashboard() {
   // ── Feedback nudge card (until sent or dismissed) ──────
   html += fbCardHTML();
 
-  // ── CHART (TOP) ────────────────────────────────────────
+  // ── Section renderers — order & visibility from the customize layout ──
+  const dashSec = {};
+
+  dashSec.chart = () => {
+  let html = '';
   if (allWithData.length) {
     const exOpts = allWithData.map(n =>
       `<option value="${n}" ${n===dashChartExercise?'selected':''}>${n}</option>`
@@ -1478,7 +1522,11 @@ function renderDashboard() {
       </div>
     </div>`;
   }
+  return html;
+  };
 
+  dashSec.goals = () => {
+  let html = '';
   // ── GOALS ──────────────────────────────────────────────
   html += `
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
@@ -1573,8 +1621,11 @@ function renderDashboard() {
       </div>`;
     }
   }
+  return html;
+  };
 
-  // ── LAST WORKOUT ──────────────────────────────────────
+  dashSec.last = () => {
+  let html = '';
   html += `<div class="label" style="margin-bottom:8px;margin-top:4px">Last Workout</div>`;
   if (recent) {
     const du        = wUnit(recent);
@@ -1604,8 +1655,11 @@ function renderDashboard() {
       <button class="btn btn-primary btn-sm" onclick="showView('log')">Log First Workout</button>
     </div>`;
   }
+  return html;
+  };
 
-  // ── BODY STATS ────────────────────────────────────────
+  dashSec.stats = () => {
+  let html = '';
   html += `<div class="label" style="margin-bottom:8px">Body Stats</div>`;
   const hasProfile = profile.height || profile.bodyweight;
   if (hasProfile) {
@@ -1650,10 +1704,18 @@ function renderDashboard() {
       </div>
     </div>`;
   }
+  return html;
+  };
+
+  // Append sections in the user's chosen order, skipping hidden ones.
+  for (const item of getDashLayout()) {
+    if (item.on && dashSec[item.id]) html += dashSec[item.id]();
+  }
 
   document.getElementById('main').innerHTML = html;
   checkGoalCelebrations();
-  if (dashChartExercise) setTimeout(() => renderDashboardChart(), 60);
+  const _dl = getDashLayout();
+  if (dashChartExercise && _dl.find(s => s.id === 'chart' && s.on)) setTimeout(() => renderDashboardChart(), 60);
 }
 
 // ── Dashboard chart renderer ──────────────────────────
@@ -1895,6 +1957,8 @@ function renderLog() {
     </button>
   </div>`;
 
+  initLogExDrag();
+
   // Keep the live tick going if the stopwatch is running after a re-render
   if (timerRunning) {
     clearInterval(timerInterval);
@@ -1949,10 +2013,18 @@ function saveTemplateOfferHTML() {
   const cur = currentLog.exercises.map(e => e.name);
   const tpl = DB.templates[name] || [];
   if (tpl.length === cur.length && tpl.every((n,i) => n === cur[i])) return '';
+  const verb = tpl.length ? 'Update' : 'Save';
   return `
-  <button class="btn btn-secondary btn-full btn-sm" style="margin-bottom:12px" onclick="saveCurrentAsTemplate()">
-    📋 ${tpl.length ? 'Update' : 'Save as'} ${name} template
-  </button>`;
+  <button class="btn btn-accent-outline btn-full" style="margin-bottom:6px;font-weight:700" onclick="saveCurrentAsTemplate()">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+      <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+      <polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>
+    </svg>
+    ${verb} "${name}" template
+  </button>
+  <div style="text-align:center;font-size:11px;color:var(--muted);margin-bottom:12px">
+    ${tpl.length ? 'Save these changes to reuse next time' : `Reuse this exercise list next ${name} day in one tap`}
+  </div>`;
 }
 
 // ── Templates & repeat-last-session ────────────────────
@@ -1990,6 +2062,7 @@ function applyTemplateToLog() {
   const tpl = DB.templates[currentLog.name];
   if (!tpl || !tpl.length) return;
   currentLog.exercises = tpl.map(exerciseWithPlaceholders);
+  openEx = new Set(currentLog.exercises.length ? [0] : []);   // open the first, rest collapsed
   renderLog();
   showToast(`Loaded your ${currentLog.name} template 📋`);
 }
@@ -2004,6 +2077,7 @@ function applyLastSessionToLog() {
       phR: s.reps || ''
     })) };
   });
+  openEx = new Set(currentLog.exercises.length ? [0] : []);   // open the first, rest collapsed
   renderLog();
   showToast(`Loaded last ${currentLog.name} session ⟳`);
 }
@@ -2211,16 +2285,30 @@ function renderRestBar() {
 
 function renderExercisesHTML() {
   const unit = DB.unit;
-  return currentLog.exercises.map((ex, ei) => `
-  <div class="card" id="ex-${ei}" style="margin-bottom:10px">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:8px">
-      <div style="min-width:0">
-        <div style="font-size:16px;font-weight:700">${ex.name}</div>
-        ${getMuscleForExercise(ex.name)?`<div style="font-size:11px;color:var(--accent);margin-top:2px">${getMuscleForExercise(ex.name)}</div>`:''}
+  return currentLog.exercises.map((ex, ei) => {
+    const muscle = getMuscleForExercise(ex.name);
+    const isOpen = openEx.has(ei);
+    const nSets  = ex.sets.length;
+    // Collapsed summary: muscle · sets · best entered set
+    const best = ex.sets.filter(s => s.weight && s.reps)
+      .sort((a,b) => ((+b.weight||0)*(+b.reps||0)) - ((+a.weight||0)*(+a.reps||0)))[0];
+    const bits = [];
+    if (muscle) bits.push(muscle);
+    bits.push(`${nSets} set${nSets!==1?'s':''}`);
+    if (best) bits.push(`${best.weight}${unit}×${best.reps}`);
+    const summary = bits.join(' · ');
+    return `
+  <div class="card-sm ex-acc${isOpen?' open':''}" id="ex-${ei}" data-drag-item style="margin-bottom:10px;padding:0;overflow:hidden">
+    <div class="ex-acc-header" onclick="toggleEx(${ei})">
+      <div style="display:flex;align-items:center;gap:6px;min-width:0">
+        <span class="drag-handle" data-drag-handle onclick="event.stopPropagation()" title="Drag to reorder" aria-label="Drag to reorder">⠿</span>
+        <span class="ex-acc-chevron">▾</span>
+        <div style="min-width:0">
+          <div style="font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${ex.name}</div>
+          <div style="font-size:11px;color:${muscle?'var(--accent)':'var(--muted)'};margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${summary}</div>
+        </div>
       </div>
-      <div style="display:flex;align-items:center;gap:3px;flex-shrink:0">
-        ${ei>0?`<button class="reorder-btn" onclick="moveExercise(${ei},-1)">▲</button>`:''}
-        ${ei<currentLog.exercises.length-1?`<button class="reorder-btn" onclick="moveExercise(${ei},1)">▼</button>`:''}
+      <div style="display:flex;align-items:center;gap:3px;flex-shrink:0" onclick="event.stopPropagation()">
         <button class="del-btn" onclick="removeExercise(${ei})">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="3 6 5 6 21 6"/>
@@ -2230,6 +2318,7 @@ function renderExercisesHTML() {
         </button>
       </div>
     </div>
+    <div class="ex-acc-body">
     <div class="sets-header">
       <span>Set</span><span>Wt (${unit})</span><span>Reps</span><span>~1RM</span><span></span>
     </div>
@@ -2270,12 +2359,39 @@ function renderExercisesHTML() {
       value="${(ex.note||'').replace(/"/g,'&quot;')}"
       oninput="currentLog.exercises[${ei}].note=this.value;saveDraft()"
       style="margin-top:10px;font-size:13px;padding:9px 12px;min-height:38px">
-  </div>`).join('');
+    </div>
+  </div>`;
+  }).join('');
 }
 
 function refreshExSection() {
-  document.getElementById('exercises-section').innerHTML = renderExercisesHTML();
+  const el = document.getElementById('exercises-section');
+  if (el) { el.innerHTML = renderExercisesHTML(); initLogExDrag(); }
   saveDraft();
+}
+// Expand / collapse a Log exercise (no draft write needed for a pure UI toggle)
+function toggleEx(ei) {
+  openEx.has(ei) ? openEx.delete(ei) : openEx.add(ei);
+  const el = document.getElementById('exercises-section');
+  if (el) { el.innerHTML = renderExercisesHTML(); initLogExDrag(); }
+}
+// Remap a tracked index after an item moves from→to within a list
+function remapIndexAfterMove(i, from, to) {
+  if (i === from) return to;
+  if (from < to) return (i > from && i <= to) ? i - 1 : i;
+  return (i >= to && i < from) ? i + 1 : i;
+}
+function reorderLogExercises(from, to) {
+  const arr = currentLog.exercises;
+  if (from === to || from < 0 || to < 0 || from >= arr.length || to >= arr.length) return;
+  const [it] = arr.splice(from, 1);
+  arr.splice(to, 0, it);
+  openEx = new Set([...openEx].map(i => remapIndexAfterMove(i, from, to)));
+  refreshExSection();
+}
+function initLogExDrag() {
+  const el = document.getElementById('exercises-section');
+  if (el) enableDragReorder(el, reorderLogExercises);
 }
 
 function updateSet(ei, si, field, val) {
@@ -2302,6 +2418,10 @@ function removeSet(ei, si) {
 }
 function removeExercise(ei) {
   currentLog.exercises.splice(ei,1);
+  // keep accordion open-state aligned with the shifted indices
+  const ns = new Set();
+  openEx.forEach(i => { if (i < ei) ns.add(i); else if (i > ei) ns.add(i-1); });
+  openEx = ns;
   refreshExSection();
 }
 
@@ -2454,6 +2574,7 @@ function addExercise(name, muscle) {
   } else {
     // Log mode — pre-fill placeholder sets from this exercise's last session
     currentLog.exercises.push(exerciseWithPlaceholders(name));
+    openEx = new Set([currentLog.exercises.length - 1]); // newest open, rest collapsed
     closeModal();
     refreshExSection();
     setTimeout(()=>{
@@ -2854,6 +2975,7 @@ function renderWorkoutEditModal() {
 
   document.getElementById('modal-content').innerHTML = html;
   openModal();
+  initEditExDrag();
 }
 
 function handleEditSessionSelect(val) {
@@ -2877,9 +2999,10 @@ function renderEditExercisesHTML() {
     const nSets   = ex.sets.length;
     const summary = muscle ? muscle : `${nSets} set${nSets!==1?'s':''}`;
     return `
-  <div class="card-sm ex-acc${isOpen?' open':''}" id="edit-ex-${ei}" style="margin-bottom:10px;padding:0;overflow:hidden">
+  <div class="card-sm ex-acc${isOpen?' open':''}" id="edit-ex-${ei}" data-drag-item style="margin-bottom:10px;padding:0;overflow:hidden">
     <div class="ex-acc-header" onclick="toggleEditEx(${ei})">
-      <div style="display:flex;align-items:center;gap:9px;min-width:0">
+      <div style="display:flex;align-items:center;gap:6px;min-width:0">
+        <span class="drag-handle" data-drag-handle onclick="event.stopPropagation()" title="Drag to reorder" aria-label="Drag to reorder">⠿</span>
         <span class="ex-acc-chevron">▾</span>
         <div style="min-width:0">
           <div style="font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${ex.name}</div>
@@ -2887,8 +3010,6 @@ function renderEditExercisesHTML() {
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:3px;flex-shrink:0" onclick="event.stopPropagation()">
-        ${ei>0?`<button class="reorder-btn" onclick="editMoveExercise(${ei},-1)">▲</button>`:''}
-        ${ei<editingWorkout.exercises.length-1?`<button class="reorder-btn" onclick="editMoveExercise(${ei},1)">▼</button>`:''}
         <button class="del-btn" onclick="editRemoveExercise(${ei})">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="3 6 5 6 21 6"/>
@@ -2942,7 +3063,18 @@ function renderEditExercisesHTML() {
 
 function editRefreshExSection() {
   const el = document.getElementById('edit-exercises-section');
-  if (el) el.innerHTML = renderEditExercisesHTML();
+  if (el) { el.innerHTML = renderEditExercisesHTML(); initEditExDrag(); }
+}
+function reorderEditExercises(from, to) {
+  const arr = editingWorkout.exercises;
+  if (from === to || from < 0 || to < 0 || from >= arr.length || to >= arr.length) return;
+  const [it] = arr.splice(from, 1);
+  arr.splice(to, 0, it);
+  editOpenEx = new Set([...editOpenEx].map(i => remapIndexAfterMove(i, from, to)));
+  editRefreshExSection();
+}
+function initEditExDrag() {
+  enableDragReorder(document.getElementById('edit-exercises-section'), reorderEditExercises);
 }
 
 // Weight stored in editingWorkout must always be in the workout's original dataUnit
@@ -4448,6 +4580,183 @@ function gdBootstrap() {
 function esc(s) { return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'") }
 
 // ═══════════════════════════════════════════════════════
+// GENERIC TOUCH DRAG-AND-DROP REORDER
+// ═══════════════════════════════════════════════════════
+// Works on any container whose children carry [data-drag-item]; dragging starts
+// from a [data-drag-handle] inside each item. onReorder(from, to) uses splice
+// semantics (remove at `from`, insert at `to` in the post-removal array).
+function scrollParent(el) {
+  let n = el;
+  while (n && n !== document.body) {
+    const oy = getComputedStyle(n).overflowY;
+    if (/(auto|scroll)/.test(oy) && n.scrollHeight > n.clientHeight) return n;
+    n = n.parentElement;
+  }
+  return document.getElementById('main') || document.scrollingElement || document.body;
+}
+
+function enableDragReorder(container, onReorder) {
+  if (!container) return;
+  container.querySelectorAll('[data-drag-handle]').forEach(handle => {
+    handle.style.touchAction = 'none';
+    handle.onpointerdown = (e) => beginDragReorder(e, handle, container, onReorder);
+  });
+}
+
+function beginDragReorder(e, handle, container, onReorder) {
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
+  const item = handle.closest('[data-drag-item]');
+  if (!item) return;
+  e.preventDefault();
+  e.stopPropagation();
+
+  const items0   = [...container.querySelectorAll('[data-drag-item]')];
+  const fromIdx  = items0.indexOf(item);
+  const scroller = scrollParent(container);
+  const rect     = item.getBoundingClientRect();
+  const grabDY   = e.clientY - rect.top;
+
+  if (getComputedStyle(container).position === 'static') {
+    container.dataset._posfix = '1';
+    container.style.position = 'relative';
+  }
+
+  // Placeholder keeps the original slot so the list doesn't collapse.
+  const ph = document.createElement('div');
+  ph.className = 'drag-placeholder';
+  ph.style.height = rect.height + 'px';
+  ph.style.margin = getComputedStyle(item).margin;
+  item.parentNode.insertBefore(ph, item);
+
+  // Lift the dragged item out of flow and follow the finger.
+  item.classList.add('drag-active');
+  item.style.position = 'fixed';
+  item.style.zIndex   = '200';
+  item.style.width    = rect.width + 'px';
+  item.style.left     = rect.left + 'px';
+  item.style.top      = (e.clientY - grabDY) + 'px';
+  item.style.pointerEvents = 'none';
+
+  const indicator = document.createElement('div');
+  indicator.className = 'drag-indicator';
+  container.appendChild(indicator);
+
+  let toIdx = fromIdx, clientY = e.clientY, raf = null;
+  const realItems = () => [...container.querySelectorAll('[data-drag-item]')].filter(x => x !== item);
+
+  const update = () => {
+    item.style.top = (clientY - grabDY) + 'px';
+    const rl = realItems();
+    let k = 0;
+    for (const el of rl) {
+      const r = el.getBoundingClientRect();
+      if (clientY > r.top + r.height / 2) k++; else break;
+    }
+    toIdx = k;
+    const cRect = container.getBoundingClientRect();
+    let top;
+    if (k >= rl.length) {
+      const ref = rl.length ? rl[rl.length - 1].getBoundingClientRect() : ph.getBoundingClientRect();
+      top = ref.bottom - cRect.top;
+    } else {
+      top = rl[k].getBoundingClientRect().top - cRect.top;
+    }
+    indicator.style.top = (top - 1) + 'px';
+  };
+
+  const tick = () => {
+    const s = scroller.getBoundingClientRect();
+    const EDGE = 70, SPEED = 14;
+    if (clientY < s.top + EDGE)        scroller.scrollTop -= SPEED;
+    else if (clientY > s.bottom - EDGE) scroller.scrollTop += SPEED;
+    update();
+    raf = requestAnimationFrame(tick);
+  };
+
+  const onMove = (ev) => { clientY = ev.clientY; update(); };
+  const onUp = () => {
+    cancelAnimationFrame(raf);
+    handle.removeEventListener('pointermove', onMove);
+    handle.removeEventListener('pointerup', onUp);
+    handle.removeEventListener('pointercancel', onUp);
+    item.classList.remove('drag-active');
+    ['position','zIndex','width','left','top','pointerEvents'].forEach(p => item.style[p] = '');
+    ph.remove();
+    indicator.remove();
+    if (container.dataset._posfix) { container.style.position = ''; delete container.dataset._posfix; }
+    if (toIdx !== fromIdx) onReorder(fromIdx, toIdx);
+  };
+
+  try { handle.setPointerCapture(e.pointerId); } catch (_) {}
+  handle.addEventListener('pointermove', onMove);
+  handle.addEventListener('pointerup', onUp);
+  handle.addEventListener('pointercancel', onUp);
+  update();
+  raf = requestAnimationFrame(tick);
+}
+
+// ═══════════════════════════════════════════════════════
+// DASHBOARD CUSTOMIZATION (reorder + show/hide)
+// ═══════════════════════════════════════════════════════
+const DASH_SECTIONS = {
+  chart: { label: 'Progress Chart', emoji: '📈' },
+  goals: { label: 'My Goals',       emoji: '🎯' },
+  last:  { label: 'Last Workout',   emoji: '🕒' },
+  stats: { label: 'Body Stats',     emoji: '⚖️' }
+};
+const DASH_DEFAULT = ['chart', 'goals', 'last', 'stats'];
+
+function getDashLayout() {
+  const saved = DB.dashLayout;
+  let layout = Array.isArray(saved) ? saved.filter(s => s && DASH_SECTIONS[s.id]) : [];
+  const present = new Set(layout.map(s => s.id));
+  for (const id of DASH_DEFAULT) if (!present.has(id)) layout.push({ id, on: true });
+  return layout;
+}
+function saveDashLayout(layout) { DB.saveDashLayout(layout); }
+
+function toggleDashEdit() { dashEditMode = !dashEditMode; renderDashboard(); }
+function toggleDashSection(id) {
+  const l = getDashLayout();
+  const s = l.find(x => x.id === id);
+  if (s) s.on = !s.on;
+  saveDashLayout(l);
+  renderDashboard();
+}
+function moveDashSection(from, to) {
+  const l = getDashLayout();
+  if (from === to || from < 0 || to < 0 || from >= l.length || to >= l.length) return;
+  const [it] = l.splice(from, 1);
+  l.splice(to, 0, it);
+  saveDashLayout(l);
+  renderDashboard();
+}
+function dashEditorHTML() {
+  const rows = getDashLayout().map(item => {
+    const meta = DASH_SECTIONS[item.id];
+    return `
+    <div class="card-sm" data-drag-item style="display:flex;align-items:center;gap:10px;margin-bottom:10px;padding:12px">
+      <span class="drag-handle" data-drag-handle title="Drag to reorder" aria-label="Drag to reorder">⠿</span>
+      <div style="font-size:20px;width:24px;text-align:center;flex-shrink:0">${meta.emoji}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:14px;font-weight:700">${meta.label}</div>
+        <div style="font-size:11px;color:${item.on?'var(--accent)':'var(--muted)'}">${item.on ? 'Shown' : 'Hidden'}</div>
+      </div>
+      <button class="dash-toggle${item.on?' on':''}" role="switch" aria-checked="${item.on}" aria-label="Toggle ${meta.label}" onclick="toggleDashSection('${item.id}')"><span></span></button>
+    </div>`;
+  }).join('');
+  return `
+  <div class="card" style="background:var(--accent-dim);border-color:var(--accent);margin-bottom:12px">
+    <div style="font-size:13px;font-weight:700;margin-bottom:3px">✨ Customize your dashboard</div>
+    <div style="font-size:12px;color:var(--muted);line-height:1.5">Drag <span style="color:var(--text)">⠿</span> to reorder sections and use the switches to show or hide them. Tap <strong style="color:var(--accent)">Done</strong> up top when you're finished.</div>
+  </div>
+  <div id="dash-edit-list">${rows}</div>`;
+}
+function initDashEditDrag() {
+  enableDragReorder(document.getElementById('dash-edit-list'), moveDashSection);
+}
+
+// ═══════════════════════════════════════════════════════
 // UX ENHANCEMENTS — reorder, accordion, scroll-to-top, swipe-to-dismiss
 // ═══════════════════════════════════════════════════════
 function moveExercise(ei, dir) {
@@ -5007,7 +5316,11 @@ syncUnitToggle();
 
 // Restore an unsaved in-progress workout if the app was closed mid-session.
 const __draft = loadDraft();
-if (__draft) { currentLog = __draft; }
+if (__draft) {
+  currentLog = __draft;
+  if (currentLog.exercises && currentLog.exercises.length)
+    openEx = new Set([currentLog.exercises.length - 1]); // newest open, rest collapsed
+}
 
 initEnhancements();
 // If launched from the "unsaved workout" notification, go straight to the Log screen.
