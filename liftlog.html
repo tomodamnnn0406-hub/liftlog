@@ -977,6 +977,7 @@ let timerStartTs   = null;      // epoch ms when the current run segment started
 
 // Dashboard chart state
 let dashChart         = null;
+let volTrendChart     = null;   // weekly-volume mini chart (optional card)
 let dashChartMode     = '1rm';   // '1rm' (actual single) | 'e1rm' | '5' | '8'
 let dashChartExercise = null;
 let dashChartRange    = 'all';   // 'all' | '6m' | '3m' | '1m'
@@ -1384,6 +1385,7 @@ function syncUnitToggle() {
 // ═══════════════════════════════════════════════════════
 function renderDashboard() {
   if (dashChart) { dashChart.destroy(); dashChart = null; }
+  if (volTrendChart) { volTrendChart.destroy(); volTrendChart = null; }
 
   const workouts = DB.workouts;
   const prs      = getPRs();
@@ -1709,13 +1711,16 @@ function renderDashboard() {
 
   // Append sections in the user's chosen order, skipping hidden ones.
   for (const item of getDashLayout()) {
-    if (item.on && dashSec[item.id]) html += dashSec[item.id]();
+    if (!item.on) continue;
+    if (dashSec[item.id])               html += dashSec[item.id]();
+    else if (dashCardRenderers[item.id]) html += dashCardRenderers[item.id]();
   }
 
   document.getElementById('main').innerHTML = html;
   checkGoalCelebrations();
   const _dl = getDashLayout();
   if (dashChartExercise && _dl.find(s => s.id === 'chart' && s.on)) setTimeout(() => renderDashboardChart(), 60);
+  if (_dl.find(s => s.id === 'voltrend' && s.on)) setTimeout(() => renderVolTrendChart(), 60);
 }
 
 // ── Dashboard chart renderer ──────────────────────────
@@ -4582,9 +4587,12 @@ function esc(s) { return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'") }
 // ═══════════════════════════════════════════════════════
 // GENERIC TOUCH DRAG-AND-DROP REORDER
 // ═══════════════════════════════════════════════════════
-// Works on any container whose children carry [data-drag-item]; dragging starts
-// from a [data-drag-handle] inside each item. onReorder(from, to) uses splice
-// semantics (remove at `from`, insert at `to` in the post-removal array).
+// Works on any container whose children carry [data-drag-item]. Two ways to grab:
+//   • the [data-drag-handle] (⠿) starts dragging immediately, and
+//   • pressing-and-holding anywhere on the row (long-press ~200ms) also lifts it,
+//     so you can reorder by grabbing the whole section, not just the handle.
+// A quick tap still works as a normal click, and a moving touch still scrolls.
+// onReorder(from, to) uses splice semantics (remove at `from`, insert at `to`).
 function scrollParent(el) {
   let n = el;
   while (n && n !== document.body) {
@@ -4597,24 +4605,57 @@ function scrollParent(el) {
 
 function enableDragReorder(container, onReorder) {
   if (!container) return;
-  container.querySelectorAll('[data-drag-handle]').forEach(handle => {
-    handle.style.touchAction = 'none';
-    handle.onpointerdown = (e) => beginDragReorder(e, handle, container, onReorder);
+  container.querySelectorAll('[data-drag-item]').forEach(item => {
+    const handle = item.querySelector('[data-drag-handle]');
+    if (handle) {
+      handle.style.touchAction = 'none';
+      handle.onpointerdown = (e) => {
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+        startActiveDrag(item, container, onReorder, handle, e.clientY, e.pointerId);
+      };
+    }
+    // Long-press anywhere on the row (avoids interactive controls + the handle).
+    item.onpointerdown = (e) => beginLongPressDrag(e, item, container, onReorder, handle);
   });
 }
 
-function beginDragReorder(e, handle, container, onReorder) {
+function beginLongPressDrag(e, item, container, onReorder, handle) {
   if (e.pointerType === 'mouse' && e.button !== 0) return;
-  const item = handle.closest('[data-drag-item]');
-  if (!item) return;
-  e.preventDefault();
-  e.stopPropagation();
+  // Let real controls and the dedicated handle behave normally.
+  if (e.target.closest('input,textarea,select,button,a,[data-no-drag]')) return;
+  if (handle && (e.target === handle || handle.contains(e.target))) return;
 
+  const startX = e.clientX, startY = e.clientY, pid = e.pointerId;
+  let timer = null;
+  const cleanup = () => {
+    clearTimeout(timer);
+    item.removeEventListener('pointermove', onMove);
+    item.removeEventListener('pointerup', cleanup);
+    item.removeEventListener('pointercancel', cleanup);
+  };
+  const onMove = (ev) => {
+    // Movement before the hold completes → it's a scroll/tap, abort the long-press.
+    if (Math.abs(ev.clientX - startX) > 9 || Math.abs(ev.clientY - startY) > 9) cleanup();
+  };
+  timer = setTimeout(() => {
+    cleanup();
+    try { if (navigator.vibrate) navigator.vibrate(15); } catch (_) {}
+    startActiveDrag(item, container, onReorder, item, startY, pid, true);
+  }, 200);
+  item.addEventListener('pointermove', onMove, { passive: true });
+  item.addEventListener('pointerup', cleanup);
+  item.addEventListener('pointercancel', cleanup);
+}
+
+function startActiveDrag(item, container, onReorder, captureEl, startClientY, pointerId, suppressClick) {
   const items0   = [...container.querySelectorAll('[data-drag-item]')];
   const fromIdx  = items0.indexOf(item);
+  if (fromIdx < 0) return;
   const scroller = scrollParent(container);
   const rect     = item.getBoundingClientRect();
-  const grabDY   = e.clientY - rect.top;
+  const grabDY   = startClientY - rect.top;
 
   if (getComputedStyle(container).position === 'static') {
     container.dataset._posfix = '1';
@@ -4629,19 +4670,21 @@ function beginDragReorder(e, handle, container, onReorder) {
   item.parentNode.insertBefore(ph, item);
 
   // Lift the dragged item out of flow and follow the finger.
+  const prevTouch = captureEl.style.touchAction;
+  captureEl.style.touchAction = 'none';
   item.classList.add('drag-active');
   item.style.position = 'fixed';
   item.style.zIndex   = '200';
   item.style.width    = rect.width + 'px';
   item.style.left     = rect.left + 'px';
-  item.style.top      = (e.clientY - grabDY) + 'px';
+  item.style.top      = (startClientY - grabDY) + 'px';
   item.style.pointerEvents = 'none';
 
   const indicator = document.createElement('div');
   indicator.className = 'drag-indicator';
   container.appendChild(indicator);
 
-  let toIdx = fromIdx, clientY = e.clientY, raf = null;
+  let toIdx = fromIdx, clientY = startClientY, raf = null;
   const realItems = () => [...container.querySelectorAll('[data-drag-item]')].filter(x => x !== item);
 
   const update = () => {
@@ -4667,30 +4710,33 @@ function beginDragReorder(e, handle, container, onReorder) {
   const tick = () => {
     const s = scroller.getBoundingClientRect();
     const EDGE = 70, SPEED = 14;
-    if (clientY < s.top + EDGE)        scroller.scrollTop -= SPEED;
+    if (clientY < s.top + EDGE)         scroller.scrollTop -= SPEED;
     else if (clientY > s.bottom - EDGE) scroller.scrollTop += SPEED;
     update();
     raf = requestAnimationFrame(tick);
   };
 
-  const onMove = (ev) => { clientY = ev.clientY; update(); };
+  const onMove = (ev) => { ev.preventDefault(); clientY = ev.clientY; update(); };
   const onUp = () => {
     cancelAnimationFrame(raf);
-    handle.removeEventListener('pointermove', onMove);
-    handle.removeEventListener('pointerup', onUp);
-    handle.removeEventListener('pointercancel', onUp);
+    captureEl.removeEventListener('pointermove', onMove);
+    captureEl.removeEventListener('pointerup', onUp);
+    captureEl.removeEventListener('pointercancel', onUp);
+    captureEl.style.touchAction = prevTouch;
     item.classList.remove('drag-active');
     ['position','zIndex','width','left','top','pointerEvents'].forEach(p => item.style[p] = '');
     ph.remove();
     indicator.remove();
     if (container.dataset._posfix) { container.style.position = ''; delete container.dataset._posfix; }
+    // Swallow the click that would otherwise fire after a drag (e.g. expand/collapse).
+    if (suppressClick) item.addEventListener('click', (ev) => { ev.stopPropagation(); ev.preventDefault(); }, { capture: true, once: true });
     if (toIdx !== fromIdx) onReorder(fromIdx, toIdx);
   };
 
-  try { handle.setPointerCapture(e.pointerId); } catch (_) {}
-  handle.addEventListener('pointermove', onMove);
-  handle.addEventListener('pointerup', onUp);
-  handle.addEventListener('pointercancel', onUp);
+  try { captureEl.setPointerCapture(pointerId); } catch (_) {}
+  captureEl.addEventListener('pointermove', onMove, { passive: false });
+  captureEl.addEventListener('pointerup', onUp);
+  captureEl.addEventListener('pointercancel', onUp);
   update();
   raf = requestAnimationFrame(tick);
 }
@@ -4698,19 +4744,30 @@ function beginDragReorder(e, handle, container, onReorder) {
 // ═══════════════════════════════════════════════════════
 // DASHBOARD CUSTOMIZATION (reorder + show/hide)
 // ═══════════════════════════════════════════════════════
+// `on` here is the DEFAULT visibility for a section the user hasn't decided on yet.
+// The original four stay on by default; the richer cards are off until turned on.
 const DASH_SECTIONS = {
-  chart: { label: 'Progress Chart', emoji: '📈' },
-  goals: { label: 'My Goals',       emoji: '🎯' },
-  last:  { label: 'Last Workout',   emoji: '🕒' },
-  stats: { label: 'Body Stats',     emoji: '⚖️' }
+  chart:      { label: 'Progress Chart',     emoji: '📈', on: true  },
+  goals:      { label: 'My Goals',           emoji: '🎯', on: true  },
+  last:       { label: 'Last Workout',       emoji: '🕒', on: true  },
+  stats:      { label: 'Body Stats',         emoji: '⚖️', on: true  },
+  quickstats: { label: 'Quick Stats',        emoji: '📊', on: false },
+  thisweek:   { label: 'This Week',          emoji: '🗓️', on: false },
+  records:    { label: 'Personal Records',   emoji: '🏆', on: false },
+  streak:     { label: 'Training Streak',    emoji: '🔥', on: false },
+  voltrend:   { label: 'Weekly Volume',      emoji: '📉', on: false },
+  muscle:     { label: 'Muscle Balance',     emoji: '💪', on: false },
+  minical:    { label: 'Training Calendar',  emoji: '📅', on: false },
+  goalring:   { label: 'Goal Progress Ring', emoji: '🎯', on: false }
 };
-const DASH_DEFAULT = ['chart', 'goals', 'last', 'stats'];
+// Order shown in the customize list (and default dashboard order).
+const DASH_DEFAULT = ['chart','goals','last','stats','quickstats','thisweek','records','streak','voltrend','muscle','minical','goalring'];
 
 function getDashLayout() {
   const saved = DB.dashLayout;
   let layout = Array.isArray(saved) ? saved.filter(s => s && DASH_SECTIONS[s.id]) : [];
   const present = new Set(layout.map(s => s.id));
-  for (const id of DASH_DEFAULT) if (!present.has(id)) layout.push({ id, on: true });
+  for (const id of DASH_DEFAULT) if (!present.has(id)) layout.push({ id, on: DASH_SECTIONS[id].on });
   return layout;
 }
 function saveDashLayout(layout) { DB.saveDashLayout(layout); }
@@ -4748,13 +4805,284 @@ function dashEditorHTML() {
   return `
   <div class="card" style="background:var(--accent-dim);border-color:var(--accent);margin-bottom:12px">
     <div style="font-size:13px;font-weight:700;margin-bottom:3px">✨ Customize your dashboard</div>
-    <div style="font-size:12px;color:var(--muted);line-height:1.5">Drag <span style="color:var(--text)">⠿</span> to reorder sections and use the switches to show or hide them. Tap <strong style="color:var(--accent)">Done</strong> up top when you're finished.</div>
+    <div style="font-size:12px;color:var(--muted);line-height:1.5">Press and hold a row (or its <span style="color:var(--text)">⠿</span> handle) to drag it into a new order, and use the switches to show or hide each section. Tap <strong style="color:var(--accent)">Done</strong> up top when you're finished.</div>
   </div>
   <div id="dash-edit-list">${rows}</div>`;
 }
 function initDashEditDrag() {
   enableDragReorder(document.getElementById('dash-edit-list'), moveDashSection);
 }
+
+// ═══════════════════════════════════════════════════════
+// OPTIONAL DASHBOARD CARDS (toggled on in Customize)
+// ═══════════════════════════════════════════════════════
+// Monday-start week containing date d, at local midnight.
+function startOfWeek(d) {
+  const x = new Date(d);
+  const day = (x.getDay() + 6) % 7;   // Mon=0 … Sun=6
+  x.setHours(0, 0, 0, 0);
+  x.setDate(x.getDate() - day);
+  return x;
+}
+// Total volume of a workout in the current display unit (skips failed sets).
+function workoutVolumeDisp(w) {
+  const du = wUnit(w);
+  return w.exercises.reduce((s, e) =>
+    s + e.sets.reduce((s2, set) =>
+      s2 + (set.failed ? 0 : (dispW(+set.weight || 0, du)) * (+set.reps || 0)), 0), 0);
+}
+function workoutSetCount(w) {
+  return w.exercises.reduce((s, e) => s + e.sets.filter(st => st.weight || st.reps).length, 0);
+}
+function fmtVolShort(v, unit) {
+  v = Math.round(v);
+  return (v >= 10000 ? Math.round(v / 1000) + 'k' : v >= 1000 ? (v / 1000).toFixed(1) + 'k' : v) + unit;
+}
+function trainedWeekStamps() {
+  const set = new Set();
+  for (const w of DB.workouts) set.add(+startOfWeek(w.date + 'T12:00:00'));
+  return set;
+}
+function weekStreaks() {
+  const weeks = trainedWeekStamps();
+  let cur = 0;
+  const d = startOfWeek(new Date());
+  if (!weeks.has(+d)) d.setDate(d.getDate() - 7);   // grace: count from last week if none yet this week
+  while (weeks.has(+d)) { cur++; d.setDate(d.getDate() - 7); }
+  const sorted = [...weeks].sort((a, b) => a - b);
+  let longest = 0, run = 0, prev = null;
+  for (const t of sorted) {
+    if (prev !== null) { const pd = new Date(prev); pd.setDate(pd.getDate() + 7); run = (+pd === t) ? run + 1 : 1; }
+    else run = 1;
+    longest = Math.max(longest, run); prev = t;
+  }
+  return { current: cur, longest };
+}
+
+function dashLabel(txt) { return `<div class="label" style="margin-bottom:8px;margin-top:4px">${txt}</div>`; }
+function dashStatCell(val, lbl, color) {
+  return `<div style="flex:1;text-align:center;min-width:0">
+    <div style="font-size:21px;font-weight:800;color:${color||'var(--text)'}">${val}</div>
+    <div style="font-size:9.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-top:3px">${lbl}</div>
+  </div>`;
+}
+
+function dashCardQuickStats() {
+  const ws = DB.workouts, unit = DB.unit;
+  if (!ws.length) return '';
+  const totalVol = ws.reduce((s, w) => s + workoutVolumeDisp(w), 0);
+  const sow = startOfWeek(new Date());
+  const thisWk = ws.filter(w => new Date(w.date + 'T12:00:00') >= sow).length;
+  const streak = weekStreaks().current;
+  return dashLabel('📊 Overview') + `
+  <div class="card" style="margin-bottom:14px;display:flex;gap:4px">
+    ${dashStatCell(ws.length, 'Workouts')}
+    ${dashStatCell(fmtVolShort(totalVol, unit), 'Total vol')}
+    ${dashStatCell(thisWk, 'This week')}
+    ${dashStatCell(streak + 'w', 'Streak', 'var(--accent)')}
+  </div>`;
+}
+
+function dashCardThisWeek() {
+  const ws = DB.workouts, unit = DB.unit;
+  const sow = startOfWeek(new Date());
+  const prevStart = new Date(sow); prevStart.setDate(prevStart.getDate() - 7);
+  const inRange = (w, a, b) => { const d = new Date(w.date + 'T12:00:00'); return d >= a && (!b || d < b); };
+  const cur = ws.filter(w => inRange(w, sow, null));
+  const prev = ws.filter(w => inRange(w, prevStart, sow));
+  const vol = cur.reduce((s, w) => s + workoutVolumeDisp(w), 0);
+  const volPrev = prev.reduce((s, w) => s + workoutVolumeDisp(w), 0);
+  const sets = cur.reduce((s, w) => s + workoutSetCount(w), 0);
+  const delta = volPrev > 0 ? Math.round((vol - volPrev) / volPrev * 100) : null;
+  const deltaHTML = delta === null ? '<span style="color:var(--muted)">No data last week</span>'
+    : `<span style="color:${delta >= 0 ? 'var(--green)' : 'var(--red)'};font-weight:700">${delta >= 0 ? '▲' : '▼'} ${Math.abs(delta)}%</span> <span style="color:var(--muted)">vs last week</span>`;
+  return dashLabel('🗓️ This Week') + `
+  <div class="card" style="margin-bottom:14px">
+    <div style="display:flex;gap:4px;margin-bottom:10px">
+      ${dashStatCell(cur.length, 'Workouts')}
+      ${dashStatCell(sets, 'Sets')}
+      ${dashStatCell(fmtVolShort(vol, unit), 'Volume')}
+    </div>
+    <div style="font-size:12px;text-align:center">${deltaHTML}</div>
+  </div>`;
+}
+
+function dashCardRecords() {
+  const prs = getPRs(), unit = DB.unit;
+  const list = Object.entries(prs).filter(([, p]) => p.bestSet)
+    .sort((a, b) => (b[1].best1RM_kg || 0) - (a[1].best1RM_kg || 0)).slice(0, 5);
+  if (!list.length) return '';
+  const rows = list.map(([name, p], i) => `
+    <div style="display:flex;align-items:center;gap:10px;padding:9px 0;cursor:pointer;${i ? 'border-top:1px solid var(--border)' : ''}"
+         onclick="setDashChartExercise('${esc(name)}')">
+      <div style="font-size:13px;font-weight:800;color:var(--accent);width:18px;text-align:center">${i + 1}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${name}</div>
+        <div style="font-size:11px;color:var(--muted)">${p.bestWeight}${unit} × ${p.bestSet.reps} reps</div>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div style="font-size:15px;font-weight:800">${p.best1RM}${unit}</div>
+        <div style="font-size:9px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted)">est 1RM</div>
+      </div>
+    </div>`).join('');
+  return dashLabel('🏆 Personal Records') + `<div class="card" style="margin-bottom:14px;padding-top:4px;padding-bottom:4px">${rows}</div>`;
+}
+
+function dashCardStreak() {
+  if (!DB.workouts.length) return '';
+  const { current, longest } = weekStreaks();
+  return dashLabel('🔥 Training Streak') + `
+  <div class="card" style="margin-bottom:14px;display:flex;align-items:center;gap:16px">
+    <div style="font-size:40px;line-height:1">🔥</div>
+    <div style="display:flex;gap:24px;flex:1">
+      ${dashStatCell(current + (current === 1 ? ' wk' : ' wks'), 'Current', 'var(--accent)')}
+      ${dashStatCell(longest + (longest === 1 ? ' wk' : ' wks'), 'Longest')}
+    </div>
+  </div>`;
+}
+
+function dashCardVolTrend() {
+  if (DB.workouts.length < 1) return '';
+  return dashLabel('📉 Weekly Volume') + `
+  <div class="card" style="margin-bottom:14px">
+    <div style="position:relative;height:170px"><canvas id="voltrend-canvas"></canvas></div>
+  </div>`;
+}
+function renderVolTrendChart() {
+  const ctx = document.getElementById('voltrend-canvas');
+  if (!ctx) return;
+  if (volTrendChart) { volTrendChart.destroy(); volTrendChart = null; }
+  const unit = DB.unit;
+  const sow = startOfWeek(new Date());
+  const weeks = [];
+  for (let i = 11; i >= 0; i--) { const d = new Date(sow); d.setDate(d.getDate() - i * 7); weeks.push(d); }
+  const totals = weeks.map(wk => {
+    const end = new Date(wk); end.setDate(end.getDate() + 7);
+    return DB.workouts.filter(w => { const d = new Date(w.date + 'T12:00:00'); return d >= wk && d < end; })
+      .reduce((s, w) => s + workoutVolumeDisp(w), 0);
+  });
+  const labels = weeks.map(wk => wk.toLocaleDateString(L(), { month: 'short', day: 'numeric' }));
+  volTrendChart = new Chart(ctx, {
+    type: 'bar',
+    data: { labels, datasets: [{ label: `Volume (${unit})`, data: totals.map(v => Math.round(v)),
+      backgroundColor: 'rgba(249,115,22,0.5)', borderColor: '#f97316', borderWidth: 1, borderRadius: 4 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { backgroundColor: '#1a1a1a', borderColor: '#2a2a2a', borderWidth: 1,
+          titleColor: '#f0f0f0', bodyColor: '#aaa',
+          callbacks: { label: c => ` ${Math.round(c.parsed.y).toLocaleString()}${unit}` } }
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { color: '#555', font: { size: 9 }, maxTicksLimit: 6 } },
+        y: { grid: { color: '#1f1f1f' }, ticks: { color: '#555', font: { size: 9 },
+          callback: v => v >= 1000 ? (v / 1000) + 'k' : v } }
+      }
+    }
+  });
+}
+
+function dashCardMuscle() {
+  const since = new Date(); since.setDate(since.getDate() - 30);
+  const counts = {};
+  for (const w of DB.workouts) {
+    if (new Date(w.date + 'T12:00:00') < since) continue;
+    for (const ex of w.exercises) {
+      const done = ex.sets.filter(s => s.weight || s.reps).length;
+      if (!done) continue;
+      const muscles = getMusclesForExercise(ex.name);
+      const groups = muscles.length ? [...new Set(muscles.map(m => getBodyPartForMuscle(m) || 'Other'))] : ['Other'];
+      for (const g of groups) counts[g] = (counts[g] || 0) + done;
+    }
+  }
+  const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  if (!entries.length) return dashLabel('💪 Muscle Balance') + `
+    <div class="card" style="margin-bottom:14px;text-align:center;color:var(--muted);font-size:12px;padding:20px">
+      Log some workouts to see which muscle groups you train most (last 30 days).
+    </div>`;
+  const max = entries[0][1];
+  const bars = entries.map(([g, n]) => `
+    <div style="margin-bottom:9px">
+      <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px">
+        <span style="font-weight:600">${g}</span><span style="color:var(--muted)">${n} set${n !== 1 ? 's' : ''}</span>
+      </div>
+      <div style="height:8px;background:var(--card2);border-radius:4px;overflow:hidden">
+        <div style="height:100%;width:${Math.round(n / max * 100)}%;background:var(--accent);border-radius:4px"></div>
+      </div>
+    </div>`).join('');
+  return dashLabel('💪 Muscle Balance') + `
+  <div class="card" style="margin-bottom:14px">
+    <div style="font-size:11px;color:var(--muted);margin-bottom:10px">Sets per muscle group · last 30 days</div>
+    ${bars}
+  </div>`;
+}
+
+function dashCardMiniCal() {
+  const ws = DB.workouts;
+  const byDate = {};
+  for (const w of ws) (byDate[w.date] = byDate[w.date] || []).push(w);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const start = startOfWeek(today); start.setDate(start.getDate() - 7 * 4);   // 5 weeks incl. current
+  const dow = DB.lang === 'ja' ? ['月','火','水','木','金','土','日'] : ['M','T','W','T','F','S','S'];
+  let cells = '';
+  for (let i = 0; i < 35; i++) {
+    const d = new Date(start); d.setDate(start.getDate() + i);
+    const ds = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+    const list = byDate[ds];
+    const future = d > today;
+    const isToday = +d === +today;
+    const bg = list && list.length ? workoutColor(list[0].name) : 'var(--card2)';
+    cells += `<div title="${ds}" style="aspect-ratio:1;border-radius:6px;background:${future ? 'transparent' : bg};
+      opacity:${future ? .3 : 1};border:${isToday ? '2px solid var(--accent)' : '1px solid var(--border)'};
+      display:flex;align-items:center;justify-content:center;font-size:9px;color:${list && list.length ? '#fff' : 'var(--muted)'}">${d.getDate()}</div>`;
+  }
+  const head = dow.map(d => `<div style="text-align:center;font-size:9px;color:var(--muted)">${d}</div>`).join('');
+  return dashLabel('📅 Training Calendar') + `
+  <div class="card" style="margin-bottom:14px">
+    <div style="font-size:11px;color:var(--muted);margin-bottom:8px">Last 5 weeks</div>
+    <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:4px">${head}</div>
+    <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px">${cells}</div>
+  </div>`;
+}
+
+function dashCardGoalRing() {
+  const goals = DB.goals;
+  if (!goals.length) return '';
+  let sum = 0, n = 0;
+  for (const g of goals) {
+    const gp = getGoalProgress(g);
+    if (gp.target1RM > 0) { sum += Math.min(100, (gp.currentKg / gp.target1RM) * 100); n++; }
+  }
+  if (!n) return '';
+  const pct = Math.round(sum / n);
+  const reached = goals.filter(g => getGoalProgress(g).done).length;
+  const R = 34, C = 2 * Math.PI * R, off = C * (1 - pct / 100);
+  return dashLabel('🎯 Goal Progress') + `
+  <div class="card" style="margin-bottom:14px;display:flex;align-items:center;gap:18px;cursor:pointer" onclick="showView('goals')">
+    <svg width="84" height="84" viewBox="0 0 84 84" style="flex-shrink:0">
+      <circle cx="42" cy="42" r="${R}" fill="none" stroke="var(--card2)" stroke-width="9"/>
+      <circle cx="42" cy="42" r="${R}" fill="none" stroke="var(--accent)" stroke-width="9" stroke-linecap="round"
+        stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}" transform="rotate(-90 42 42)"/>
+      <text x="42" y="47" text-anchor="middle" font-size="18" font-weight="800" fill="var(--text)">${pct}%</text>
+    </svg>
+    <div style="flex:1;min-width:0">
+      <div style="font-size:14px;font-weight:700;margin-bottom:3px">Overall goal progress</div>
+      <div style="font-size:12px;color:var(--muted)">${reached} of ${goals.length} goal${goals.length !== 1 ? 's' : ''} reached · tap to view</div>
+    </div>
+  </div>`;
+}
+
+const dashCardRenderers = {
+  quickstats: dashCardQuickStats,
+  thisweek:   dashCardThisWeek,
+  records:    dashCardRecords,
+  streak:     dashCardStreak,
+  voltrend:   dashCardVolTrend,
+  muscle:     dashCardMuscle,
+  minical:    dashCardMiniCal,
+  goalring:   dashCardGoalRing
+};
 
 // ═══════════════════════════════════════════════════════
 // UX ENHANCEMENTS — reorder, accordion, scroll-to-top, swipe-to-dismiss
