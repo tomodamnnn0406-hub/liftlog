@@ -1994,19 +1994,23 @@ function templateSuggestionHTML() {
   const tpl = DB.templates[name];
   if (tpl && tpl.length) {
     return `
-    <div class="card" style="border-color:var(--green);background:rgba(34,197,94,.06)">
-      <div style="font-size:13px;font-weight:700;color:var(--green);margin-bottom:3px">📋 Your ${name} template</div>
-      <div style="font-size:12px;color:var(--muted);margin-bottom:10px">${tpl.join(' · ')}</div>
-      <button class="btn btn-primary btn-full" style="background:var(--green)" onclick="applyTemplateToLog()">Load ${tpl.length} exercise${tpl.length>1?'s':''}</button>
+    <div class="card" style="border-color:var(--green);background:rgba(34,197,94,.06);padding:9px 11px;margin-bottom:10px;display:flex;align-items:center;gap:10px">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12px;font-weight:700;color:var(--green)">📋 ${name} template</div>
+        <div style="font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${tpl.join(' · ')}</div>
+      </div>
+      <button class="btn btn-primary" style="background:var(--green);padding:8px 13px;white-space:nowrap;flex-shrink:0" onclick="applyTemplateToLog()">Load ${tpl.length}</button>
     </div>`;
   }
   const last = lastSessionNamed(name);
   if (last && last.exercises.length) {
     return `
-    <div class="card" style="border-color:var(--accent);background:var(--accent-dim)">
-      <div style="font-size:13px;font-weight:700;color:var(--accent);margin-bottom:3px">⟳ Repeat last ${name}? (${fmtDate(last.date)})</div>
-      <div style="font-size:12px;color:var(--muted);margin-bottom:10px">${last.exercises.map(e=>e.name).join(' · ')}</div>
-      <button class="btn btn-primary btn-full" onclick="applyLastSessionToLog()">Load ${last.exercises.length} exercise${last.exercises.length>1?'s':''}</button>
+    <div class="card" style="border-color:var(--accent);background:var(--accent-dim);padding:9px 11px;margin-bottom:10px;display:flex;align-items:center;gap:10px">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12px;font-weight:700;color:var(--accent)">⟳ Repeat last ${name}? · ${fmtDate(last.date)}</div>
+        <div style="font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${last.exercises.map(e=>e.name).join(' · ')}</div>
+      </div>
+      <button class="btn btn-primary" style="padding:8px 13px;white-space:nowrap;flex-shrink:0" onclick="applyLastSessionToLog()">Load ${last.exercises.length}</button>
     </div>`;
   }
   return '';
@@ -2134,12 +2138,12 @@ function ensureTimerTicking() {
   }
 }
 
-// Floating "Workout mm:ss" pill — visible on every screen except Log (which
-// already shows the big duration), only while the stopwatch is running.
+// Floating "Workout mm:ss" pill — pinned at the top on every screen (including
+// Log, where the user keeps it open during a workout) while the stopwatch runs.
 function updateWkTimerChip() {
   const chip = document.getElementById('wk-timer');
   if (!chip) return;
-  const show = timerRunning && currentView !== 'log';
+  const show = timerRunning;
   chip.classList.toggle('show', show);
   document.body.classList.toggle('wk-timer-on', show);
   if (show) {
