@@ -2282,8 +2282,9 @@ function logSetupHTML() {
     </div>`;
   }
 
+  // Expanded: date, session and timer all in one card.
   return `
-  <div class="card" id="tour-session">
+  <div class="card" id="tour-session" style="margin-bottom:${currentLog.exercises.length>0?'10px':'14px'}">
     <div class="input-group">
       <div class="label">Date</div>
       <input type="date" id="log-date" value="${currentLog.date}" onchange="currentLog.date=this.value;saveDraft()">
@@ -2305,29 +2306,33 @@ function logSetupHTML() {
         onchange="if(!currentLog.exercises.length)renderLog()"
         autocapitalize="words" autocorrect="off">
     </div>
+
+    <div class="divider" style="margin:14px 0 12px"></div>
+
+    <div id="tour-duration" style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+      <div>
+        <div class="label" style="margin-bottom:2px">Duration</div>
+        <div id="dur-display" style="font-size:26px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-.5px">${fmtDuration(currentLog.durationSec||0)}</div>
+      </div>
+      <div style="display:flex;gap:8px" id="dur-controls">
+        <button id="dur-toggle" class="btn ${timerRunning?'btn-pause':'btn-accent-outline'}" style="min-width:104px;justify-content:center" onclick="toggleTimer()">
+          ${timerRunning ? pauseIcon + ' Pause'
+                         : playIcon + ' ' + (currentLog.durationSec ? 'Resume' : 'Start')}
+        </button>
+        <button class="btn btn-secondary" onclick="resetTimer()" title="Reset" aria-label="Reset timer" style="padding:12px 14px">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 12a9 9 0 1 0 9-9 9 9 0 0 0-6.36 2.64L3 8"/><path d="M3 3v5h5"/></svg>
+        </button>
+      </div>
+    </div>
   </div>
 
   ${templateSuggestionHTML()}
 
-  <div class="card" id="tour-duration" style="display:flex;align-items:center;justify-content:space-between;gap:12px">
-    <div>
-      <div class="label" style="margin-bottom:2px">Duration</div>
-      <div id="dur-display" style="font-size:26px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-.5px">${fmtDuration(currentLog.durationSec||0)}</div>
-    </div>
-    <div style="display:flex;gap:8px" id="dur-controls">
-      <button id="dur-toggle" class="btn ${timerRunning?'btn-pause':'btn-accent-outline'}" style="min-width:104px;justify-content:center" onclick="toggleTimer()">
-        ${timerRunning ? pauseIcon + ' Pause'
-                       : playIcon + ' ' + (currentLog.durationSec ? 'Resume' : 'Start')}
-      </button>
-      <button class="btn btn-secondary" onclick="resetTimer()" title="Reset" aria-label="Reset timer" style="padding:12px 14px">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 12a9 9 0 1 0 9-9 9 9 0 0 0-6.36 2.64L3 8"/><path d="M3 3v5h5"/></svg>
-      </button>
-    </div>
-  </div>
   ${currentLog.exercises.length > 0 ? `
-  <div style="text-align:center;margin-top:-4px;margin-bottom:12px">
-    <button onclick="toggleLogSetup()" style="background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;padding:4px 8px">▲ ${t('Collapse')}</button>
-  </div>` : ''}`;
+  <button class="btn btn-accent-outline btn-full btn-sm" style="margin-bottom:14px;font-weight:700" onclick="toggleLogSetup()">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+    ${t('Collapse')}
+  </button>` : ''}`;
 }
 function toggleLogSetup() {
   logSetupExpanded = !logSetupExpanded;
