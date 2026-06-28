@@ -2219,11 +2219,9 @@ function renderLog() {
 
   ${saveTemplateOfferHTML()}
 
-  <div class="card">
-    <div class="input-group" style="margin-bottom:0">
-      <div class="label">Notes (optional)</div>
-      <textarea id="log-notes" rows="2" placeholder="How did it feel?" oninput="currentLog.notes=this.value;saveDraft()">${currentLog.notes}</textarea>
-    </div>
+  <div style="margin-bottom:14px">
+    <div class="label" style="color:var(--muted);opacity:.7">Notes (optional)</div>
+    <textarea id="log-notes" rows="2" placeholder="How did it feel?" style="background:transparent;border:1px solid var(--border)" oninput="currentLog.notes=this.value;saveDraft()">${currentLog.notes}</textarea>
   </div>
 
   <div style="height:64px"></div>
