@@ -645,10 +645,17 @@ const MUSCLE_GROUPS = {
   'Chest':     { emoji:'🎽', sub:['Upper Chest','Middle Chest','Lower Chest'] },
   'Shoulders': { emoji:'🏋️', sub:['Front Delt','Middle Delt','Rear Delt'] },
   'Back':      { emoji:'🎒', sub:['Traps','Lats','Teres Major','Rhomboids'] },
-  'Legs':      { emoji:'🦵', sub:['Quads','Hamstrings','Glutes','Calves'] },
+  'Legs':      { emoji:'🦵', sub:['Quads','Hamstrings','Calves'] },
+  'Glutes':    { emoji:'🍑', sub:['Glutes'] },
   'Arms':      { emoji:'💪', sub:['Biceps','Triceps','Forearms'] },
   'Abs':       { emoji:'🔥', sub:['Rectus Abdominis','Obliques','Lower Abs'] },
 };
+// Display label for a body-part GROUP. 'Glutes' shows as お尻 (casual) while the
+// 'Glutes' muscle tag keeps its anatomical label (臀筋).
+function bodyPartLabel(bp){
+  if (bp === 'Glutes') return DB.lang === 'ja' ? 'お尻' : 'Glutes';
+  return t(bp);
+}
 
 // Muscles per exercise — stored as an array (legacy entries may be a string).
 // User tags take priority; built-in DEFAULT_MUSCLES fill the gaps.
@@ -2822,7 +2829,7 @@ function renderMusclePicker(name, backFn, confirmFn) {
   <div style="font-size:12px;color:var(--muted);margin-bottom:14px">Tap all the muscles this exercise hits — e.g. Deadlift → Lats + Hamstrings + Glutes</div>`;
 
   for (const [bp, data] of Object.entries(MUSCLE_GROUPS)) {
-    html += `<div class="label" style="margin-bottom:6px">${data.emoji} ${bp}</div>
+    html += `<div class="label" style="margin-bottom:6px">${bodyPartLabel(bp)}</div>
     <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">`;
     for (const m of data.sub) {
       const sel = pickedMuscles.has(m);
@@ -3536,7 +3543,7 @@ function renderPRs() {
   }
 
   // Order body parts: known ones first, then Other
-  const ORDER = ['Chest','Back','Legs','Shoulders','Arms','Abs','Core','Other'];
+  const ORDER = ['Chest','Back','Legs','Glutes','Shoulders','Arms','Abs','Core','Other'];
   const sortedBPs = [
     ...ORDER.filter(bp => groups[bp]),
     ...Object.keys(groups).filter(bp => !ORDER.includes(bp))
@@ -3546,7 +3553,6 @@ function renderPRs() {
 
   for(const bp of sortedBPs) {
     const subGroups = groups[bp]; // { subName: [exerciseNames...] }
-    const emoji     = (MUSCLE_GROUPS[bp]?.emoji) || BODY_PART_EMOJI[bp] || '⚡';
     const isOpen    = openBPGroups.has(bp);
 
     // All exercises in this body part
@@ -3618,9 +3624,8 @@ function renderPRs() {
     <div class="bp-group ${isOpen?'open':''}" id="bpg-${bp.replace(/\s/g,'_')}">
       <div class="bp-group-header" onclick="toggleBPGroup('${esc(bp)}')">
         <div class="bp-group-header-left">
-          <div class="bp-group-emoji">${emoji}</div>
           <div>
-            <div class="bp-group-name">${bp}</div>
+            <div class="bp-group-name">${bodyPartLabel(bp)}</div>
             <div class="bp-group-best">${totalCount} exercise${totalCount>1?'s':''}${bestName?` · Best: ${bestName}`:''}</div>
           </div>
         </div>
@@ -4230,8 +4235,8 @@ function openAddGoalModal(prefillExercise, keepType) {
     <button class="btn btn-primary btn-full" style="margin-top:4px" onclick="saveGoal()">${t('Save Goal')}</button>`;
   } else {
     const prefillDisp = prefillExercise ? (DB.lang === 'ja' ? (tkey(prefillExercise) || prefillExercise) : prefillExercise) : '';
-    const bpChips = ['Chest','Back','Legs','Shoulders','Arms','Abs'].map(bp =>
-      `<span class="ex-chip${goalExBP===bp?' active':''}" id="goalbp-${bp}" onclick="setGoalExBP('${bp}')">${BODY_PART_EMOJI[bp]||''} ${t(bp)}</span>`).join('');
+    const bpChips = ['Chest','Back','Legs','Glutes','Shoulders','Arms','Abs'].map(bp =>
+      `<span class="ex-chip${goalExBP===bp?' active':''}" id="goalbp-${bp}" onclick="setGoalExBP('${bp}')">${bodyPartLabel(bp)}</span>`).join('');
     body = `
     <div class="input-group">
       <div class="label">Exercise</div>
@@ -4278,7 +4283,7 @@ function openAddGoalModal(prefillExercise, keepType) {
 // (matches English + Japanese names). Results show once a chip or query is set.
 function setGoalExBP(bp) {
   goalExBP = (goalExBP === bp) ? null : bp;
-  ['Chest','Back','Legs','Shoulders','Arms','Abs'].forEach(b => {
+  ['Chest','Back','Legs','Glutes','Shoulders','Arms','Abs'].forEach(b => {
     const el = document.getElementById('goalbp-' + b);
     if (el) el.classList.toggle('active', b === goalExBP);
   });
@@ -5601,7 +5606,7 @@ function dashCardMuscle() {
   const bars = entries.map(([g, n]) => `
     <div style="margin-bottom:9px">
       <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px">
-        <span style="font-weight:600">${g}</span><span style="color:var(--muted)">${n} set${n !== 1 ? 's' : ''}</span>
+        <span style="font-weight:600">${bodyPartLabel(g)}</span><span style="color:var(--muted)">${n} set${n !== 1 ? 's' : ''}</span>
       </div>
       <div style="height:8px;background:var(--card2);border-radius:4px;overflow:hidden">
         <div style="height:100%;width:${Math.round(n / max * 100)}%;background:var(--accent);border-radius:4px"></div>
