@@ -1121,6 +1121,8 @@ function tkey(key){
 // Original English is cached per-node so switching languages is reversible.
 function applyLang(){
   const ja = DB.lang === 'ja';
+  // Localize native controls (e.g. the iOS date picker) to match the language.
+  document.documentElement.lang = ja ? 'ja' : 'en';
   const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
     acceptNode(node){
       const p = node.parentNode;
