@@ -2644,7 +2644,8 @@ function refreshExSection() {
 }
 // Expand / collapse a Log exercise (no draft write needed for a pure UI toggle)
 function toggleEx(ei) {
-  openEx.has(ei) ? openEx.delete(ei) : openEx.add(ei);
+  // Accordion: only one exercise open at a time — opening one closes the rest.
+  openEx = openEx.has(ei) ? new Set() : new Set([ei]);
   const el = document.getElementById('exercises-section');
   if (el) { el.innerHTML = renderExercisesHTML(); initLogExDrag(); }
 }
