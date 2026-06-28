@@ -812,34 +812,53 @@ const DEFAULT_MUSCLES = {
 // ═══════════════════════════════════════════════════════
 const I18N = {
   ja: {
-    // nav
+    // ── nav ──
     'Dashboard':'ダッシュボード','Log':'記録','History':'履歴','PRs':'自己ベスト','Exercises':'種目','Goals':'目標',
-    // sections / headers
-    'Last Workout':'前回のワークアウト','Body Stats':'身体データ','My Goals':'マイ目標',
-    'Edit Goals':'目標を編集','Progress':'進捗','Target Muscle':'対象の筋肉',
-    // buttons
-    'Save':'保存','Cancel':'キャンセル','Delete':'削除','Edit':'編集','← Back':'← 戻る',
-    'Export All Data':'すべてのデータを書き出す','Import Data':'データを取り込む',
-    'Add Goal':'目標を追加','+ Add Goal':'＋ 目標を追加','Set Your First Goal':'最初の目標を設定',
-    'Log First Workout':'最初のワークアウトを記録','Add Exercise':'種目を追加',
-    'Save Workout':'ワークアウトを保存','Finish Workout':'ワークアウト終了',"Skip — don't tag a muscle":'スキップ（筋肉を指定しない）',
-    'Manage Goals':'目標を管理',
-    // labels
-    'Current':'現在','Target':'目標値','Goal reached!':'目標達成！','Active':'選択中','Chart':'グラフ',
-    'Top Weight':'最高重量','1 Rep':'1レップ','5 Rep':'5レップ','8 Rep':'8レップ','Est. 1RM':'推定1RM',
-    'days trained':'トレーニング日数','days / week':'週あたり日数',
-    'sessions':'セッション','session':'セッション','sessions this day':'この日のセッション',
-    'Notes':'メモ','Workout':'ワークアウト','No data yet':'データがありません','No exercises':'種目なし',
-    'Today':'今日','Yesterday':'昨日',
-    // settings
-    'Data & Settings':'データと設定','Backup your data':'データのバックアップ',
-    'Restore from backup':'バックアップから復元','Language':'言語',
-    // empty states
-    'No goals set yet':'目標がまだ設定されていません','No workouts logged yet':'まだ記録がありません',
-    'Tap Log to get started':'「記録」をタップして始めましょう','No workouts yet':'ワークアウトがまだありません',
-    'Start logging to track your progress':'記録を始めて進捗を追跡しましょう',
-    'Tap a highlighted day to see that session':'ハイライトされた日をタップするとその記録を表示します',
-    // body parts
+    // ── sections / headers ──
+    'Last Workout':'前回のワークアウト','Body Stats':'身体データ','My Goals':'マイ目標','My Stats':'マイデータ',
+    'Edit Goals':'目標を編集','Progress':'進捗','Progress Chart':'進捗グラフ','Target Muscle':'対象の筋肉',
+    'Target Muscles':'対象の筋肉','Overall goal progress':'目標全体の進捗','Common Exercises':'よく使う種目',
+    'Session Type':'セッションの種類','Workout templates':'ワークアウトテンプレート','Workout Templates':'ワークアウトテンプレート',
+    'Manage Goals':'目標を管理','Data & Settings':'データと設定','Language':'言語','Help':'ヘルプ',
+    'Monthly goal reminder':'月次の目標リマインダー','Unsaved workout reminder':'未保存ワークアウトのリマインダー',
+    'Automatic cloud backup':'自動クラウドバックアップ','Manual backup (file)':'手動バックアップ（ファイル）',
+    'Restore from backup':'バックアップから復元','Set up Google Drive backup':'Googleドライブのバックアップを設定',
+    // ── buttons ──
+    'Save':'保存','Cancel':'キャンセル','Delete':'削除','Edit':'編集','← Back':'← 戻る','← Back to settings':'← 設定に戻る',
+    'Export All Data':'すべてのデータを書き出す','Import Data':'データを取り込む','Import Pasted JSON':'貼り付けたJSONを取り込む',
+    'Add Goal':'目標を追加','+ Add Goal':'＋ 目標を追加','Set Your First Goal':'最初の目標を設定','Set a Goal':'目標を設定',
+    'Set a New Goal':'新しい目標を設定','Set a New Target →':'新しい目標を設定 →','Set goal':'目標を設定',
+    'Save Goal':'目標を保存','Update Goal':'目標を更新','Delete Goal':'目標を削除',
+    'Log First Workout':'最初のワークアウトを記録','Log Workout':'ワークアウトを記録','Log to set':'記録して設定',
+    'Add Exercise':'種目を追加','Save Workout':'ワークアウトを保存','Finish Workout':'ワークアウト終了',
+    "Skip — don't tag a muscle":'スキップ（筋肉を指定しない）',"Skip — don't tag muscles":'スキップ（筋肉を指定しない）',
+    'Skip':'スキップ','Done':'完了','Done ✓':'完了 ✓','Next →':'次へ →','Next: Pick Muscle →':'次へ：筋肉を選択 →',
+    'Create':'作成','+ Create Template':'＋ テンプレートを作成','Delete Template':'テンプレートを削除',
+    'Clear':'クリア','Clear stats':'データを消去','Add your stats':'データを追加','Add Set':'セットを追加','+ Add Set':'＋ セットを追加',
+    '+ Add past':'＋ 過去の記録を追加','+ Add your first exercise':'＋ 最初の種目を追加','Add a past achievement':'過去の達成を追加',
+    'Add to Achieved 🏆':'達成済みに追加 🏆','Choose Backup File':'バックアップファイルを選択',
+    'Back up':'バックアップ','Back up now':'今すぐバックアップ','Back up your data':'データをバックアップ','Backup your data':'データをバックアップ',
+    'Open':'開く','Open Log':'記録を開く','Enable':'有効にする','Enable Notifications':'通知を有効にする',
+    'Connect Google Drive':'Googleドライブに接続','Disconnect Google Drive':'Googleドライブを切断',
+    'Send':'送信','Send feedback':'フィードバックを送る','Later':'あとで',"Don't ask again":'今後表示しない',
+    'Take the guided tour':'ガイドツアーを開始','Take a quick tour':'クイックツアー',
+    'Show getting-started checklist':'はじめにチェックリストを表示','Customize':'カスタマイズ','Customize your dashboard':'ダッシュボードをカスタマイズ',
+    'Drag to reorder':'ドラッグして並べ替え','Custom…':'カスタム…','Getting started':'はじめに','Manage Goals':'目標を管理',
+    // ── labels ──
+    'Current':'現在','Target':'目標値','Goal reached!':'目標達成！','Goal reached! 🎉':'目標達成！🎉','Active':'選択中','Chart':'グラフ',
+    'Top Weight':'最高重量','1 Rep':'1レップ','5 Rep':'5レップ','8 Rep':'8レップ','Est. 1RM':'推定1RM','est 1RM':'推定1RM','· est. 1RM':'· 推定1RM',
+    'days trained':'トレーニング日数','days / week':'週あたり日数','sessions':'セッション','session':'セッション','sessions this day':'この日のセッション',
+    'Notes':'メモ','Notes (optional)':'メモ（任意）','optional':'任意','Workout':'ワークアウト','No data yet':'データがありません','No data':'データなし','No exercises':'種目なし',
+    'Today':'今日','Yesterday':'昨日','Due today':'今日が期限','Set':'セット','Reps':'レップ','Weight':'重量','Date':'日付','Duration':'時間','Exercise':'種目',
+    'Wt (kg)':'重量 (kg)','Wt (lbs)':'重量 (lbs)','BW':'自重','✓ REACHED':'✓ 達成','✓ DONE':'✓ 完了','FAIL':'失敗','Failed':'失敗',
+    'Height':'身長','Height (cm)':'身長 (cm)','Body Weight':'体重','Target Date (optional)':'目標期日（任意）','Target Reps':'目標レップ','Date achieved':'達成日',
+    'Select exercise…':'種目を選択…','Select session type…':'セッションの種類を選択…','How did it feel?':'調子はどうでしたか？',
+    'Search or type a new exercise…':'種目を検索、または新規入力…','Paste exported JSON here…':'書き出したJSONをここに貼り付け…',
+    'e.g. 175':'例：175','e.g. 80':'例：80','weight × reps':'重量 × レップ','Or paste the JSON manually:':'または手動でJSONを貼り付け：',
+    'Exercise added 💪':'種目を追加しました 💪',
+    // ── session presets ──
+    'Push':'プッシュ','Pull':'プル','Upper Body':'上半身','Lower Body':'下半身','Full Body':'全身','Abs / Core':'腹筋・体幹','Cardio':'有酸素',
+    // ── body parts ──
     'Chest':'胸','Shoulders':'肩','Back':'背中','Legs':'脚','Arms':'腕','Abs':'腹筋','Core':'体幹','Other':'その他',
     'Upper Chest':'胸上部','Middle Chest':'胸中部','Lower Chest':'胸下部',
     'Front Delt':'三角筋前部','Middle Delt':'三角筋中部','Rear Delt':'三角筋後部',
@@ -847,32 +866,225 @@ const I18N = {
     'Quads':'大腿四頭筋','Hamstrings':'ハムストリング','Glutes':'臀筋','Calves':'ふくらはぎ',
     'Biceps':'上腕二頭筋','Triceps':'上腕三頭筋','Forearms':'前腕',
     'Rectus Abdominis':'腹直筋','Obliques':'腹斜筋','Lower Abs':'下腹部',
-    // feedback
-    'Feedback':'フィードバック','Send feedback':'フィードバックを送る',
-    'Help shape Lift Log — every reply is read.':'Lift Logの改善にご協力ください。すべて読んでいます。',
-    'How is Lift Log so far?':'Lift Logの使い心地は？',
-    'What should we improve or add?':'改善してほしい点・欲しい機能',
-    'Missing features, bugs, ideas…':'足りない機能、バグ、アイデアなど…',
-    'Email, for replies':'メール（返信用）','Send':'送信','optional':'任意',
-    'Please tap a star rating':'★評価をタップしてください',
-    'Thank you! Feedback sent 🙏':'ありがとうございます！送信しました 🙏',
-    'Enjoying Lift Log?':'Lift Logは気に入りましたか？',
-    '30 seconds of feedback helps us decide what to build next.':'30秒のフィードバックが、次に作る機能の判断に役立ちます。',
-    'Later':'あとで',"Don't ask again":'今後表示しない',
-    'Nice work! Got 30 seconds?':'お見事です！30秒だけいいですか？',
-    'Help shape Lift Log':'Lift Logの改善にご協力を',
-    'Tell us what to improve — 30 seconds.':'改善点を教えてください。30秒で完了。',
-    'Found a bug or missing a feature? Tell us — it shapes what gets built next.':'バグや欲しい機能があれば教えてください。今後の開発に反映されます。'
+    // ── exercise names: chest ──
+    'Bench Press':'ベンチプレス','Incline Bench Press':'インクラインベンチプレス','Decline Bench Press':'デクラインベンチプレス',
+    'Dumbbell Bench Press':'ダンベルベンチプレス','Incline Dumbbell Press':'インクラインダンベルプレス','Dumbbell Fly':'ダンベルフライ',
+    'Cable Fly':'ケーブルフライ','Cable Crossover':'ケーブルクロスオーバー','Pec Deck':'ペックデック','Chest Press Machine':'チェストプレスマシン',
+    'Push-up':'腕立て伏せ','Dip':'ディップス',
+    // ── exercise names: back ──
+    'Deadlift':'デッドリフト','Sumo Deadlift':'スモウデッドリフト','Rack Pull':'ラックプル','Barbell Row':'バーベルロウ','Pendlay Row':'ペンドレイロウ',
+    'Dumbbell Row':'ダンベルロウ','T-Bar Row':'Tバーロウ','Seated Cable Row':'シーテッドケーブルロウ','Cable Row':'ケーブルロウ','Machine Row':'マシンロウ',
+    'Chest Supported Row':'チェストサポートロウ','Pull-up':'懸垂（プルアップ）','Chin-up':'チンアップ','Lat Pulldown':'ラットプルダウン',
+    'Close Grip Lat Pulldown':'クローズグリップラットプルダウン','Straight Arm Pulldown':'ストレートアームプルダウン','Pull Over':'プルオーバー',
+    'Back Extension':'バックエクステンション','Good Morning':'グッドモーニング','Shrug':'シュラッグ',
+    // ── exercise names: shoulders ──
+    'Overhead Press':'オーバーヘッドプレス','Military Press':'ミリタリープレス','Push Press':'プッシュプレス','Dumbbell Shoulder Press':'ダンベルショルダープレス',
+    'Arnold Press':'アーノルドプレス','Machine Shoulder Press':'マシンショルダープレス','Lateral Raise':'サイドレイズ','Cable Lateral Raise':'ケーブルサイドレイズ',
+    'Front Raise':'フロントレイズ','Rear Delt Fly':'リアデルトフライ','Reverse Pec Deck':'リバースペックデック','Face Pull':'フェイスプル','Upright Row':'アップライトロウ',
+    // ── exercise names: legs ──
+    'Squat':'スクワット','Front Squat':'フロントスクワット','Goblet Squat':'ゴブレットスクワット','Hack Squat':'ハックスクワット','Smith Machine Squat':'スミスマシンスクワット',
+    'Bulgarian Split Squat':'ブルガリアンスクワット','Lunge':'ランジ','Walking Lunge':'ウォーキングランジ','Leg Press':'レッグプレス','Romanian Deadlift':'ルーマニアンデッドリフト',
+    'Stiff Leg Deadlift':'スティフレッグデッドリフト','Leg Extension':'レッグエクステンション','Leg Curl':'レッグカール','Seated Leg Curl':'シーテッドレッグカール','Hip Thrust':'ヒップスラスト',
+    'Glute Bridge':'グルートブリッジ','Hip Abduction':'ヒップアブダクション','Hip Adduction':'ヒップアダクション','Calf Raise':'カーフレイズ','Seated Calf Raise':'シーテッドカーフレイズ',
+    // ── exercise names: arms ──
+    'Bicep Curl':'バイセップカール','Barbell Curl':'バーベルカール','EZ Bar Curl':'EZバーカール','Dumbbell Curl':'ダンベルカール','Hammer Curl':'ハンマーカール',
+    'Incline Dumbbell Curl':'インクラインダンベルカール','Preacher Curl':'プリーチャーカール','Concentration Curl':'コンセントレーションカール','Cable Curl':'ケーブルカール',
+    'Tricep Extension':'トライセップエクステンション','Overhead Tricep Extension':'オーバーヘッドトライセップエクステンション','Skull Crusher':'スカルクラッシャー',
+    'Tricep Pushdown':'トライセッププッシュダウン','Cable Press Down':'ケーブルプレスダウン','Rope Pushdown':'ローププッシュダウン','Close Grip Bench Press':'クローズグリップベンチプレス','Wrist Curl':'リストカール',
+    // ── exercise names: abs / core ──
+    'Crunch':'クランチ','Cable Crunch':'ケーブルクランチ','Decline Crunch':'デクラインクランチ','Sit-up':'シットアップ','Plank':'プランク','Side Plank':'サイドプランク',
+    'Hanging Leg Raise':'ハンギングレッグレイズ','Leg Raise':'レッグレイズ','Russian Twist':'ロシアンツイスト','Ab Wheel Rollout':'アブローラー','Mountain Climber':'マウンテンクライマー',
+    // ── exercise names: cardio / other ──
+    'Treadmill':'トレッドミル','Incline Walk':'傾斜ウォーク','Running':'ランニング','Cycling':'サイクリング','Rowing Machine':'ローイングマシン','Stair Climber':'ステアクライマー',
+    'Elliptical':'エリプティカル','Jump Rope':'縄跳び',"Farmer's Walk":'ファーマーズウォーク','Kettlebell Swing':'ケトルベルスイング','Burpee':'バーピー',
+    // ── empty states ──
+    'No goals set yet':'目標がまだ設定されていません','No workouts logged yet':'まだ記録がありません','Tap Log to get started':'「記録」をタップして始めましょう',
+    'No workouts yet':'ワークアウトがまだありません','Start logging to track your progress':'記録を始めて進捗を追跡しましょう',
+    'Tap a highlighted day to see that session':'ハイライトされた日をタップするとその記録を表示します',
+    'No active goals right now':'現在アクティブな目標はありません','No templates yet':'テンプレートはまだありません','No matches':'一致なし','All exercises selected':'すべての種目が選択済み',
+    'Nice work hitting your past targets — set a new one to keep progressing.':'これまでの目標達成、お見事です。新しい目標を設定して前進を続けましょう。',
+    'Goals turn workouts into progress':'目標がワークアウトを成長に変えます','Your exercise library lives here':'あなたの種目ライブラリはここにあります',
+    'Your workout history lives here':'あなたのワークアウト履歴はここにあります',
+    'No achievements recorded yet. Reach a goal — or tap “+ Add past” to log one you already hit.':'達成記録はまだありません。目標を達成するか、「＋ 過去の記録を追加」で達成済みの記録を登録しましょう。',
+    'Loading chart…':'グラフを読み込み中…','Last 5 weeks':'直近5週間','No data last week':'先週のデータなし',
+    'No data in this time range for':'この期間のデータがありません：','No actual 1-rep sets logged yet for':'まだ実際の1レップセットが記録されていません：','No sets logged yet for':'まだセットが記録されていません：',
+    'Log at least 2 sessions to see a chart':'グラフを見るには2セッション以上記録してください','Log more sets to estimate':'推定するにはセットをもっと記録してください',
+    'Log some workouts to see which muscle groups you train most (last 30 days).':'ワークアウトを記録すると、よく鍛えている部位がわかります（直近30日）。',
+    'Sets per muscle group · last 30 days':'部位ごとのセット数 · 直近30日',
+    'Tap a group to see all exercises · Tap exercise for progress chart':'グループをタップで全種目を表示 · 種目をタップで進捗グラフ',
+    'Tap all the muscles this exercise hits — e.g. Deadlift → Lats + Hamstrings + Glutes':'この種目で使う筋肉をすべてタップ — 例：デッドリフト → 広背筋＋ハムストリング＋臀筋',
+    'Set a target weight and reps — see your timeline here':'目標の重量とレップを設定すると、ここにタイムラインが表示されます',
+    // ── getting started checklist ──
+    'Log your first workout':'最初のワークアウトを記録','Pick a session type, add an exercise, type weight × reps':'セッションの種類を選び、種目を追加して、重量×レップを入力',
+    'Set a goal':'目標を設定','A target weight to chase, e.g. 100kg × 1 rep':'目指す目標重量、例：100kg × 1レップ',
+    'Save a workout template':'ワークアウトテンプレートを保存','So next time your menu loads in one tap':'次回からワンタップでメニューを読み込めます',
+    'Add your body stats':'身体データを追加','Height & weight unlock BMI and BW sets':'身長と体重でBMIと自重セットが使えます',
+    // ── log / template descriptions ──
+    'Pick a session type, then tick the exercises in your menu.':'セッションの種類を選び、メニューの種目にチェックを入れましょう。',
+    'Save your menu per session type — like Push or Pull — and load it in one tap when logging.':'セッションの種類ごとにメニューを保存 — プッシュやプルなど — 記録時にワンタップで読み込めます。',
+    'Saved menus per session type. Build one from the Log screen: pick a session type, add exercises, then tap "Save as template".':'セッションの種類ごとに保存したメニュー。記録画面で作成できます：セッションの種類を選び、種目を追加して「テンプレートとして保存」をタップ。',
+    // ── goals descriptions ──
+    'Pick an exercise, a target weight × reps, and an optional deadline.':'種目、目標の重量×レップ、任意で期限を選びましょう。',
+    'Every workout updates how close you are — with a celebration when you arrive. 🎉':'ワークアウトのたびに達成度が更新され、到達するとお祝いがあります。🎉',
+    // ── settings descriptions ──
+    'Get a nudge on the 1st of each month to set a fresh workout goal.':'毎月1日に、新しいワークアウト目標を設定するリマインダーが届きます。',
+    "Notifications aren't supported on this device — you'll still see the in-app banner.":'この端末は通知に対応していません — アプリ内バナーは引き続き表示されます。',
+    "Start a workout but forget to save it? Get a reminder if it sits unsaved for over an hour, so you don't lose your sets.":'ワークアウトを始めたのに保存し忘れていませんか？1時間以上未保存のままだとリマインダーが届き、セットを失いません。',
+    'Sign in once with your Google account and Lift Log saves a copy to your own Google Drive automatically — no more manual backups. Your data goes only to your Drive.':'Googleアカウントで一度サインインすると、Lift Logがあなたのドライブに自動でコピーを保存します — 手動バックアップはもう不要です。データはあなたのドライブにのみ保存されます。',
+    'Export saves all your workouts, PRs, and goals as a file. Keep it somewhere safe (Files, Notes, email yourself).':'書き出すと、すべてのワークアウト・自己ベスト・目標がファイルとして保存されます。安全な場所（ファイル、メモ、自分宛てメールなど）に保管してください。',
+    'Choose your exported backup file to restore it.':'書き出したバックアップファイルを選んで復元します。','This will overwrite your current data.':'現在のデータが上書きされます。',
+    'One-time, ~10 minutes. You only need to do this once.':'一度きり、約10分。最初に一度だけ設定すればOKです。',
+    'The app only ever touches its own private backup file — it cannot see your other Drive files. The Client ID is not a secret.':'アプリは自身の専用バックアップファイルにのみアクセスし、ドライブ内の他のファイルは見られません。クライアントIDは秘密情報ではありません。',
+    '☁️ Auto-backup ON — saves to Google Drive after every workout.':'☁️ 自動バックアップ ON — ワークアウトのたびにGoogleドライブへ保存します。',
+    'Reminders on':'リマインダー ON','Reminder on — tap to turn off':'リマインダー ON — タップでオフ','Enable reminder':'リマインダーを有効にする',
+    'Notifications are blocked in your browser/OS settings. The in-app banner will still appear.':'ブラウザ／OSの設定で通知がブロックされています。アプリ内バナーは引き続き表示されます。',
+    "Notifications are blocked in your browser/OS settings. You'll still see the in-app banner.":'ブラウザ／OSの設定で通知がブロックされています。アプリ内バナーは引き続き表示されます。',
+    "You haven't backed up yet — your data lives only on this device.":'まだバックアップしていません — データはこの端末にのみ保存されています。',
+    'Last backup: today':'最終バックアップ：今日','Last backup: yesterday':'最終バックアップ：昨日',
+    'not yet':'まだなし','just now':'たった今','Last sync:':'最終同期：',
+    // ── feedback ──
+    'Feedback':'フィードバック','Help shape Lift Log — every reply is read.':'Lift Logの改善にご協力ください。すべて読んでいます。',
+    'How is Lift Log so far?':'Lift Logの使い心地は？','What should we improve or add?':'改善してほしい点・欲しい機能','Missing features, bugs, ideas…':'足りない機能、バグ、アイデアなど…',
+    'Email, for replies':'メール（返信用）','Please tap a star rating':'★評価をタップしてください','Thank you! Feedback sent 🙏':'ありがとうございます！送信しました 🙏',
+    'Enjoying Lift Log?':'Lift Logは気に入りましたか？','30 seconds of feedback helps us decide what to build next.':'30秒のフィードバックが、次に作る機能の判断に役立ちます。',
+    'Nice work! Got 30 seconds?':'お見事です！30秒だけいいですか？','Help shape Lift Log':'Lift Logの改善にご協力を','Tell us what to improve — 30 seconds.':'改善点を教えてください。30秒で完了。',
+    'Found a bug or missing a feature? Tell us — it shapes what gets built next.':'バグや欲しい機能があれば教えてください。今後の開発に反映されます。',
+    'New here?':'はじめてですか？','New month, new goals!':'新しい月、新しい目標！','Monthly reminders enabled 🔔':'月次リマインダーを有効にしました 🔔','Notifications blocked in settings':'設定で通知がブロックされています',
+    // ── tour ──
+    'Pick a <strong>session type</strong> first — Push, Pull, Legs… If you saved a template, your whole menu loads in one tap.':'まずは<strong>セッションの種類</strong>を選びましょう — プッシュ、プル、脚など。テンプレートを保存していれば、メニュー全体がワンタップで読み込まれます。',
+    'Tap <strong>▶ Start</strong> when you begin training. Your workout time is saved automatically.':'トレーニングを始めるときに<strong>▶ 開始</strong>をタップ。ワークアウト時間は自動で保存されます。',
+    "Add your exercises here, then type the <strong>weight × reps</strong> for each set. Last time's numbers appear faintly — tap to accept.":'ここに種目を追加し、各セットの<strong>重量×レップ</strong>を入力します。前回の数値が薄く表示されるので、タップで入力できます。',
+    "Done training? <strong>Finish Workout</strong> saves everything and updates your records. That's it — go lift! 💪":'トレーニング終了？<strong>ワークアウト終了</strong>ですべて保存され、記録が更新されます。あとは鍛えるだけ！💪',
+    '▶ Start':'▶ 開始',
+    // ── google drive setup steps ──
+    'Go to <strong>console.cloud.google.com</strong> and create a new project (any name).':'<strong>console.cloud.google.com</strong> にアクセスし、新しいプロジェクトを作成します（名前は任意）。',
+    'Open <strong>APIs &amp; Services → Library</strong>, search <strong>Google Drive API</strong>, click <strong>Enable</strong>.':'<strong>APIs &amp; Services → ライブラリ</strong>を開き、<strong>Google Drive API</strong>を検索して<strong>有効にする</strong>をクリックします。',
+    'Open <strong>APIs &amp; Services → OAuth consent screen</strong>. Choose <strong>External</strong>, fill the app name + your email, and add your own Google address under <strong>Test users</strong>.':'<strong>APIs &amp; Services → OAuth 同意画面</strong>を開きます。<strong>外部</strong>を選び、アプリ名とメールアドレスを入力し、<strong>テストユーザー</strong>に自分のGoogleアドレスを追加します。',
+    'Open <strong>APIs &amp; Services → Credentials → Create credentials → OAuth client ID</strong>. Pick <strong>Web application</strong>.':'<strong>APIs &amp; Services → 認証情報 → 認証情報を作成 → OAuth クライアント ID</strong>を開き、<strong>ウェブ アプリケーション</strong>を選択します。',
+    'Under <strong>Authorized JavaScript origins</strong>, add exactly:':'<strong>承認済みの JavaScript 生成元</strong>に、次を正確に追加します：',
+    'Click <strong>Create</strong>, copy the <strong>Client ID</strong>, paste it back here, and tap Connect.':'<strong>作成</strong>をクリックして<strong>クライアント ID</strong>をコピーし、ここに貼り付けて「接続」をタップします。',
+    // ── confirm / toast templates (used via tf) ──
+    'Stats saved!':'データを保存しました！','Clear your stats?':'身体データを消去しますか？','Template deleted':'テンプレートを削除しました',
+    'Reset the timer to 0:00?':'タイマーを0:00にリセットしますか？','Rest done — next set 💪':'休憩終了 — 次のセット 💪',
+    'Enter an exercise name':'種目名を入力してください','Add at least one exercise!':'種目を1つ以上追加してください！','Workout saved! 💪':'ワークアウトを保存しました！💪',
+    'Clear this workout?':'このワークアウトをクリアしますか？','Delete this workout permanently?':'このワークアウトを完全に削除しますか？','Workout deleted':'ワークアウトを削除しました',
+    'Workout updated! ✅':'ワークアウトを更新しました！✅','Pick a session type':'セッションの種類を選んでください','Select at least one exercise':'種目を1つ以上選んでください',
+    'Pick an exercise':'種目を選んでください','Enter a target weight':'目標重量を入力してください','Goal saved! 🎯':'目標を保存しました！🎯',
+    'Enter a valid weight':'有効な重量を入力してください','Goal updated!':'目標を更新しました！','Delete this goal?':'この目標を削除しますか？','Discard changes?':'変更を破棄しますか？',
+    'Backup saved! 📦':'バックアップを保存しました！📦',"Couldn't read that file":'ファイルを読み込めませんでした','Choose a backup file or paste JSON first':'先にバックアップファイルを選ぶかJSONを貼り付けてください',
+    'Invalid JSON — check your backup file':'無効なJSONです — バックアップファイルを確認してください',"Doesn't look like a Lift Log backup":'Lift Logのバックアップではないようです','Data restored! 💪':'データを復元しました！💪',
+    'Backed up to Google Drive ☁️':'Googleドライブにバックアップしました ☁️','Drive sync failed — try reconnecting':'ドライブ同期に失敗 — 再接続してください',
+    'Paste your Google Client ID first':'先にGoogleクライアントIDを貼り付けてください','Google sign-in still loading — try again in a second':'Googleサインインを読み込み中 — 少し待って再試行してください',
+    'Google Drive connected ☁️':'Googleドライブに接続しました ☁️',"Couldn't connect to Google Drive":'Googleドライブに接続できませんでした',
+    'Stop auto-backup to Google Drive?\n\nYour existing Drive backup file stays safe — the app just stops syncing.':'Googleドライブへの自動バックアップを停止しますか？\n\n既存のドライブ上のバックアップファイルはそのまま残り、同期だけが止まります。',
+    'Disconnected from Google Drive':'Googleドライブから切断しました','Enter an exercise':'種目を入力してください','Achievement added 🏆':'達成を追加しました 🏆',
+    '🎉 Goal reached! Set a new target to keep going':'🎉 目標達成！新しい目標を設定して続けましょう','Unsaved-workout reminder on 🔔':'未保存ワークアウトのリマインダー ON 🔔','Reminder off':'リマインダー OFF',
+    'Picked up your unsaved workout 💪':'未保存のワークアウトを復元しました 💪','Checklist restored':'チェックリストを復元しました',
+    'Add your body weight in My Stats (tap 👤 icon) first':'先にマイデータで体重を入力してください（👤アイコンをタップ）',
+    'Save these changes to reuse next time':'この変更を保存して次回も使う','Update':'更新','no dates':'日付なし','No exercises added yet':'まだ種目が追加されていません',
+    // ── dashboard sections / customize ──
+    'Quick Stats':'クイック統計','This Week':'今週','Personal Records':'自己ベスト','Training Streak':'連続記録','Weekly Volume':'週間ボリューム',
+    'Muscle Balance':'筋肉バランス','Training Calendar':'トレーニングカレンダー','Goal Progress Ring':'目標進捗リング',
+    'General':'一般','Hidden':'非表示','Shown':'表示中','vs last week':'先週比','Rest':'休憩','Start':'開始','Resume':'再開','Pause':'一時停止',
+    'Est':'推定','1M':'1か月','3M':'3か月','6M':'6か月','All':'全期間',
+    'Create Template':'テンプレートを作成','Save Template':'テンプレートを保存',
+    'Body Weight (kg)':'体重 (kg)','Body Weight (lbs)':'体重 (lbs)','Target Weight (kg)':'目標重量 (kg)','Target Weight (lbs)':'目標重量 (lbs)',
+    "You haven't backed up yet. Your data lives only on this device — save a copy so you don't lose it.":'まだバックアップしていません。データはこの端末にのみ保存されています — 失わないようにコピーを保存しましょう。',
+    'No data yet for this exercise':'この種目のデータはまだありません',
+    'Current PR: <strong style="color:var(--text)">{w}{u} × {r}</strong> · est. 1RM <strong style="color:var(--accent)">{e}{u}</strong>':'現在の自己ベスト: <strong style="color:var(--text)">{w}{u} × {r}レップ</strong> · 推定1RM <strong style="color:var(--accent)">{e}{u}</strong>',
+    'Press and hold a row (or its <span style="color:var(--text)">⠿</span> handle) to drag it into a new order, and use the switches to show or hide each section. Tap <strong style="color:var(--accent)">Done</strong> up top when you\'re finished.':'行（または <span style="color:var(--text)">⠿</span> ハンドル）を長押しするとドラッグして並べ替えでき、スイッチで各セクションの表示／非表示を切り替えられます。終わったら上部の <strong style="color:var(--accent)">完了</strong> をタップしてください。',
+    // ── misc labels / empty states ──
+    'Edit Goal':'目標を編集','Edit Workout':'ワークアウトを編集','Exercises (':'種目（','selected)':'選択中）',
+    'Unsaved workout in progress':'未保存のワークアウトがあります','Tap to open the Log screen and finish saving it.':'タップして記録画面を開き、保存を完了しましょう。',
+    'Tap to set your height & body weight':'タップして身長と体重を設定','Log your first workout →':'最初のワークアウトを記録 →',
+    'Every workout you finish appears on a calendar.':'完了したワークアウトはカレンダーに表示されます。','Tap a day to review or edit it later.':'日付をタップすると後から確認・編集できます。',
+    "Every exercise shows the best weight you've lifted":'各種目で挙げた最高重量を表示します','and a progress chart over time.':'そして時系列の進捗グラフも表示します。',
+    'In-app banner only':'アプリ内バナーのみ',"In-app reminder only — notifications aren't supported on this device.":'アプリ内リマインダーのみ — この端末は通知に対応していません。',
+    'Please rotate to portrait':'画面を縦にしてください','Lift Log is designed to be used upright. Turn your phone vertical to continue.':'Lift Logは縦向きでの使用を想定しています。スマホを縦にして続けてください。',
+    'Reuse this exercise list next {name} day in one tap':'次回の{name}の日にこの種目リストをワンタップで再利用',
+    '{name} template':'{name}テンプレート','Load {n}':'読み込む {n}','Repeat last {name}?':'前回の{name}を繰り返す？','{verb} "{name}" template':'「{name}」テンプレートを{verb}',
+    'Loaded your {name} template 📋':'{name}テンプレートを読み込みました 📋','Saved as your {name} template 📋':'{name}テンプレートを保存しました 📋',
+    '{name} template saved 📋':'{name}テンプレートを保存しました 📋','Loaded last {name} session ⟳':'前回の{name}セッションを読み込みました ⟳',
+    'Delete the "{name}" template?':'「{name}」テンプレートを削除しますか？','Reuse this exercise list next {name}':'次回の{name}でこの種目リストを再利用',
+    'This backup has {n} workout(s) ({range}).\nIt will REPLACE your current {cur} workout(s).\n\nContinue?':'このバックアップには{n}件のワークアウトが含まれます（{range}）。\n現在の{cur}件のワークアウトを上書きします。\n\n続行しますか？',
+    'Found a backup in Google Drive with {n} workout(s) (this device has {local}).\n\nRestore the Drive copy?':'Googleドライブに{n}件のワークアウトのバックアップが見つかりました（この端末には{local}件）。\n\nドライブのコピーを復元しますか？'
   }
 };
 
+// ── translation helpers ──
 function L(){ return DB.lang === 'ja' ? 'ja-JP' : 'en-US'; }   // date locale
 function t(s){ return (DB.lang === 'ja' && I18N.ja[s] !== undefined) ? I18N.ja[s] : s; }
+// interpolated translate: tf('{name} 📋', {name:'プッシュ'})
+function tf(s, vars){ let o = t(s); if(vars) for(const k in vars){ o = o.split('{'+k+'}').join(vars[k]); } return o; }
+
+// fallback-translate a fragment (returns input unchanged if no entry)
+function tx(s){ const r = tkey(s); return r === null ? s : r; }
+function txTime(s){
+  let m;
+  if(m = s.match(/^~(\d+)w$/))     return '約' + m[1] + '週';
+  if(m = s.match(/^~(\d+)mo$/))    return '約' + m[1] + 'か月';
+  if(m = s.match(/^(\d+)\+ yr$/))  return m[1] + '年以上';
+  if(m = s.match(/^(.+?) to go$/)) return 'あと' + m[1];
+  return s;
+}
+// composed-string patterns (numbers, units, joins) for the DOM walker
+const I18N_PATTERNS = [
+  [/^(.*\S)\s*×\s*(\d+)\s*reps$/, m => tx(m[1].trim()) + ' × ' + m[2] + 'レップ'],
+  [/^×\s*(\d+)\s*reps$/,          m => '× ' + m[1] + 'レップ'],
+  [/^(\d+)\s*reps$/,              m => m[1] + 'レップ'],
+  [/^(\d+)\s*sets?$/,             m => m[1] + 'セット'],
+  [/^(.+?)\s*vol\s*·\s*(\d+)\s*sets?$/, m => m[1].trim() + ' 総挙上量 · ' + m[2] + 'セット'],
+  [/^\((\d+)\s*muscles?\)$/,      m => '（' + m[1] + '部位）'],
+  [/^(\d+)\s*workouts?\s+stored on this device$/, m => 'この端末に' + m[1] + '件のワークアウトを保存中'],
+  [/^(\d+)\s+of\s+(\d+)\s+goals?\s+reached\s*·\s*tap to view$/, m => m[2] + '件中' + m[1] + '件の目標を達成 · タップで表示'],
+  [/^Est\.\s+(.+?)\s+away$/,      m => '達成まで' + txTime(m[1])],
+  [/^~(\d+)w\s+away$/,            m => 'あと約' + m[1] + '週'],
+  [/^([\d.]+(?:kg|lbs))\s+to go$/, m => 'あと' + m[1]],
+  [/^(.+?)\s*\(PR:\s*(.+)\)$/,    m => tx(m[1].trim()) + '（自己ベスト: ' + m[2] + '）'],
+  [/^(\d+)\s*days? left$/,        m => '残り' + m[1] + '日'],
+  [/^(\d+)\s*days? overdue$/,     m => m[1] + '日超過'],
+  [/^Last backup: (\d+)\s*days ago$/, m => '最終バックアップ：' + m[1] + '日前'],
+  [/^(\d+)\s*days ago$/,          m => m[1] + '日前'],
+  [/^(\d+)d ago$/,                m => m[1] + '日前'],
+  [/^(\d+)\s*min ago$/,           m => m[1] + '分前'],
+  [/^(\d+)h ago$/,                m => m[1] + '時間前'],
+  [/^(\d+)\s*exercises?\s+so far$/, m => 'これまで' + m[1] + '種目'],
+  [/^(\d+)\s*exercises?$/,        m => m[1] + '種目'],
+  [/^Best:\s*(.+)$/,             m => 'ベスト: ' + tx(m[1])],
+  [/^est\.\s*1RM\s+(.+)$/,       m => '推定1RM ' + m[1]],
+  [/^Your last backup was (\d+) days ago\. Save a fresh copy so you don't lose your progress\.$/, m => '前回のバックアップは' + m[1] + '日前です。進捗を失わないよう、新しいコピーを保存しましょう。'],
+  [/^Achieved\s*\((\d+)\)$/,     m => '達成済み（' + m[1] + '）'],
+  [/^\+ Add "(.+)"$/,             m => '「' + m[1] + '」を追加']
+];
+
+// Resolve a single atom (no " · " splitting): dict → pattern → symbol prefix.
+function tkeyAtom(key){
+  const dict = I18N.ja;
+  if(dict[key] !== undefined) return dict[key];
+  for(const [re, fn] of I18N_PATTERNS){ const m = key.match(re); if(m) return fn(m); }
+  // emoji- or symbol-prefixed label e.g. "🎽 Chest", "▶ Take the tour", "📅 5 days left"
+  const mm = key.match(/^(\S+)\s+(.+)$/);
+  if(mm && !/[A-Za-z]/.test(mm[1])){ const sub = tkey(mm[2]); if(sub !== null) return mm[1] + ' ' + sub; }
+  return null;
+}
+// Resolve one trimmed English string → Japanese (or null when unknown).
+function tkey(key){
+  const a = tkeyAtom(key);
+  if(a !== null) return a;
+  // " · "-joined lists (exercise names / muscles / set summaries)
+  if(key.indexOf(' · ') !== -1){
+    const parts = key.split(' · ');
+    let any = false;
+    const out = parts.map(p => { const k = p.trim(); const r = tkeyAtom(k); if(r !== null){ any = true; return p.replace(k, r); } return p; });
+    if(any) return out.join(' · ');
+  }
+  return null;
+}
 
 // Walk the DOM and swap visible English text → Japanese (and back).
 // Original English is cached per-node so switching languages is reversible.
 function applyLang(){
-  const dict = I18N.ja, ja = DB.lang === 'ja';
+  const ja = DB.lang === 'ja';
   const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
     acceptNode(node){
       const p = node.parentNode;
@@ -888,22 +1100,14 @@ function applyLang(){
     if(node.__en === undefined) node.__en = node.nodeValue;
     const raw = node.__en, key = raw.trim();
     let out = raw;
-    if(ja && key){
-      if(dict[key] !== undefined){
-        out = raw.replace(key, dict[key]);
-      } else {
-        const m = key.match(/^(\S+)\s+(.+)$/);   // emoji-prefixed label e.g. "🎽 Chest"
-        if(m && !/[A-Za-z]/.test(m[1]) && dict[m[2]] !== undefined)
-          out = raw.replace(key, m[1] + ' ' + dict[m[2]]);
-      }
-    }
+    if(ja && key){ const tr = tkey(key); if(tr !== null) out = raw.replace(key, tr); }
     if(node.nodeValue !== out) node.nodeValue = out;
   }
   // placeholders
   document.body.querySelectorAll('[placeholder]').forEach(el => {
     if(el.__enPh === undefined) el.__enPh = el.getAttribute('placeholder') || '';
     const k = el.__enPh.trim();
-    el.setAttribute('placeholder', (ja && dict[k] !== undefined) ? dict[k] : el.__enPh);
+    el.setAttribute('placeholder', (ja && I18N.ja[k] !== undefined) ? I18N.ja[k] : el.__enPh);
   });
 }
 
@@ -1300,11 +1504,11 @@ function saveProfile() {
   const bodyweight = +document.getElementById('p-bw').value      || null;
   DB.saveProfile({ height, bodyweight });
   closeModal();
-  showToast('Stats saved!');
+  showToast(t('Stats saved!'));
   renderDashboard();
 }
 function clearProfile() {
-  if (!confirm('Clear your stats?')) return;
+  if (!confirm(t('Clear your stats?'))) return;
   DB.saveProfile({});
   closeModal();
   renderDashboard();
@@ -1996,10 +2200,10 @@ function templateSuggestionHTML() {
     return `
     <div class="card" style="border-color:var(--green);background:rgba(34,197,94,.06);padding:9px 11px;margin-bottom:10px;display:flex;align-items:center;gap:10px">
       <div style="flex:1;min-width:0">
-        <div style="font-size:12px;font-weight:700;color:var(--green)">📋 ${name} template</div>
+        <div style="font-size:12px;font-weight:700;color:var(--green)">📋 ${tf('{name} template', {name:t(name)})}</div>
         <div style="font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${tpl.join(' · ')}</div>
       </div>
-      <button class="btn btn-primary" style="background:var(--green);padding:8px 13px;white-space:nowrap;flex-shrink:0" onclick="applyTemplateToLog()">Load ${tpl.length}</button>
+      <button class="btn btn-primary" style="background:var(--green);padding:8px 13px;white-space:nowrap;flex-shrink:0" onclick="applyTemplateToLog()">${tf('Load {n}', {n:tpl.length})}</button>
     </div>`;
   }
   const last = lastSessionNamed(name);
@@ -2007,10 +2211,10 @@ function templateSuggestionHTML() {
     return `
     <div class="card" style="border-color:var(--accent);background:var(--accent-dim);padding:9px 11px;margin-bottom:10px;display:flex;align-items:center;gap:10px">
       <div style="flex:1;min-width:0">
-        <div style="font-size:12px;font-weight:700;color:var(--accent)">⟳ Repeat last ${name}? · ${fmtDate(last.date)}</div>
+        <div style="font-size:12px;font-weight:700;color:var(--accent)">⟳ ${tf('Repeat last {name}?', {name:t(name)})} · ${fmtDate(last.date)}</div>
         <div style="font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${last.exercises.map(e=>e.name).join(' · ')}</div>
       </div>
-      <button class="btn btn-primary" style="padding:8px 13px;white-space:nowrap;flex-shrink:0" onclick="applyLastSessionToLog()">Load ${last.exercises.length}</button>
+      <button class="btn btn-primary" style="padding:8px 13px;white-space:nowrap;flex-shrink:0" onclick="applyLastSessionToLog()">${tf('Load {n}', {n:last.exercises.length})}</button>
     </div>`;
   }
   return '';
@@ -2029,10 +2233,10 @@ function saveTemplateOfferHTML() {
       <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
       <polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>
     </svg>
-    ${verb} "${name}" template
+    ${tf('{verb} "{name}" template', {verb:t(verb), name:t(name)})}
   </button>
   <div style="text-align:center;font-size:11px;color:var(--muted);margin-bottom:12px">
-    ${tpl.length ? 'Save these changes to reuse next time' : `Reuse this exercise list next ${name} day in one tap`}
+    ${tpl.length ? t('Save these changes to reuse next time') : tf('Reuse this exercise list next {name} day in one tap', {name:t(name)})}
   </div>`;
 }
 
@@ -2073,7 +2277,7 @@ function applyTemplateToLog() {
   currentLog.exercises = tpl.map(exerciseWithPlaceholders);
   openEx = new Set(currentLog.exercises.length ? [0] : []);   // open the first, rest collapsed
   renderLog();
-  showToast(`Loaded your ${currentLog.name} template 📋`);
+  showToast(tf('Loaded your {name} template 📋', {name:t(currentLog.name)}));
 }
 function applyLastSessionToLog() {
   const last = lastSessionNamed(currentLog.name);
@@ -2088,7 +2292,7 @@ function applyLastSessionToLog() {
   });
   openEx = new Set(currentLog.exercises.length ? [0] : []);   // open the first, rest collapsed
   renderLog();
-  showToast(`Loaded last ${currentLog.name} session ⟳`);
+  showToast(tf('Loaded last {name} session ⟳', {name:t(currentLog.name)}));
 }
 // Tap an empty input → accept the placeholder value, selected for easy bump
 function phFill(el, ei, si, field) {
@@ -2106,16 +2310,16 @@ function saveCurrentAsTemplate() {
   const t = DB.templates;
   t[name] = exNames;
   DB.saveTemplates(t);
-  showToast(`Saved as your ${name} template 📋`);
+  showToast(tf('Saved as your {name} template 📋', {name:t(name)}));
   renderLog();
 }
 function deleteTemplate(name) {
-  if (!confirm(`Delete the "${name}" template?`)) return;
+  if (!confirm(tf('Delete the "{name}" template?', {name:t(name)}))) return;
   const t = DB.templates;
   delete t[name];
   DB.saveTemplates(t);
   openDataModal();
-  showToast('Template deleted');
+  showToast(t('Template deleted'));
 }
 
 // ── Workout duration stopwatch ─────────────────────────
@@ -2167,7 +2371,7 @@ function toggleTimer() {
   if (currentView === 'log') renderLog();
 }
 function resetTimer() {
-  if ((currentLog.durationSec || timerRunning) && !confirm('Reset the timer to 0:00?')) return;
+  if ((currentLog.durationSec || timerRunning) && !confirm(t('Reset the timer to 0:00?'))) return;
   timerRunning = false;
   timerStartTs = null;
   clearInterval(timerInterval); timerInterval = null;
@@ -2261,7 +2465,7 @@ function restAlert() {
       beep(880, 0); beep(1175, 0.22);
     }
   } catch (e) {}
-  showToast('Rest done — next set 💪');
+  showToast(t('Rest done — next set 💪'));
 }
 
 function paintRest() {
@@ -2436,7 +2640,7 @@ function removeExercise(ei) {
 
 function setBW(ei, si) {
   const bw = DB.profile.bodyweight;
-  if (!bw) { showToast('Add your body weight in My Stats (tap 👤 icon) first', false); return; }
+  if (!bw) { showToast(t('Add your body weight in My Stats (tap 👤 icon) first'), false); return; }
   const log = getActiveLog();
   const set = log.exercises[ei].sets[si];
 
@@ -2535,7 +2739,7 @@ function toggleMuscleChip(m) {
 
 function pickExerciseName(name) {
   name = name.trim();
-  if (!name) { showToast('Enter an exercise name', false); return; }
+  if (!name) { showToast(t('Enter an exercise name'), false); return; }
   pickedMuscles = new Set(getMusclesForExercise(name));
   renderMusclePicker(name, 'openAddExModal()', `confirmAddExercise('${esc(name)}')`);
 }
@@ -2604,7 +2808,7 @@ function saveWorkout() {
   if(notesEl) currentLog.notes = notesEl.value;
   stopTimerAndBank();                          // freeze the stopwatch into durationSec
 
-  if(!currentLog.exercises.length) { showToast('Add at least one exercise!', false); return }
+  if(!currentLog.exercises.length) { showToast(t('Add at least one exercise!'), false); return }
 
   const cleaned = {
     ...currentLog,
@@ -2619,7 +2823,7 @@ function saveWorkout() {
   };
 
   DB.addWorkout(cleaned);
-  showToast('Workout saved! 💪');
+  showToast(t('Workout saved! 💪'));
   timerRunning = false; timerStartTs = null;
   clearInterval(timerInterval); timerInterval = null;
   currentLog = newLog();
@@ -2630,7 +2834,7 @@ function saveWorkout() {
 }
 
 function clearLog() {
-  if(currentLog.exercises.length && !confirm('Clear this workout?')) return;
+  if(currentLog.exercises.length && !confirm(t('Clear this workout?'))) return;
   stopTimerAndBank();
   timerRunning = false; timerStartTs = null;
   clearInterval(timerInterval); timerInterval = null;
@@ -2905,11 +3109,11 @@ function showWorkoutDetail(id) {
 }
 
 function deleteWorkout(id) {
-  if(!confirm('Delete this workout permanently?')) return;
+  if(!confirm(t('Delete this workout permanently?'))) return;
   DB.removeWorkout(id);
   closeModal();
   renderHistory();
-  showToast('Workout deleted');
+  showToast(t('Workout deleted'));
 }
 
 // ── Edit workout ──────────────────────────────────────
@@ -3143,7 +3347,7 @@ function saveEditedWorkout() {
   if (custEl && custEl.style.display !== 'none') editingWorkout.name = custEl.value;
   if (notesEl) editingWorkout.notes = notesEl.value;
 
-  if (!editingWorkout.exercises.length) { showToast('Add at least one exercise!', false); return; }
+  if (!editingWorkout.exercises.length) { showToast(t('Add at least one exercise!'), false); return; }
 
   const cleaned = {
     ...editingWorkout,
@@ -3163,7 +3367,7 @@ function saveEditedWorkout() {
   editingWorkout = null;
   closeModal();
   renderHistory();
-  showToast('Workout updated! ✅');
+  showToast(t('Workout updated! ✅'));
 }
 
 function cancelEditWorkout() {
@@ -3399,7 +3603,7 @@ function filterExAddDropdown(q) {
 
 function pickExerciseAddName(name) {
   name = name.trim();
-  if (!name) { showToast('Enter an exercise name', false); return; }
+  if (!name) { showToast(t('Enter an exercise name'), false); return; }
   pickedMuscles = new Set(getMusclesForExercise(name));
   renderMusclePicker(name, 'openExercisesAddModal()', `confirmAddExerciseToLibrary('${esc(name)}')`);
 }
@@ -3512,23 +3716,23 @@ function tplToggle(n) {
 }
 function saveTemplateFromBuilder() {
   const name = (tplBuilder.name || '').trim();
-  if (!name) { showToast('Pick a session type', false); return; }
-  if (!tplBuilder.picked.length) { showToast('Select at least one exercise', false); return; }
+  if (!name) { showToast(t('Pick a session type'), false); return; }
+  if (!tplBuilder.picked.length) { showToast(t('Select at least one exercise'), false); return; }
   const t = DB.templates;
   t[name] = [...tplBuilder.picked];
   DB.saveTemplates(t);
   closeModal();
-  showToast(`${name} template saved 📋`);
+  showToast(tf('{name} template saved 📋', {name:t(name)}));
   if (currentView === 'prs') renderPRs(); else showView('prs');
 }
 function deleteTemplateFromBuilder(name) {
-  if (!confirm(`Delete the "${name}" template?`)) return;
+  if (!confirm(tf('Delete the "{name}" template?', {name:t(name)}))) return;
   const t = DB.templates;
   delete t[name];
   DB.saveTemplates(t);
   closeModal();
   renderPRs();
-  showToast('Template deleted');
+  showToast(t('Template deleted'));
 }
 
 function addExerciseToLibrary(name, muscle) {
@@ -3546,7 +3750,7 @@ function addExerciseToLibrary(name, muscle) {
   const bp = getBodyPartForExercise(name);
   openBPGroups.add(bp);
   renderPRs();
-  showToast('Exercise added 💪');
+  showToast(t('Exercise added 💪'));
   setTimeout(()=>{
     document.getElementById(`bpg-${bp.replace(/\s/g,'_')}`)
       ?.scrollIntoView({behavior:'smooth',block:'start'});
@@ -3796,9 +4000,9 @@ function updateGoalCurrentPR(exerciseName) {
   if(!el) return;
   const pr = prs[exerciseName];
   if(pr?.bestSet) {
-    el.innerHTML = `Current PR: <strong style="color:var(--text)">${pr.displayWeight}${unit} × ${pr.bestSet.reps}</strong> · est. 1RM <strong style="color:var(--accent)">${pr.best1RM}${unit}</strong>`;
+    el.innerHTML = tf('Current PR: <strong style="color:var(--text)">{w}{u} × {r}</strong> · est. 1RM <strong style="color:var(--accent)">{e}{u}</strong>', {w:pr.displayWeight, u:unit, r:pr.bestSet.reps, e:pr.best1RM});
   } else {
-    el.textContent = exerciseName ? 'No data yet for this exercise' : '';
+    el.textContent = exerciseName ? t('No data yet for this exercise') : '';
   }
 }
 
@@ -3807,8 +4011,8 @@ function saveGoal() {
   const targetDisp   = +document.getElementById('goal-target-weight').value;
   const targetReps   = +document.getElementById('goal-target-reps').value || 5;
   const targetDate   = document.getElementById('goal-target-date').value || '';
-  if(!exercise) { showToast('Pick an exercise', false); return }
-  if(!targetDisp || targetDisp <= 0) { showToast('Enter a target weight', false); return }
+  if(!exercise) { showToast(t('Pick an exercise'), false); return }
+  if(!targetDisp || targetDisp <= 0) { showToast(t('Enter a target weight'), false); return }
 
   const targetWeightKg = toKg(targetDisp, DB.unit);
   const goals          = DB.goals;
@@ -3822,7 +4026,7 @@ function saveGoal() {
   }
   DB.saveGoals(goals);
   closeModal();
-  showToast('Goal saved! 🎯');
+  showToast(t('Goal saved! 🎯'));
   showView('goals');
 }
 
@@ -3863,7 +4067,7 @@ function openEditGoalModal(id) {
 function updateGoal(id) {
   const targetDisp = +document.getElementById('goal-edit-weight').value;
   const targetReps = +document.getElementById('goal-edit-reps').value || 5;
-  if(!targetDisp || targetDisp <= 0) { showToast('Enter a valid weight', false); return }
+  if(!targetDisp || targetDisp <= 0) { showToast(t('Enter a valid weight'), false); return }
   const goals = DB.goals;
   const i = goals.findIndex(g=>g.id===id);
   if(i<0) return;
@@ -3875,12 +4079,12 @@ function updateGoal(id) {
   goals[i].targetDate     = document.getElementById('goal-edit-date').value || '';
   DB.saveGoals(goals);
   closeModal();
-  showToast('Goal updated!');
+  showToast(t('Goal updated!'));
   renderGoals();
 }
 
 function deleteGoal(id) {
-  if(!confirm('Delete this goal?')) return;
+  if(!confirm(t('Delete this goal?'))) return;
   DB.saveGoals(DB.goals.filter(g=>g.id!==id));
   closeModal();
   renderGoals();
@@ -3909,7 +4113,7 @@ function closeModalOutside(e) {
   if(editingWorkout) {
     // If in the edit workout modal itself → confirm discard
     if(document.getElementById('edit-exercises-section')) {
-      if(!confirm('Discard changes?')) return;
+      if(!confirm(t('Discard changes?'))) return;
       cancelEditWorkout();
     } else {
       // In add-exercise sub-modal → return to edit modal
@@ -3958,9 +4162,9 @@ function notifSettingHTML() {
 async function enableMonthlyReminders() {
   await setupMonthlyNotification(true);
   const row = document.getElementById('notif-row');
-  if (row) row.innerHTML = notifSettingHTML();
-  if (Notification.permission === 'granted') showToast('Monthly reminders enabled 🔔');
-  else if (Notification.permission === 'denied') showToast('Notifications blocked in settings', false);
+  if (row) { row.innerHTML = notifSettingHTML(); applyLang(); }
+  if (Notification.permission === 'granted') showToast(t('Monthly reminders enabled 🔔'));
+  else if (Notification.permission === 'denied') showToast(t('Notifications blocked in settings'), false);
 }
 
 // ═══════════════════════════════════════════════════════
@@ -4126,7 +4330,7 @@ function openDataModal() {
 
   <div style="font-size:13px;font-weight:600;margin-bottom:10px">Help</div>
   <button class="btn btn-secondary btn-full" style="margin-bottom:8px" onclick="openHelpModal()">▶ Take the guided tour</button>
-  ${gsDismissed() ? `<button class="btn btn-secondary btn-full" onclick="localStorage.removeItem('ll_gs_dismissed');closeModal();showView('dashboard');showToast('Checklist restored')">🚀 Show getting-started checklist</button>` : ''}
+  ${gsDismissed() ? `<button class="btn btn-secondary btn-full" onclick="localStorage.removeItem('ll_gs_dismissed');closeModal();showView('dashboard');showToast(t('Checklist restored'))">🚀 Show getting-started checklist</button>` : ''}
 
   <div class="divider" style="margin:20px 0"></div>
 
@@ -4185,8 +4389,7 @@ function openDataModal() {
 
   <div style="font-size:13px;font-weight:600;margin-bottom:10px">Manual backup (file)</div>
   <div style="font-size:12px;color:var(--muted);margin-bottom:12px">
-    Export saves all your workouts, PRs, and goals as a file.
-    Keep it somewhere safe (Files, Notes, email yourself).
+    Export saves all your workouts, PRs, and goals as a file. Keep it somewhere safe (Files, Notes, email yourself).
   </div>
   <div style="font-size:12px;margin-bottom:12px;color:${backupOverdue()?'var(--red)':'var(--muted)'}">
     ${lastBackupLabel()}
@@ -4268,7 +4471,7 @@ async function exportData() {
   }
 
   localStorage.setItem('ll_last_backup', Date.now().toString());
-  showToast('Backup saved! 📦');
+  showToast(t('Backup saved! 📦'));
   if (currentView === 'dashboard') renderDashboard();
 }
 
@@ -4309,14 +4512,14 @@ function importFromFile(input) {
   if (!file) return;
   const reader = new FileReader();
   reader.onload = () => { applyImport(String(reader.result || '')); input.value = ''; };
-  reader.onerror = () => showToast('Couldn\'t read that file', false);
+  reader.onerror = () => showToast(t('Couldn\'t read that file'), false);
   reader.readAsText(file);
 }
 
 // Restore from JSON pasted into the textarea (fallback path).
 function importData() {
   const raw = document.getElementById('import-json').value.trim();
-  if (!raw) { showToast('Choose a backup file or paste JSON first', false); return; }
+  if (!raw) { showToast(t('Choose a backup file or paste JSON first'), false); return; }
   applyImport(raw);
 }
 
@@ -4328,8 +4531,8 @@ function applyImport(raw) { restoreFromString(raw, true); }
 function restoreFromString(raw, askConfirm) {
   let data;
   try { data = JSON.parse(String(raw).trim()); }
-  catch(e) { showToast('Invalid JSON — check your backup file', false); return false; }
-  if (!data.ll_workouts) { showToast('Doesn\'t look like a Lift Log backup', false); return false; }
+  catch(e) { showToast(t('Invalid JSON — check your backup file'), false); return false; }
+  if (!data.ll_workouts) { showToast(t('Doesn\'t look like a Lift Log backup'), false); return false; }
 
   if (askConfirm) {
     // Build a plain-language summary so the user knows what they're about to replace.
@@ -4337,10 +4540,9 @@ function restoreFromString(raw, askConfirm) {
     try { incoming = JSON.parse(data.ll_workouts || '[]'); } catch(e) {}
     const current = DB.workouts.length;
     const dates   = incoming.map(w => w.date).filter(Boolean).sort();
-    const range   = dates.length ? `${fmtDate(dates[0])} – ${fmtDate(dates[dates.length-1])}` : 'no dates';
-    const summary =
-      `This backup has ${incoming.length} workout${incoming.length!==1?'s':''} (${range}).\n` +
-      `It will REPLACE your current ${current} workout${current!==1?'s':''}.\n\nContinue?`;
+    const range   = dates.length ? `${fmtDate(dates[0])} – ${fmtDate(dates[dates.length-1])}` : t('no dates');
+    const summary = tf('This backup has {n} workout(s) ({range}).\nIt will REPLACE your current {cur} workout(s).\n\nContinue?',
+      {n:incoming.length, range:range, cur:current});
     if (!confirm(summary)) return false;
   }
 
@@ -4348,7 +4550,7 @@ function restoreFromString(raw, askConfirm) {
     if (data[k] !== undefined) localStorage.setItem(k, data[k]);
   });
   closeModal();
-  showToast('Data restored! 💪');
+  showToast(t('Data restored! 💪'));
   runMigrations();
   showView('dashboard');
   return true;
@@ -4475,10 +4677,10 @@ async function cloudBackupNow(silent) {
     localStorage.setItem('ll_last_backup', now.toString());
     localStorage.setItem('ll_gd_last_sync', now.toString());
     gdSetStatus(syncAgoLabel(now));
-    if (!silent) showToast('Backed up to Google Drive ☁️');
+    if (!silent) showToast(t('Backed up to Google Drive ☁️'));
   } catch (e) {
     gdSetStatus('reconnect needed');
-    if (!silent) showToast('Drive sync failed — try reconnecting', false);
+    if (!silent) showToast(t('Drive sync failed — try reconnecting'), false);
   } finally {
     gdSyncing = false;
   }
@@ -4488,8 +4690,8 @@ async function cloudBackupNow(silent) {
 async function gdConnect() {
   const input = document.getElementById('gd-client-id');
   if (input && input.value.trim()) localStorage.setItem('ll_gd_client_id', input.value.trim());
-  if (!gdClientId()) { showToast('Paste your Google Client ID first', false); return; }
-  if (!gdReady())    { showToast('Google sign-in still loading — try again in a second', false); return; }
+  if (!gdClientId()) { showToast(t('Paste your Google Client ID first'), false); return; }
+  if (!gdReady())    { showToast(t('Google sign-in still loading — try again in a second'), false); return; }
   gdTokenClient = null;   // re-init in case the Client ID changed
   try {
     const token = await gdGetToken(true);
@@ -4501,7 +4703,7 @@ async function gdConnect() {
     const localCount = DB.workouts.length;
 
     if (remote && remoteCount > 0 && (localCount === 0 || remoteCount > localCount)) {
-      if (confirm(`Found a backup in Google Drive with ${remoteCount} workout${remoteCount!==1?'s':''} (this device has ${localCount}).\n\nRestore the Drive copy?`)) {
+      if (confirm(tf('Found a backup in Google Drive with {n} workout(s) (this device has {local}).\n\nRestore the Drive copy?', {n:remoteCount, local:localCount}))) {
         restoreFromString(remote, false);
       } else {
         await gdUpload(token, buildBackupJSON(false));   // keep device data, overwrite cloud
@@ -4512,18 +4714,18 @@ async function gdConnect() {
     const now = Date.now();
     localStorage.setItem('ll_last_backup', now.toString());
     localStorage.setItem('ll_gd_last_sync', now.toString());
-    showToast('Google Drive connected ☁️');
+    showToast(t('Google Drive connected ☁️'));
     if (document.getElementById('modal-overlay').classList.contains('open')) openDataModal();
   } catch (e) {
-    showToast('Couldn\'t connect to Google Drive', false);
+    showToast(t('Couldn\'t connect to Google Drive'), false);
   }
 }
 
 function gdDisconnect() {
-  if (!confirm('Stop auto-backup to Google Drive?\n\nYour existing Drive backup file stays safe — the app just stops syncing.')) return;
+  if (!confirm(t('Stop auto-backup to Google Drive?\n\nYour existing Drive backup file stays safe — the app just stops syncing.'))) return;
   localStorage.removeItem('ll_gd_connected');
   gdToken = null;
-  showToast('Disconnected from Google Drive');
+  showToast(t('Disconnected from Google Drive'));
   openDataModal();
 }
 
@@ -4553,13 +4755,13 @@ function openGDHelp() {
   <div style="font-size:18px;font-weight:700;margin-bottom:6px">Set up Google Drive backup</div>
   <div style="font-size:12px;color:var(--muted);margin-bottom:16px">One-time, ~10 minutes. You only need to do this once.</div>
   <ol style="font-size:13px;line-height:1.7;padding-left:20px;margin-bottom:16px">
-    <li>Go to <strong>console.cloud.google.com</strong> and create a new project (any name).</li>
-    <li>Open <strong>APIs &amp; Services → Library</strong>, search <strong>Google Drive API</strong>, click <strong>Enable</strong>.</li>
-    <li>Open <strong>APIs &amp; Services → OAuth consent screen</strong>. Choose <strong>External</strong>, fill the app name + your email, and add your own Google address under <strong>Test users</strong>.</li>
-    <li>Open <strong>APIs &amp; Services → Credentials → Create credentials → OAuth client ID</strong>. Pick <strong>Web application</strong>.</li>
-    <li>Under <strong>Authorized JavaScript origins</strong>, add exactly:<br>
+    <li>${t('Go to <strong>console.cloud.google.com</strong> and create a new project (any name).')}</li>
+    <li>${t('Open <strong>APIs &amp; Services → Library</strong>, search <strong>Google Drive API</strong>, click <strong>Enable</strong>.')}</li>
+    <li>${t('Open <strong>APIs &amp; Services → OAuth consent screen</strong>. Choose <strong>External</strong>, fill the app name + your email, and add your own Google address under <strong>Test users</strong>.')}</li>
+    <li>${t('Open <strong>APIs &amp; Services → Credentials → Create credentials → OAuth client ID</strong>. Pick <strong>Web application</strong>.')}</li>
+    <li>${t('Under <strong>Authorized JavaScript origins</strong>, add exactly:')}<br>
       <code style="display:inline-block;background:var(--card2);border:1px solid var(--border);border-radius:6px;padding:4px 8px;margin-top:4px;font-size:12px;word-break:break-all">${origin}</code></li>
-    <li>Click <strong>Create</strong>, copy the <strong>Client ID</strong>, paste it back here, and tap Connect.</li>
+    <li>${t('Click <strong>Create</strong>, copy the <strong>Client ID</strong>, paste it back here, and tap Connect.')}</li>
   </ol>
   <div style="font-size:11px;color:var(--muted);margin-bottom:14px">
     The app only ever touches its own private backup file — it cannot see your other Drive files. The Client ID is not a secret.
@@ -4809,7 +5011,7 @@ function dashEditorHTML() {
   return `
   <div class="card" style="background:var(--accent-dim);border-color:var(--accent);margin-bottom:12px">
     <div style="font-size:13px;font-weight:700;margin-bottom:3px">✨ Customize your dashboard</div>
-    <div style="font-size:12px;color:var(--muted);line-height:1.5">Press and hold a row (or its <span style="color:var(--text)">⠿</span> handle) to drag it into a new order, and use the switches to show or hide each section. Tap <strong style="color:var(--accent)">Done</strong> up top when you're finished.</div>
+    <div style="font-size:12px;color:var(--muted);line-height:1.5">${t('Press and hold a row (or its <span style="color:var(--text)">⠿</span> handle) to drag it into a new order, and use the switches to show or hide each section. Tap <strong style="color:var(--accent)">Done</strong> up top when you\'re finished.')}</div>
   </div>
   <div id="dash-edit-list">${rows}</div>`;
 }
@@ -5166,7 +5368,7 @@ function initEnhancements() {
     } else if (editingWorkout) {
       // the edit modal itself → confirm before discarding
       reset();
-      if (confirm('Discard changes?')) cancelEditWorkout();
+      if (confirm(t('Discard changes?'))) cancelEditWorkout();
     } else {
       // any other modal → slide out, then close
       sheet.style.transform = 'translateY(100%)';
@@ -5307,13 +5509,13 @@ function saveManualAchievement() {
   const weight   = +document.getElementById('ach-weight').value;
   const reps     = +document.getElementById('ach-reps').value || 1;
   const date     = document.getElementById('ach-date').value || todayStr();
-  if (!exercise)       { showToast('Enter an exercise', false); return; }
-  if (!weight || weight <= 0) { showToast('Enter a valid weight', false); return; }
+  if (!exercise)       { showToast(t('Enter an exercise'), false); return; }
+  if (!weight || weight <= 0) { showToast(t('Enter a valid weight'), false); return; }
   const arr = achievedGoals();
   arr.push({ key: 'm' + uid(), exercise, targetWeightKg: toKg(weight, DB.unit), targetReps: reps, date });
   saveAchievedGoals(arr);
   closeModal();
-  showToast('Achievement added 🏆');
+  showToast(t('Achievement added 🏆'));
   renderGoals();
 }
 
@@ -5335,7 +5537,7 @@ function checkGoalCelebrations() {
   localStorage.setItem('ll_celebrated', JSON.stringify(nowDone));
   if (fresh) {
     fireConfetti();
-    showToast('🎉 Goal reached! Set a new target to keep going');
+    showToast(t('🎉 Goal reached! Set a new target to keep going'));
     setTimeout(askFeedbackAfterCelebration, 3200);
   }
 }
@@ -5476,19 +5678,19 @@ async function toggleUnsavedReminder() {
       try { await Notification.requestPermission(); } catch (e) {}
     }
     if (('Notification' in window) && Notification.permission !== 'granted') {
-      showToast('Notifications blocked in settings', false);
+      showToast(t('Notifications blocked in settings'), false);
     } else {
       localStorage.setItem('ll_unsaved_reminder', '1');
-      showToast('Unsaved-workout reminder on 🔔');
+      showToast(t('Unsaved-workout reminder on 🔔'));
     }
   } else {
     localStorage.removeItem('ll_unsaved_reminder');
     clearTimeout(window.__unsavedNotifyTO);
-    showToast('Reminder off');
+    showToast(t('Reminder off'));
   }
   scheduleUnsavedReminder();
   const row = document.getElementById('unsaved-notif-row');
-  if (row) row.innerHTML = unsavedNotifSettingHTML();
+  if (row) { row.innerHTML = unsavedNotifSettingHTML(); applyLang(); }
 }
 
 // ═══════════════════════════════════════════════════════
@@ -5592,14 +5794,14 @@ function showTourStep() {
   tip.innerHTML = `
     <div style="display:flex;gap:10px;align-items:flex-start">
       <div style="font-size:24px;flex-shrink:0">${step.emoji}</div>
-      <div style="font-size:13.5px;line-height:1.55;color:var(--text)">${step.text}</div>
+      <div style="font-size:13.5px;line-height:1.55;color:var(--text)">${t(step.text)}</div>
     </div>
     <div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px">
       <div style="display:flex;gap:5px">${LOG_TOUR.map((_,i)=>
         `<div style="width:6px;height:6px;border-radius:50%;background:${i===tourStep?'var(--accent)':'var(--border)'}"></div>`).join('')}</div>
       <div style="display:flex;gap:8px">
-        <button class="btn btn-ghost btn-sm" onclick="endLogTour()" style="font-size:12px">Skip</button>
-        <button class="btn btn-primary btn-sm" onclick="nextTourStep()" style="min-width:84px;justify-content:center">${last?'Done ✓':'Next →'}</button>
+        <button class="btn btn-ghost btn-sm" onclick="endLogTour()" style="font-size:12px">${t('Skip')}</button>
+        <button class="btn btn-primary btn-sm" onclick="nextTourStep()" style="min-width:84px;justify-content:center">${last?t('Done ✓'):t('Next →')}</button>
       </div>
     </div>`;
 
@@ -5659,7 +5861,7 @@ initEnhancements();
 const __startView = (location.hash === '#log') ? 'log' : 'dashboard';
 if (location.hash) { try { history.replaceState(null, '', location.pathname); } catch (e) {} }
 showView(__startView);
-if (__draft) setTimeout(() => showToast('Picked up your unsaved workout 💪'), 600);
+if (__draft) setTimeout(() => showToast(t('Picked up your unsaved workout 💪')), 600);
 setupMonthlyNotification(false);   // re-arm push (won't prompt; just schedules if already granted)
 scheduleUnsavedReminder();         // re-arm unsaved-workout reminder if one is pending
 gdBootstrap();                     // warm Google Drive token + sync if connected
