@@ -1007,7 +1007,7 @@ const I18N = {
     'In-app banner only':'アプリ内バナーのみ',"In-app reminder only — notifications aren't supported on this device.":'アプリ内リマインダーのみ — この端末は通知に対応していません。',
     'Please rotate to portrait':'画面を縦にしてください','Lift Log is designed to be used upright. Turn your phone vertical to continue.':'Lift Logは縦向きでの使用を想定しています。スマホを縦にして続けてください。',
     // ── body-weight goals / weigh-in ──
-    'Strength':'筋力','Body weight':'体重','Body weight goal':'体重の目標','Target weight':'目標体重','Amount to lose':'減らす量',
+    'Strength':'筋力','Body weight':'体重','Body weight goal':'体重の目標','Target weight':'目標体重','Amount to lose':'減らす量','Search exercises…':'種目を検索…',
     'Weigh in':'体重を記録','Weigh-in saved ⚖️':'体重を記録しました ⚖️','Weigh in to track progress':'体重を記録して進捗を確認',
     'Log at least 2 weigh-ins to see a chart':'グラフを見るには2回以上記録してください',
     'Set your current weight first, then come back.':'先に現在の体重を入力してください。','Set your current weight first':'先に現在の体重を入力してください',
@@ -4228,14 +4228,17 @@ function openAddGoalModal(prefillExercise, keepType) {
     ${curDisp == null ? `<button class="btn btn-secondary btn-full" style="margin-bottom:8px" onclick="openWeighInModal()">⚖️ ${t('Weigh in')}</button>` : ''}
     <button class="btn btn-primary btn-full" style="margin-top:4px" onclick="saveGoal()">${t('Save Goal')}</button>`;
   } else {
+    const prefillDisp = prefillExercise ? (DB.lang === 'ja' ? (tkey(prefillExercise) || prefillExercise) : prefillExercise) : '';
     body = `
     <div class="input-group">
       <div class="label">Exercise</div>
-      <div class="select-wrap">
-        <select id="goal-exercise" onchange="updateGoalCurrentPR(this.value)">
-          <option value="">Select exercise…</option>
-          ${optionsHTML}
-        </select>
+      <div style="position:relative">
+        <input type="text" id="goal-ex-search" autocomplete="off" placeholder="${t('Search exercises…')}"
+          value="${prefillDisp}"
+          oninput="filterGoalExDropdown(this.value)" onfocus="filterGoalExDropdown(this.value)"
+          onblur="setTimeout(()=>{const d=document.getElementById('goal-ex-dropdown');if(d)d.style.display='none'},180)">
+        <input type="hidden" id="goal-exercise" value="${prefillExercise||''}">
+        <div id="goal-ex-dropdown" class="ac-dropdown" style="display:none;max-height:260px;overflow-y:auto"></div>
       </div>
     </div>
 
@@ -4269,6 +4272,40 @@ function openAddGoalModal(prefillExercise, keepType) {
   if(prefillExercise && addGoalType === 'lift') {
     setTimeout(()=>{ updateGoalCurrentPR(prefillExercise); }, 100);
   }
+}
+
+// Searchable exercise picker for the goal modal (matches English + Japanese names).
+function filterGoalExDropdown(q) {
+  const dd = document.getElementById('goal-ex-dropdown');
+  if (!dd) return;
+  const prs = getPRs(), unit = DB.unit, ql = (q || '').trim().toLowerCase();
+  const all = allExerciseNames();
+  const matches = all.filter(e => {
+    if (!ql) return true;
+    if (e.toLowerCase().includes(ql)) return true;
+    const ja = tkey(e);                          // also match the Japanese name
+    return ja && ja.toLowerCase().includes(ql);
+  }).slice(0, 60);
+  if (!matches.length) {
+    dd.innerHTML = `<div class="ac-item" style="color:var(--muted)">${t('No matches')}</div>`;
+    dd.style.display = 'block';
+    return;
+  }
+  dd.innerHTML = matches.map(e => {
+    const disp = DB.lang === 'ja' ? (tkey(e) || e) : e;
+    const pr   = prs[e];
+    const sub  = pr?.bestSet ? ` <span style="color:var(--muted);font-size:12px">· ${pr.displayWeight}${unit}×${pr.bestSet.reps}</span>` : '';
+    return `<div class="ac-item" onclick="pickGoalExercise('${esc(e)}')">${disp}${sub}</div>`;
+  }).join('');
+  dd.style.display = 'block';
+}
+function pickGoalExercise(name) {
+  document.getElementById('goal-exercise').value = name;
+  const inp = document.getElementById('goal-ex-search');
+  if (inp) inp.value = DB.lang === 'ja' ? (tkey(name) || name) : name;
+  const dd = document.getElementById('goal-ex-dropdown');
+  if (dd) dd.style.display = 'none';
+  updateGoalCurrentPR(name);
 }
 
 function updateGoalCurrentPR(exerciseName) {
@@ -4313,7 +4350,12 @@ function saveGoal() {
     return;
   }
   // ── Strength goal ──
-  const exercise     = document.getElementById('goal-exercise').value;
+  let exercise       = document.getElementById('goal-exercise').value;
+  if (!exercise) {   // user typed but didn't tap a result → resolve the text
+    const typed = (document.getElementById('goal-ex-search')?.value || '').trim();
+    if (typed) exercise = allExerciseNames().find(e =>
+      e.toLowerCase() === typed.toLowerCase() || (tkey(e) || '') === typed) || '';
+  }
   const targetDisp   = +document.getElementById('goal-target-weight').value;
   const targetReps   = +document.getElementById('goal-target-reps').value || 5;
   const targetDate   = document.getElementById('goal-target-date').value || '';
