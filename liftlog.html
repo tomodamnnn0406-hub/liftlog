@@ -1014,7 +1014,7 @@ const I18N = {
     'In-app banner only':'アプリ内バナーのみ',"In-app reminder only — notifications aren't supported on this device.":'アプリ内リマインダーのみ — この端末は通知に対応していません。',
     'Please rotate to portrait':'画面を縦にしてください','Lift Log is designed to be used upright. Turn your phone vertical to continue.':'Lift Logは縦向きでの使用を想定しています。スマホを縦にして続けてください。',
     // ── body-weight goals / weigh-in ──
-    'Strength':'筋力','Body weight':'体重','Body weight goal':'体重の目標','Target weight':'目標体重','Amount to lose':'減らす量','Search exercises…':'種目を検索…',
+    'Strength':'筋力','Body weight':'体重','Body weight goal':'体重の目標','Target weight':'目標体重','Amount to lose':'減らす量','Search exercises…':'種目を検索…','Collapse':'折りたたむ',
     'Weigh in':'体重を記録','Weigh-in saved ⚖️':'体重を記録しました ⚖️','Weigh in to track progress':'体重を記録して進捗を確認',
     'Log at least 2 weigh-ins to see a chart':'グラフを見るには2回以上記録してください',
     'Set your current weight first, then come back.':'先に現在の体重を入力してください。','Set your current weight first':'先に現在の体重を入力してください',
@@ -1251,6 +1251,7 @@ let prChart        = null;
 let openBPGroups   = new Set(); // which body-part groups are expanded
 let editOpenEx     = new Set(); // expanded exercise accordions in the edit modal
 let openEx         = new Set(); // expanded exercise accordions on the Log screen
+let logSetupExpanded = false;   // expand the compact date/session/timer header on the Log screen
 let dashEditMode   = false;     // dashboard customize (reorder/show-hide) mode
 let timerRunning   = false;     // workout stopwatch state
 let timerInterval  = null;
@@ -2193,61 +2194,12 @@ function setDashChartExercise(name) {
 function renderLog() {
   const unit = DB.unit;
 
-  // Determine whether currentLog.name matches a preset
-  const presetMatch  = SESSION_PRESETS.includes(currentLog.name);
-  const showCustom   = currentLog.name && !presetMatch;
-  const selectVal    = presetMatch ? currentLog.name : (showCustom ? '__custom__' : '');
-
-  const presetsHTML = SESSION_PRESETS.map(p =>
-    `<option value="${p}" ${selectVal===p?'selected':''}>${p}</option>`
-  ).join('');
-
   document.getElementById('main').innerHTML = `
   <div class="section-header">
     <div style="font-size:22px;font-weight:800">Log Workout</div>
   </div>
 
-  <div class="card" id="tour-session">
-    <div class="input-group">
-      <div class="label">Date</div>
-      <input type="date" id="log-date" value="${currentLog.date}" onchange="currentLog.date=this.value;saveDraft()">
-    </div>
-    <div class="input-group" style="margin-bottom:0">
-      <div class="label">Session Type</div>
-      <div class="select-wrap" style="margin-bottom:${showCustom?'8px':'0'}">
-        <select id="log-name-select" onchange="handleSessionSelect(this.value)">
-          <option value="" ${!selectVal?'selected':''}>Select session type…</option>
-          ${presetsHTML}
-          <option value="__custom__" ${selectVal==='__custom__'?'selected':''}>✏️ Custom…</option>
-        </select>
-      </div>
-      <input type="text" id="log-name-custom"
-        placeholder="Type session name…"
-        value="${showCustom ? currentLog.name : ''}"
-        style="${showCustom?'':'display:none'}"
-        oninput="currentLog.name=this.value;saveDraft()"
-        onchange="if(!currentLog.exercises.length)renderLog()"
-        autocapitalize="words" autocorrect="off">
-    </div>
-  </div>
-
-  ${templateSuggestionHTML()}
-
-  <div class="card" id="tour-duration" style="display:flex;align-items:center;justify-content:space-between;gap:12px">
-    <div>
-      <div class="label" style="margin-bottom:2px">Duration</div>
-      <div id="dur-display" style="font-size:26px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-.5px">${fmtDuration(currentLog.durationSec||0)}</div>
-    </div>
-    <div style="display:flex;gap:8px" id="dur-controls">
-      <button id="dur-toggle" class="btn ${timerRunning?'btn-pause':'btn-accent-outline'}" style="min-width:104px;justify-content:center" onclick="toggleTimer()">
-        ${timerRunning ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg> Pause`
-                       : `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg> ${currentLog.durationSec ? 'Resume' : 'Start'}`}
-      </button>
-      <button class="btn btn-secondary" onclick="resetTimer()" title="Reset" aria-label="Reset timer" style="padding:12px 14px">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 12a9 9 0 1 0 9-9 9 9 0 0 0-6.36 2.64L3 8"/><path d="M3 3v5h5"/></svg>
-      </button>
-    </div>
-  </div>
+  <div id="log-setup">${logSetupHTML()}</div>
 
   ${!currentLog.exercises.length && !currentLog.name && !DB.workouts.length ? `
   <div style="text-align:center;margin-bottom:12px">
@@ -2295,6 +2247,89 @@ function renderLog() {
     timerInterval = setInterval(paintTimer, 1000);
     paintTimer();
   }
+}
+
+// Date + Session + Timer header. Collapses to a slim bar once you're actually
+// logging (a session is set AND at least one exercise added) to free up space
+// during training. Tap the bar to expand and edit.
+function logSetupHTML() {
+  const presetMatch = SESSION_PRESETS.includes(currentLog.name);
+  const showCustom  = currentLog.name && !presetMatch;
+  const selectVal   = presetMatch ? currentLog.name : (showCustom ? '__custom__' : '');
+  const presetsHTML = SESSION_PRESETS.map(p =>
+    `<option value="${p}" ${selectVal===p?'selected':''}>${p}</option>`).join('');
+
+  const playIcon  = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>`;
+  const pauseIcon = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>`;
+
+  const collapsed = currentLog.name && currentLog.exercises.length > 0 && !logSetupExpanded;
+
+  if (collapsed) {
+    const sess = presetMatch ? t(currentLog.name) : currentLog.name;
+    return `
+    <div class="card" style="display:flex;align-items:center;gap:12px;padding:10px 14px;margin-bottom:14px;cursor:pointer" onclick="toggleLogSetup()">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${sess}</div>
+        <div style="font-size:11px;color:var(--muted)">${fmtDate(currentLog.date)}</div>
+      </div>
+      <div id="dur-display" style="font-size:20px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-.5px">${fmtDuration(currentLog.durationSec||0)}</div>
+      <button id="dur-toggle" class="btn ${timerRunning?'btn-pause':'btn-accent-outline'}" style="padding:8px 11px;flex-shrink:0" onclick="event.stopPropagation();toggleTimer()" aria-label="Timer">
+        ${timerRunning ? pauseIcon : playIcon}
+      </button>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2.5" style="flex-shrink:0"><polyline points="6 9 12 15 18 9"/></svg>
+    </div>`;
+  }
+
+  return `
+  <div class="card" id="tour-session">
+    <div class="input-group">
+      <div class="label">Date</div>
+      <input type="date" id="log-date" value="${currentLog.date}" onchange="currentLog.date=this.value;saveDraft()">
+    </div>
+    <div class="input-group" style="margin-bottom:0">
+      <div class="label">Session Type</div>
+      <div class="select-wrap" style="margin-bottom:${showCustom?'8px':'0'}">
+        <select id="log-name-select" onchange="handleSessionSelect(this.value)">
+          <option value="" ${!selectVal?'selected':''}>Select session type…</option>
+          ${presetsHTML}
+          <option value="__custom__" ${selectVal==='__custom__'?'selected':''}>✏️ Custom…</option>
+        </select>
+      </div>
+      <input type="text" id="log-name-custom"
+        placeholder="Type session name…"
+        value="${showCustom ? currentLog.name : ''}"
+        style="${showCustom?'':'display:none'}"
+        oninput="currentLog.name=this.value;saveDraft()"
+        onchange="if(!currentLog.exercises.length)renderLog()"
+        autocapitalize="words" autocorrect="off">
+    </div>
+  </div>
+
+  ${templateSuggestionHTML()}
+
+  <div class="card" id="tour-duration" style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+    <div>
+      <div class="label" style="margin-bottom:2px">Duration</div>
+      <div id="dur-display" style="font-size:26px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-.5px">${fmtDuration(currentLog.durationSec||0)}</div>
+    </div>
+    <div style="display:flex;gap:8px" id="dur-controls">
+      <button id="dur-toggle" class="btn ${timerRunning?'btn-pause':'btn-accent-outline'}" style="min-width:104px;justify-content:center" onclick="toggleTimer()">
+        ${timerRunning ? pauseIcon + ' Pause'
+                       : playIcon + ' ' + (currentLog.durationSec ? 'Resume' : 'Start')}
+      </button>
+      <button class="btn btn-secondary" onclick="resetTimer()" title="Reset" aria-label="Reset timer" style="padding:12px 14px">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 12a9 9 0 1 0 9-9 9 9 0 0 0-6.36 2.64L3 8"/><path d="M3 3v5h5"/></svg>
+      </button>
+    </div>
+  </div>
+  ${currentLog.name && currentLog.exercises.length > 0 ? `
+  <div style="text-align:center;margin-top:-4px;margin-bottom:12px">
+    <button onclick="toggleLogSetup()" style="background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;padding:4px 8px">▲ ${t('Collapse')}</button>
+  </div>` : ''}`;
+}
+function toggleLogSetup() {
+  logSetupExpanded = !logSetupExpanded;
+  renderLog();
 }
 
 function handleSessionSelect(val) {
