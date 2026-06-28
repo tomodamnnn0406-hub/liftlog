@@ -2262,7 +2262,10 @@ function logSetupHTML() {
   const playIcon  = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>`;
   const pauseIcon = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>`;
 
-  const collapsed = currentLog.exercises.length > 0 && !logSetupExpanded;
+  // Auto-collapse once you're actually training: the timer is started/has run,
+  // or at least one exercise is logged. Manual expand (logSetupExpanded) overrides.
+  const collapsed = !logSetupExpanded &&
+    (currentLog.exercises.length > 0 || timerRunning || (currentLog.durationSec || 0) > 0);
 
   if (collapsed) {
     const sess = currentLog.name ? (presetMatch ? t(currentLog.name) : currentLog.name) : '';
@@ -2530,6 +2533,7 @@ function toggleTimer() {
     timerStartTs = Date.now();
     clearInterval(timerInterval);
     timerInterval = setInterval(paintTimer, 1000);
+    logSetupExpanded = false;   // starting the timer collapses the setup card automatically
   }
   if (currentView === 'log') renderLog();
 }
