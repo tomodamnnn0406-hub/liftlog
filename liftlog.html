@@ -996,6 +996,8 @@ const I18N = {
     // ── misc labels / empty states ──
     'Edit Goal':'目標を編集','Edit Workout':'ワークアウトを編集','Exercises (':'種目（','selected)':'選択中）',
     'Unsaved workout in progress':'未保存のワークアウトがあります','Tap to open the Log screen and finish saving it.':'タップして記録画面を開き、保存を完了しましょう。',
+    'Unsaved workout':'未保存のワークアウト','{n} exercises so far':'これまで{n}種目','{summary} — tap to edit & save it on the Log screen':'{summary} — タップして記録画面で編集・保存',
+    'Note for this exercise… (grip, tempo, how it felt)':'この種目のメモ…（グリップ、テンポ、感想など）',
     'Tap to set your height & body weight':'タップして身長と体重を設定','Log your first workout →':'最初のワークアウトを記録 →',
     'Every workout you finish appears on a calendar.':'完了したワークアウトはカレンダーに表示されます。','Tap a day to review or edit it later.':'日付をタップすると後から確認・編集できます。',
     "Every exercise shows the best weight you've lifted":'各種目で挙げた最高重量を表示します','and a progress chart over time.':'そして時系列の進捗グラフも表示します。',
@@ -1057,7 +1059,39 @@ const I18N_PATTERNS = [
   [/^\+ Add "(.+)"$/,             m => '「' + m[1] + '」を追加']
 ];
 
-// Resolve a single atom (no " · " splitting): dict → pattern → symbol prefix.
+// Word-level katakana map so user-created exercise names (combinations of the
+// known vocabulary, e.g. "Decline Machine Chest Press") still translate.
+const EX_TOKENS = {
+  'Push-up':'腕立て伏せ','Pull-up':'懸垂','Chin-up':'チンアップ','Sit-up':'シットアップ','T-Bar':'Tバー','Pull-over':'プルオーバー','Step-up':'ステップアップ','Pull-down':'プルダウン','Sit-ups':'シットアップ',
+  'Bench':'ベンチ','Press':'プレス','Incline':'インクライン','Decline':'デクライン','Flat':'フラット','Dumbbell':'ダンベル','Fly':'フライ','Flye':'フライ','Cable':'ケーブル','Crossover':'クロスオーバー',
+  'Pec':'ペック','Deck':'デック','Chest':'チェスト','Machine':'マシン','Dip':'ディップス','Dips':'ディップス','Deadlift':'デッドリフト','Sumo':'スモウ','Rack':'ラック','Pull':'プル','Barbell':'バーベル',
+  'Row':'ロウ','Pendlay':'ペンドレイ','Seated':'シーテッド','Standing':'スタンディング','Lat':'ラット','Lats':'ラット','Pulldown':'プルダウン','Pullover':'プルオーバー','Close':'クローズ','Wide':'ワイド','Grip':'グリップ',
+  'Straight':'ストレート','Arm':'アーム','Arms':'アーム','Over':'オーバー','Extension':'エクステンション','Good':'グッド','Morning':'モーニング','Shrug':'シュラッグ','Shrugs':'シュラッグ','Overhead':'オーバーヘッド','Military':'ミリタリー',
+  'Push':'プッシュ','Shoulder':'ショルダー','Arnold':'アーノルド','Lateral':'サイド','Raise':'レイズ','Raises':'レイズ','Front':'フロント','Rear':'リア','Delt':'デルト','Delts':'デルト','Reverse':'リバース','Face':'フェイス','Upright':'アップライト',
+  'Squat':'スクワット','Squats':'スクワット','Goblet':'ゴブレット','Hack':'ハック','Smith':'スミス','Bulgarian':'ブルガリアン','Split':'スプリット','Lunge':'ランジ','Lunges':'ランジ','Walking':'ウォーキング','Leg':'レッグ','Legs':'レッグ',
+  'Romanian':'ルーマニアン','Stiff':'スティフ','Stiff-leg':'スティフレッグ','Curl':'カール','Curls':'カール','Hip':'ヒップ','Thrust':'スラスト','Thrusts':'スラスト','Glute':'グルート','Glutes':'グルート','Bridge':'ブリッジ','Abduction':'アブダクション','Adduction':'アダクション',
+  'Calf':'カーフ','Calves':'カーフ','Bicep':'バイセップ','Biceps':'バイセップ','EZ':'EZ','Bar':'バー','Hammer':'ハンマー','Preacher':'プリーチャー','Concentration':'コンセントレーション','Tricep':'トライセップ','Triceps':'トライセップ','Skull':'スカル','Crusher':'クラッシャー',
+  'Pushdown':'プッシュダウン','Down':'ダウン','Rope':'ロープ','Wrist':'リスト','Crunch':'クランチ','Crunches':'クランチ','Plank':'プランク','Side':'サイド','Hanging':'ハンギング','Russian':'ロシアン','Twist':'ツイスト','Twists':'ツイスト','Ab':'アブ','Wheel':'ホイール','Rollout':'ロールアウト',
+  'Mountain':'マウンテン','Climber':'クライマー','Climbers':'クライマー','Treadmill':'トレッドミル','Running':'ランニング','Run':'ラン','Cycling':'サイクリング','Bike':'バイク','Rowing':'ローイング','Stair':'ステア','Elliptical':'エリプティカル','Jump':'ジャンプ','Skipping':'縄跳び',
+  'Kettlebell':'ケトルベル','Swing':'スイング','Swings':'スイング','Burpee':'バーピー','Burpees':'バーピー','Back':'バック','Supported':'サポート','Neutral':'ニュートラル','Vertical':'バーティカル','Horizontal':'ホリゾンタル','Underhand':'アンダーハンド','Overhand':'オーバーハンド',
+  'Single':'シングル','Single-arm':'シングルアーム','One-arm':'ワンアーム','One':'ワン','Assisted':'アシステッド','Banded':'バンド','Band':'バンド','Inverted':'インバーテッド','Floor':'フロア','Landmine':'ランドマイン','Spider':'スパイダー','Drag':'ドラッグ','Resistance':'レジスタンス',
+  'Extensions':'エクステンション','Wide-grip':'ワイドグリップ','Close-grip':'クローズグリップ','Cossack':'コサック','Pistol':'ピストル','Box':'ボックス','Sissy':'シシー','Nordic':'ノルディック','Jefferson':'ジェファーソン','Zercher':'ゼルチャー'
+};
+function exTranslate(name){
+  const s = String(name).trim();
+  const pm = s.match(/^(.+?)\s*\(([^)]+)\)\s*$/);   // trailing "(...)" variation
+  if(pm){ const a = exTranslate(pm[1]); const b = exTranslate(pm[2]); return (a && b) ? a + '（' + b + '）' : null; }
+  const words = s.split(/\s+/);
+  const out = [];
+  for(const w of words){
+    let v = EX_TOKENS[w];
+    if(v === undefined) v = EX_TOKENS[w.replace(/[’']s$/,'')];      // possessive (Farmer's)
+    if(v === undefined) return null;                                // unknown word → give up
+    out.push(v);
+  }
+  return out.join('');
+}
+// Resolve a single atom (no " · " splitting): dict → pattern → symbol prefix → exercise tokens.
 function tkeyAtom(key){
   const dict = I18N.ja;
   if(dict[key] !== undefined) return dict[key];
@@ -1065,6 +1099,8 @@ function tkeyAtom(key){
   // emoji- or symbol-prefixed label e.g. "🎽 Chest", "▶ Take the tour", "📅 5 days left"
   const mm = key.match(/^(\S+)\s+(.+)$/);
   if(mm && !/[A-Za-z]/.test(mm[1])){ const sub = tkey(mm[2]); if(sub !== null) return mm[1] + ' ' + sub; }
+  // custom exercise names: combinations of known exercise words
+  if(/^[A-Za-z][A-Za-z'’()\/ -]*$/.test(key)){ const ex = exTranslate(key); if(ex !== null) return ex; }
   return null;
 }
 // Resolve one trimmed English string → Japanese (or null when unknown).
@@ -1109,6 +1145,28 @@ function applyLang(){
     const k = el.__enPh.trim();
     el.setAttribute('placeholder', (ja && I18N.ja[k] !== undefined) ? I18N.ja[k] : el.__enPh);
   });
+}
+
+// Re-translate automatically after ANY re-render (accordion toggles, modal
+// navigation, log card updates, etc.) that swaps innerHTML without calling
+// applyLang directly. applyLang is idempotent (English is cached per node),
+// so re-running it converges with no extra changes.
+let __langObserver = null, __langScheduled = false;
+function applyLangSafe(){
+  if(__langObserver) __langObserver.disconnect();
+  try { applyLang(); } finally {
+    if(__langObserver) __langObserver.observe(document.body, { childList:true, subtree:true, characterData:true });
+  }
+}
+function scheduleApplyLang(){
+  if(__langScheduled) return;
+  __langScheduled = true;
+  (window.requestAnimationFrame || window.setTimeout)(() => { __langScheduled = false; applyLangSafe(); });
+}
+function startLangObserver(){
+  if(__langObserver || typeof MutationObserver === 'undefined') return;
+  __langObserver = new MutationObserver(scheduleApplyLang);
+  __langObserver.observe(document.body, { childList:true, subtree:true, characterData:true });
 }
 
 function setLang(l){
@@ -2870,14 +2928,14 @@ function renderHistory() {
   if (hasUnsavedDraft()) {
     const dl = currentLog;
     const exCount = (dl.exercises || []).length;
-    const summary = exCount ? `${exCount} exercise${exCount !== 1 ? 's' : ''} so far` : 'No exercises added yet';
+    const summary = exCount ? tf('{n} exercises so far', {n:exCount}) : t('No exercises added yet');
     html += `
     <div class="card" style="border-color:var(--accent);background:var(--accent-dim);cursor:pointer;margin-bottom:14px" onclick="showView('log')">
       <div style="display:flex;align-items:center;gap:12px">
         <div style="font-size:24px">📝</div>
         <div style="flex:1;min-width:0">
           <div style="font-weight:700;font-size:14px;color:var(--accent)">Unsaved workout${dl.name ? ` · ${esc(dl.name)}` : ''}</div>
-          <div style="font-size:12px;color:var(--muted)">${summary} — tap to edit &amp; save it on the Log screen</div>
+          <div style="font-size:12px;color:var(--muted)">${tf('{summary} — tap to edit & save it on the Log screen', {summary})}</div>
         </div>
         <div style="color:var(--accent);font-size:22px;line-height:1">›</div>
       </div>
@@ -5861,6 +5919,7 @@ initEnhancements();
 const __startView = (location.hash === '#log') ? 'log' : 'dashboard';
 if (location.hash) { try { history.replaceState(null, '', location.pathname); } catch (e) {} }
 showView(__startView);
+startLangObserver();   // keep re-rendered screens translated (accordions, modals, log cards…)
 if (__draft) setTimeout(() => showToast(t('Picked up your unsaved workout 💪')), 600);
 setupMonthlyNotification(false);   // re-arm push (won't prompt; just schedules if already granted)
 scheduleUnsavedReminder();         // re-arm unsaved-workout reminder if one is pending
