@@ -4180,11 +4180,12 @@ function saveWeighIn() {
 
 let addGoalType = 'lift';   // 'lift' | 'bw'
 let bwGoalMode  = 'target'; // 'target' | 'lose'
+let goalExBP    = null;     // active body-part filter chip in the goal picker
 function setAddGoalType(tp){ addGoalType = tp; openAddGoalModal(window.__goalPrefill, true); }
 function setBwGoalMode(m){ bwGoalMode = m; openAddGoalModal(window.__goalPrefill, true); }
 
 function openAddGoalModal(prefillExercise, keepType) {
-  if (!keepType) { addGoalType = 'lift'; bwGoalMode = 'target'; }   // fresh open starts on Strength
+  if (!keepType) { addGoalType = 'lift'; bwGoalMode = 'target'; goalExBP = null; }   // fresh open starts on Strength
   window.__goalPrefill = prefillExercise || '';
   const unit    = DB.unit;
   const exNames = allExerciseNames();
@@ -4229,20 +4230,19 @@ function openAddGoalModal(prefillExercise, keepType) {
     <button class="btn btn-primary btn-full" style="margin-top:4px" onclick="saveGoal()">${t('Save Goal')}</button>`;
   } else {
     const prefillDisp = prefillExercise ? (DB.lang === 'ja' ? (tkey(prefillExercise) || prefillExercise) : prefillExercise) : '';
+    const bpChips = ['Chest','Back','Legs','Shoulders','Arms','Abs'].map(bp =>
+      `<span class="ex-chip${goalExBP===bp?' active':''}" id="goalbp-${bp}" onclick="setGoalExBP('${bp}')">${BODY_PART_EMOJI[bp]||''} ${t(bp)}</span>`).join('');
     body = `
     <div class="input-group">
       <div class="label">Exercise</div>
-      <div style="position:relative">
-        <input type="text" id="goal-ex-search" autocomplete="off" placeholder="${t('Search exercises…')}"
-          value="${prefillDisp}"
-          oninput="filterGoalExDropdown(this.value)" onfocus="filterGoalExDropdown(this.value)"
-          onblur="setTimeout(()=>{const d=document.getElementById('goal-ex-dropdown');if(d)d.style.display='none'},180)">
-        <input type="hidden" id="goal-exercise" value="${prefillExercise||''}">
-        <div id="goal-ex-dropdown" class="ac-dropdown" style="display:none;max-height:260px;overflow-y:auto"></div>
-      </div>
+      <div id="goal-bp-chips" style="margin-bottom:8px">${bpChips}</div>
+      <input type="text" id="goal-ex-search" autocomplete="off" placeholder="${t('Search exercises…')}"
+        value="${prefillDisp}" oninput="renderGoalExResults(this.value)" onfocus="renderGoalExResults(this.value)">
+      <input type="hidden" id="goal-exercise" value="${prefillExercise||''}">
+      <div id="goal-ex-results" style="display:none;margin-top:6px;border:1px solid var(--border);border-radius:10px;overflow-y:auto;max-height:240px"></div>
     </div>
 
-    <div id="goal-current-pr" style="font-size:12px;color:var(--muted);margin:-4px 0 12px;min-height:18px"></div>
+    <div id="goal-current-pr" style="font-size:12px;color:var(--muted);margin:8px 0 12px;min-height:18px"></div>
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
       <div class="input-group">
@@ -4274,37 +4274,42 @@ function openAddGoalModal(prefillExercise, keepType) {
   }
 }
 
-// Searchable exercise picker for the goal modal (matches English + Japanese names).
-function filterGoalExDropdown(q) {
-  const dd = document.getElementById('goal-ex-dropdown');
-  if (!dd) return;
-  const prs = getPRs(), unit = DB.unit, ql = (q || '').trim().toLowerCase();
-  const all = allExerciseNames();
-  const matches = all.filter(e => {
+// Searchable exercise picker for the goal modal: body-part chips + text search
+// (matches English + Japanese names). Results show once a chip or query is set.
+function setGoalExBP(bp) {
+  goalExBP = (goalExBP === bp) ? null : bp;
+  ['Chest','Back','Legs','Shoulders','Arms','Abs'].forEach(b => {
+    const el = document.getElementById('goalbp-' + b);
+    if (el) el.classList.toggle('active', b === goalExBP);
+  });
+  renderGoalExResults(document.getElementById('goal-ex-search')?.value || '');
+}
+function renderGoalExResults(q) {
+  const box = document.getElementById('goal-ex-results');
+  if (!box) return;
+  const ql = (q || '').trim().toLowerCase(), bp = goalExBP, prs = getPRs(), unit = DB.unit;
+  if (!ql && !bp) { box.style.display = 'none'; box.innerHTML = ''; return; }   // nothing chosen yet
+  const matches = allExerciseNames().filter(e => {
+    if (bp && getBodyPartForExercise(e) !== bp) return false;
     if (!ql) return true;
     if (e.toLowerCase().includes(ql)) return true;
     const ja = tkey(e);                          // also match the Japanese name
     return ja && ja.toLowerCase().includes(ql);
-  }).slice(0, 60);
-  if (!matches.length) {
-    dd.innerHTML = `<div class="ac-item" style="color:var(--muted)">${t('No matches')}</div>`;
-    dd.style.display = 'block';
-    return;
-  }
-  dd.innerHTML = matches.map(e => {
+  }).slice(0, 80);
+  box.innerHTML = matches.length ? matches.map(e => {
     const disp = DB.lang === 'ja' ? (tkey(e) || e) : e;
     const pr   = prs[e];
     const sub  = pr?.bestSet ? ` <span style="color:var(--muted);font-size:12px">· ${pr.displayWeight}${unit}×${pr.bestSet.reps}</span>` : '';
     return `<div class="ac-item" onclick="pickGoalExercise('${esc(e)}')">${disp}${sub}</div>`;
-  }).join('');
-  dd.style.display = 'block';
+  }).join('') : `<div class="ac-item" style="color:var(--muted)">${t('No matches')}</div>`;
+  box.style.display = 'block';
 }
 function pickGoalExercise(name) {
   document.getElementById('goal-exercise').value = name;
   const inp = document.getElementById('goal-ex-search');
   if (inp) inp.value = DB.lang === 'ja' ? (tkey(name) || name) : name;
-  const dd = document.getElementById('goal-ex-dropdown');
-  if (dd) dd.style.display = 'none';
+  const box = document.getElementById('goal-ex-results');
+  if (box) { box.style.display = 'none'; box.innerHTML = ''; }
   updateGoalCurrentPR(name);
 }
 
