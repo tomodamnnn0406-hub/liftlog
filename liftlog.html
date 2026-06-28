@@ -725,6 +725,9 @@ const DB = {
   saveProfile(p)   { localStorage.setItem('ll_profile', JSON.stringify(p)) },
   get goals()          { return JSON.parse(localStorage.getItem('ll_goals') || '[]') },
   saveGoals(g)         { localStorage.setItem('ll_goals', JSON.stringify(g)) },
+  // bodyweight log = [{date:'YYYY-MM-DD', kg:Number}, ...] sorted by date
+  get bwLog()          { try { return JSON.parse(localStorage.getItem('ll_bw_log') || '[]'); } catch(e){ return []; } },
+  saveBwLog(l)         { localStorage.setItem('ll_bw_log', JSON.stringify(l)) },
   get exerciseMuscles(){ return JSON.parse(localStorage.getItem('ll_exercise_muscles') || '{}') },
   saveExerciseMuscles(m){ localStorage.setItem('ll_exercise_muscles', JSON.stringify(m)) },
   // templates = { 'Push': ['Bench Press','Lateral Raise', ...], ... }
@@ -1003,6 +1006,13 @@ const I18N = {
     "Every exercise shows the best weight you've lifted":'各種目で挙げた最高重量を表示します','and a progress chart over time.':'そして時系列の進捗グラフも表示します。',
     'In-app banner only':'アプリ内バナーのみ',"In-app reminder only — notifications aren't supported on this device.":'アプリ内リマインダーのみ — この端末は通知に対応していません。',
     'Please rotate to portrait':'画面を縦にしてください','Lift Log is designed to be used upright. Turn your phone vertical to continue.':'Lift Logは縦向きでの使用を想定しています。スマホを縦にして続けてください。',
+    // ── body-weight goals / weigh-in ──
+    'Strength':'筋力','Body weight':'体重','Body weight goal':'体重の目標','Target weight':'目標体重','Amount to lose':'減らす量',
+    'Weigh in':'体重を記録','Weigh-in saved ⚖️':'体重を記録しました ⚖️','Weigh in to track progress':'体重を記録して進捗を確認',
+    'Log at least 2 weigh-ins to see a chart':'グラフを見るには2回以上記録してください',
+    'Set your current weight first, then come back.':'先に現在の体重を入力してください。','Set your current weight first':'先に現在の体重を入力してください',
+    'Enter an amount':'数値を入力してください','Enter a smaller amount':'もっと小さい数値を入力してください',
+    '{n}{u} to lose':'あと{n}{u} 減らす','{n}{u} to gain':'あと{n}{u} 増やす',
     'Reuse this exercise list next {name} day in one tap':'次回の{name}の日にこの種目リストをワンタップで再利用',
     '{name} template':'{name}テンプレート','Load {n}':'読み込む {n}','Repeat last {name}?':'前回の{name}を繰り返す？','{verb} "{name}" template':'「{name}」テンプレートを{verb}',
     'Loaded your {name} template 📋':'{name}テンプレートを読み込みました 📋','Saved as your {name} template 📋':'{name}テンプレートを保存しました 📋',
@@ -1506,7 +1516,49 @@ function goalLineForMode(goal, mode) {
   return Math.round(dispW(kg, 'kg') * 10) / 10;
 }
 
+// ── Body-weight log helpers ────────────────────────────
+// Append/replace today-or-given-date entry (kg). Keeps the log sorted by date.
+function logBodyWeight(kg, date) {
+  if (!(kg > 0)) return;
+  date = date || todayStr();
+  const log = DB.bwLog.filter(e => e.date !== date);
+  log.push({ date, kg: Math.round(kg * 10) / 10 });
+  log.sort((a, b) => a.date.localeCompare(b.date));
+  DB.saveBwLog(log);
+}
+// Record a weigh-in AND keep the My Stats current body weight in sync.
+function recordBodyWeight(kg, date) {
+  logBodyWeight(kg, date);
+  const p = DB.profile;
+  p.bodyweight = Math.round(dispW(kg, 'kg') * 10) / 10;   // store in display unit (matches My Stats)
+  DB.saveProfile(p);
+}
+// Latest known body weight in kg (newest weigh-in, else My Stats value), or null.
+function currentBodyWeightKg() {
+  const log = DB.bwLog;
+  if (log.length) return log[log.length - 1].kg;
+  const bw = DB.profile.bodyweight;
+  return bw ? toKg(+bw, DB.unit) : null;
+}
+
+function isBodyWeightGoal(goal) { return goal && goal.type === 'bodyweight'; }
+
 function getGoalProgress(goal) {
+  // ── Body-weight goal: progress from a start weight toward a target weight ──
+  if (isBodyWeightGoal(goal)) {
+    const start   = goal.startWeightKg || currentBodyWeightKg() || goal.targetWeightKg;
+    const target  = goal.targetWeightKg;
+    const current = currentBodyWeightKg() != null ? currentBodyWeightKg() : start;
+    const losing  = target <= start;
+    const total   = Math.abs(start - target) || 1;
+    const moved   = losing ? (start - current) : (current - start);
+    const pct     = Math.max(0, Math.min(100, Math.round((moved / total) * 100)));
+    const done    = losing ? current <= target : current >= target;
+    const remainingKg = Math.max(0, losing ? current - target : target - current);
+    return { type:'bodyweight', currentKg:current, startKg:start, targetKg:target,
+      losing, done, pct, remainingKg, target1RM:target, remaining1RM_kg:remainingKg };
+  }
+  // ── Strength goal (default) ──
   const prs   = getPRs();
   const pr    = prs[goal.exercise];
   // Progress is measured by the heaviest weight actually lifted vs the target weight.
@@ -1563,6 +1615,7 @@ function saveProfile() {
   const height     = +document.getElementById('p-height').value  || null;
   const bodyweight = +document.getElementById('p-bw').value      || null;
   DB.saveProfile({ height, bodyweight });
+  if (bodyweight) logBodyWeight(toKg(bodyweight, DB.unit), todayStr());   // feed the weigh-in history
   closeModal();
   showToast(t('Stats saved!'));
   renderDashboard();
@@ -1815,6 +1868,7 @@ function renderDashboard() {
     </div>`;
   } else {
     for (const goal of goals) {
+      if (isBodyWeightGoal(goal)) continue;   // body-weight goals live in the Goals tab (no exercise chart)
       const pr   = prs[goal.exercise];
       const gp   = getGoalProgress(goal);
       const barPct = gp.target1RM > 0
@@ -3912,6 +3966,7 @@ function renderGoals() {
   }
 
   for(const goal of goals) {
+    if (isBodyWeightGoal(goal)) { html += bodyWeightGoalCardHTML(goal); continue; }
     const gp             = getGoalProgress(goal);
     const pr             = prs[goal.exercise];
     const hasPR          = !!pr?.bestSet;
@@ -3998,10 +4053,139 @@ function renderGoals() {
   </div>`;
 
   document.getElementById('main').innerHTML = html;
+  initBwGoalCharts();
   checkGoalCelebrations();
 }
 
-function openAddGoalModal(prefillExercise) {
+// ── Body-weight goal card ──────────────────────────────
+function bodyWeightGoalCardHTML(goal) {
+  const unit  = DB.unit;
+  const gp    = getGoalProgress(goal);
+  const done  = gp.done;
+  const cur   = currentBodyWeightKg();
+  const curDisp   = cur != null ? Math.round(dispW(cur, 'kg') * 10) / 10 : '—';
+  const tgtDisp   = Math.round(dispW(gp.targetKg, 'kg') * 10) / 10;
+  const remDisp   = Math.round(dispW(gp.remainingKg, 'kg') * 10) / 10;
+  const remLabel  = gp.losing ? tf('{n}{u} to lose', { n:remDisp, u:unit }) : tf('{n}{u} to gain', { n:remDisp, u:unit });
+  const hasChart  = DB.bwLog.length >= 2;
+  return `
+  <div class="goal-card${done?' goal-reached':''}">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:16px;font-weight:700;margin-bottom:6px">⚖️ ${t('Body weight goal')}</div>
+        <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 10px;font-size:13px">
+          <span style="color:var(--muted)">${t('Current')}</span>
+          <span style="font-weight:600;color:${cur!=null?'var(--text)':'var(--muted)'}">${curDisp}${unit}</span>
+          <span style="color:var(--muted)">${t('Target')}</span>
+          <span style="font-weight:600;color:var(--accent)">${tgtDisp}${unit}</span>
+        </div>
+      </div>
+      ${done?'<span class="goal-done-badge" style="margin-left:8px;flex-shrink:0">✓ REACHED</span>':''}
+      <button class="del-btn" onclick="openEditGoalModal('${goal.id}')" style="color:var(--muted);margin-left:8px;flex-shrink:0">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+        </svg>
+      </button>
+    </div>
+
+    <div class="goal-bar-track">
+      <div class="goal-bar-fill ${done?'done':''}" style="width:${gp.pct}%"></div>
+    </div>
+
+    ${done ? `
+    <div class="goal-celebrate"><span class="trophy">🏆</span><span>${t('Goal reached!')}</span></div>
+    <button class="goal-cta" onclick="raiseGoalTarget('${goal.id}')">${t('Set a New Target →')}</button>
+    ` : `
+    <div class="goal-meta">
+      <span>${cur!=null ? remLabel : t('Weigh in to track progress')}</span>
+      ${(() => { const dl = deadlineInfo(goal.targetDate); return dl
+        ? `<span style="display:inline-flex;align-items:center;gap:4px;color:${dl.overdue?'var(--red)':'var(--muted)'}">📅 ${dl.date} · <strong style="color:${dl.overdue?'var(--red)':'var(--accent)'}">${dl.label}</strong></span>`
+        : ''; })()}
+    </div>`}
+
+    ${hasChart
+      ? `<div style="position:relative;height:150px;margin-top:14px"><canvas id="bwchart-${goal.id}"></canvas></div>`
+      : `<div style="font-size:11px;color:var(--muted);margin-top:10px">${t('Log at least 2 weigh-ins to see a chart')}</div>`}
+    <button class="btn btn-secondary btn-sm btn-full" style="margin-top:10px" onclick="openWeighInModal()">⚖️ ${t('Weigh in')}</button>
+  </div>`;
+}
+
+let bwGoalCharts = [];
+function initBwGoalCharts() {
+  bwGoalCharts.forEach(c => { try { c.destroy(); } catch(e){} });
+  bwGoalCharts = [];
+  if (typeof Chart === 'undefined') return;
+  const unit = DB.unit, log = DB.bwLog;
+  if (log.length < 2) return;
+  const labels = log.map(e => new Date(e.date + 'T12:00:00').toLocaleDateString(L(), { month:'short', day:'numeric' }));
+  const data   = log.map(e => Math.round(dispW(e.kg, 'kg') * 10) / 10);
+  for (const goal of DB.goals) {
+    if (!isBodyWeightGoal(goal)) continue;
+    const cv = document.getElementById('bwchart-' + goal.id);
+    if (!cv) continue;
+    const target = Math.round(dispW(goal.targetWeightKg, 'kg') * 10) / 10;
+    bwGoalCharts.push(new Chart(cv, {
+      type: 'line',
+      data: { labels, datasets: [
+        { label: t('Body weight'), data, borderColor:'#f97316', backgroundColor:'rgba(249,115,22,.12)',
+          borderWidth:2.5, pointRadius:2, tension:.3, fill:true },
+        { label: t('Target'), data: labels.map(() => target), borderColor:'#22c55e',
+          borderWidth:1.5, borderDash:[5,4], pointRadius:0 }
+      ]},
+      options: {
+        responsive:true, maintainAspectRatio:false,
+        plugins: {
+          legend:{ labels:{ color:'#888', font:{ size:11 }, boxWidth:12, padding:10 } },
+          tooltip:{ backgroundColor:'#1a1a1a', borderColor:'#2a2a2a', borderWidth:1,
+            titleColor:'#f0f0f0', bodyColor:'#aaa', callbacks:{ label: c => ` ${c.dataset.label}: ${c.parsed.y}${unit}` } }
+        },
+        scales: {
+          x:{ offset:true, grid:{ color:'#1f1f1f' }, ticks:{ color:'#555', font:{ size:10 }, maxTicksLimit:6 } },
+          y:{ grid:{ color:'#1f1f1f' }, ticks:{ color:'#555', font:{ size:10 }, callback:v => v+unit } }
+        }
+      }
+    }));
+  }
+}
+
+// ── Weigh-in ───────────────────────────────────────────
+function openWeighInModal() {
+  const unit = DB.unit;
+  const cur  = currentBodyWeightKg();
+  const curDisp = cur != null ? Math.round(dispW(cur, 'kg') * 10) / 10 : '';
+  document.getElementById('modal-content').innerHTML = `
+  <div style="font-size:18px;font-weight:700;margin-bottom:16px">⚖️ ${t('Weigh in')}</div>
+  <div class="input-group">
+    <div class="label">${t('Body Weight')} (${unit})</div>
+    <input type="number" inputmode="decimal" id="weigh-val" value="${curDisp}" placeholder="${unit==='kg'?'e.g. 60':'e.g. 132'}" min="20" max="400" step="0.1">
+  </div>
+  <div class="input-group">
+    <div class="label">${t('Date')}</div>
+    <input type="date" id="weigh-date" value="${todayStr()}" max="${todayStr()}">
+  </div>
+  <button class="btn btn-primary btn-full" style="margin-top:8px" onclick="saveWeighIn()">${t('Save')}</button>`;
+  openModal();
+  setTimeout(() => document.getElementById('weigh-val')?.focus(), 100);
+}
+function saveWeighIn() {
+  const v = +document.getElementById('weigh-val').value;
+  const date = document.getElementById('weigh-date').value || todayStr();
+  if (!v || v <= 0) { showToast(t('Enter a valid weight'), false); return; }
+  recordBodyWeight(toKg(v, DB.unit), date);
+  closeModal();
+  showToast(t('Weigh-in saved ⚖️'));
+  if (currentView === 'goals') renderGoals(); else renderDashboard();
+}
+
+let addGoalType = 'lift';   // 'lift' | 'bw'
+let bwGoalMode  = 'target'; // 'target' | 'lose'
+function setAddGoalType(tp){ addGoalType = tp; openAddGoalModal(window.__goalPrefill, true); }
+function setBwGoalMode(m){ bwGoalMode = m; openAddGoalModal(window.__goalPrefill, true); }
+
+function openAddGoalModal(prefillExercise, keepType) {
+  if (!keepType) { addGoalType = 'lift'; bwGoalMode = 'target'; }   // fresh open starts on Strength
+  window.__goalPrefill = prefillExercise || '';
   const unit    = DB.unit;
   const exNames = allExerciseNames();
   const prs     = getPRs();
@@ -4012,45 +4196,78 @@ function openAddGoalModal(prefillExercise) {
     return `<option value="${n}" ${prefillExercise===n?'selected':''}>${label}</option>`;
   }).join('');
 
+  // Goal-type toggle: strength (lift) vs body weight
+  const typeToggle = `
+  <div style="display:flex;gap:8px;margin-bottom:16px">
+    <button class="btn btn-full ${addGoalType==='lift'?'btn-primary':'btn-secondary'}" onclick="setAddGoalType('lift')">🏋️ ${t('Strength')}</button>
+    <button class="btn btn-full ${addGoalType==='bw'?'btn-primary':'btn-secondary'}" onclick="setAddGoalType('bw')">⚖️ ${t('Body weight')}</button>
+  </div>`;
+
+  let body;
+  if (addGoalType === 'bw') {
+    const cur     = currentBodyWeightKg();
+    const curDisp = cur != null ? Math.round(dispW(cur, 'kg') * 10) / 10 : null;
+    const modeToggle = `
+    <div style="display:flex;gap:8px;margin-bottom:14px">
+      <button class="btn btn-full btn-sm ${bwGoalMode==='target'?'btn-primary':'btn-secondary'}" onclick="setBwGoalMode('target')">${t('Target weight')}</button>
+      <button class="btn btn-full btn-sm ${bwGoalMode==='lose'?'btn-primary':'btn-secondary'}" onclick="setBwGoalMode('lose')">${t('Amount to lose')}</button>
+    </div>`;
+    const curLine = curDisp != null
+      ? `<div style="font-size:12px;color:var(--muted);margin:-2px 0 12px">${t('Current')}: <strong style="color:var(--text)">${curDisp}${unit}</strong></div>`
+      : `<div style="font-size:12px;color:var(--accent);margin:-2px 0 12px">${t('Set your current weight first, then come back.')}</div>`;
+    const field = bwGoalMode === 'lose'
+      ? `<div class="input-group"><div class="label">${t('Amount to lose')} (${unit})</div>
+           <input type="number" inputmode="decimal" id="bw-amount" placeholder="${unit==='kg'?'e.g. 5':'e.g. 11'}" min="0.5" step="0.5"></div>`
+      : `<div class="input-group"><div class="label">${t('Target weight')} (${unit})</div>
+           <input type="number" inputmode="decimal" id="bw-target" placeholder="${unit==='kg'?'e.g. 58':'e.g. 128'}" min="20" step="0.5"></div>`;
+    body = `${modeToggle}${curLine}${field}
+    <div class="input-group">
+      <div class="label">${t('Target Date (optional)')}</div>
+      <input type="date" id="goal-target-date" min="${todayStr()}">
+    </div>
+    ${curDisp == null ? `<button class="btn btn-secondary btn-full" style="margin-bottom:8px" onclick="openWeighInModal()">⚖️ ${t('Weigh in')}</button>` : ''}
+    <button class="btn btn-primary btn-full" style="margin-top:4px" onclick="saveGoal()">${t('Save Goal')}</button>`;
+  } else {
+    body = `
+    <div class="input-group">
+      <div class="label">Exercise</div>
+      <div class="select-wrap">
+        <select id="goal-exercise" onchange="updateGoalCurrentPR(this.value)">
+          <option value="">Select exercise…</option>
+          ${optionsHTML}
+        </select>
+      </div>
+    </div>
+
+    <div id="goal-current-pr" style="font-size:12px;color:var(--muted);margin:-4px 0 12px;min-height:18px"></div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="input-group">
+        <div class="label">Target Weight (${unit})</div>
+        <input type="number" inputmode="decimal" id="goal-target-weight" placeholder="${unit==='kg'?'e.g. 80':'e.g. 175'}" min="1" step="2.5">
+      </div>
+      <div class="input-group">
+        <div class="label">Target Reps</div>
+        <input type="number" inputmode="numeric" id="goal-target-reps" placeholder="e.g. 5" min="1" max="30" step="1" value="5">
+      </div>
+    </div>
+
+    <div class="input-group">
+      <div class="label">Target Date (optional)</div>
+      <input type="date" id="goal-target-date" min="${todayStr()}">
+    </div>
+
+    <button class="btn btn-primary btn-full" style="margin-top:8px" onclick="saveGoal()">Save Goal</button>`;
+  }
+
   document.getElementById('modal-content').innerHTML = `
   <div style="font-size:18px;font-weight:700;margin-bottom:16px">Set a Goal</div>
-
-  <div class="input-group">
-    <div class="label">Exercise</div>
-    <div class="select-wrap">
-      <select id="goal-exercise" onchange="updateGoalCurrentPR(this.value)">
-        <option value="">Select exercise…</option>
-        ${optionsHTML}
-      </select>
-    </div>
-  </div>
-
-  <div id="goal-current-pr" style="font-size:12px;color:var(--muted);margin:-4px 0 12px;min-height:18px"></div>
-
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-    <div class="input-group">
-      <div class="label">Target Weight (${unit})</div>
-      <input type="number" inputmode="decimal" id="goal-target-weight" placeholder="${unit==='kg'?'e.g. 80':'e.g. 175'}" min="1" step="2.5">
-    </div>
-    <div class="input-group">
-      <div class="label">Target Reps</div>
-      <input type="number" inputmode="numeric" id="goal-target-reps" placeholder="e.g. 5" min="1" max="30" step="1" value="5">
-    </div>
-  </div>
-
-  <div class="input-group">
-    <div class="label">Target Date (optional)</div>
-    <input type="date" id="goal-target-date" min="${todayStr()}">
-  </div>
-
-  <button class="btn btn-primary btn-full" style="margin-top:8px" onclick="saveGoal()">Save Goal</button>`;
+  ${typeToggle}
+  ${body}`;
 
   openModal();
-  if(prefillExercise) {
-    setTimeout(()=>{
-      updateGoalCurrentPR(prefillExercise);
-      document.getElementById('goal-target')?.focus();
-    }, 100);
+  if(prefillExercise && addGoalType === 'lift') {
+    setTimeout(()=>{ updateGoalCurrentPR(prefillExercise); }, 100);
   }
 }
 
@@ -4068,6 +4285,34 @@ function updateGoalCurrentPR(exerciseName) {
 }
 
 function saveGoal() {
+  // ── Body-weight goal ──
+  if (addGoalType === 'bw') {
+    const cur = currentBodyWeightKg();
+    if (cur == null) { showToast(t('Set your current weight first'), false); return; }
+    let targetKg;
+    if (bwGoalMode === 'lose') {
+      const amt = +document.getElementById('bw-amount').value;
+      if (!amt || amt <= 0) { showToast(t('Enter an amount'), false); return; }
+      targetKg = cur - toKg(amt, DB.unit);
+      if (targetKg <= 0) { showToast(t('Enter a smaller amount'), false); return; }
+    } else {
+      const tw = +document.getElementById('bw-target').value;
+      if (!tw || tw <= 0) { showToast(t('Enter a target weight'), false); return; }
+      targetKg = toKg(tw, DB.unit);
+    }
+    const targetDate = document.getElementById('goal-target-date').value || '';
+    const goals = DB.goals;
+    const existing = goals.findIndex(g => g.type === 'bodyweight');
+    const obj = { id: existing >= 0 ? goals[existing].id : uid(), type:'bodyweight',
+      targetWeightKg: Math.round(targetKg * 10) / 10, startWeightKg: cur, targetDate };
+    if (existing >= 0) goals[existing] = obj; else goals.push(obj);
+    DB.saveGoals(goals);
+    closeModal();
+    showToast(t('Goal saved! 🎯'));
+    showView('goals');
+    return;
+  }
+  // ── Strength goal ──
   const exercise     = document.getElementById('goal-exercise').value;
   const targetDisp   = +document.getElementById('goal-target-weight').value;
   const targetReps   = +document.getElementById('goal-target-reps').value || 5;
@@ -4094,6 +4339,28 @@ function saveGoal() {
 function openEditGoalModal(id) {
   const goal = DB.goals.find(g=>g.id===id); if(!goal) return;
   const unit       = DB.unit;
+
+  // ── Body-weight goal editor ──
+  if (isBodyWeightGoal(goal)) {
+    const tgt = Math.round(dispW(goal.targetWeightKg, 'kg') * 10) / 10;
+    document.getElementById('modal-content').innerHTML = `
+    <div style="font-size:18px;font-weight:700;margin-bottom:16px">Edit Goal</div>
+    <div style="font-size:14px;font-weight:600;margin-bottom:12px;color:var(--accent)">⚖️ ${t('Body weight goal')}</div>
+    <div class="input-group">
+      <div class="label">${t('Target weight')} (${unit})</div>
+      <input type="number" inputmode="decimal" id="goal-edit-bw" value="${tgt}" min="20" step="0.5">
+    </div>
+    <div class="input-group">
+      <div class="label">${t('Target Date (optional)')}</div>
+      <input type="date" id="goal-edit-date" value="${goal.targetDate||''}" min="${todayStr()}">
+    </div>
+    <button class="btn btn-primary btn-full" style="margin-top:8px" onclick="updateGoal('${id}')">${t('Update Goal')}</button>
+    <button class="btn btn-danger btn-full" style="margin-top:8px" onclick="deleteGoal('${id}')">${t('Delete Goal')}</button>`;
+    openModal();
+    setTimeout(()=>document.getElementById('goal-edit-bw')?.focus(), 100);
+    return;
+  }
+
   const dispWeight = goal.targetWeightKg
     ? Math.round(dispW(goal.targetWeightKg, 'kg') * 10) / 10
     : '';
@@ -4126,12 +4393,27 @@ function openEditGoalModal(id) {
 }
 
 function updateGoal(id) {
-  const targetDisp = +document.getElementById('goal-edit-weight').value;
-  const targetReps = +document.getElementById('goal-edit-reps').value || 5;
-  if(!targetDisp || targetDisp <= 0) { showToast(t('Enter a valid weight'), false); return }
   const goals = DB.goals;
   const i = goals.findIndex(g=>g.id===id);
   if(i<0) return;
+
+  // ── Body-weight goal ──
+  if (isBodyWeightGoal(goals[i])) {
+    const tw = +document.getElementById('goal-edit-bw').value;
+    if(!tw || tw <= 0) { showToast(t('Enter a valid weight'), false); return; }
+    if (getGoalProgress(goals[i]).done) archiveGoalIfNew(goals[i]);
+    goals[i].targetWeightKg = Math.round(toKg(tw, DB.unit) * 10) / 10;
+    goals[i].targetDate     = document.getElementById('goal-edit-date').value || '';
+    DB.saveGoals(goals);
+    closeModal();
+    showToast(t('Goal updated!'));
+    renderGoals();
+    return;
+  }
+
+  const targetDisp = +document.getElementById('goal-edit-weight').value;
+  const targetReps = +document.getElementById('goal-edit-reps').value || 5;
+  if(!targetDisp || targetDisp <= 0) { showToast(t('Enter a valid weight'), false); return }
   // If the current target was already reached, preserve it in the archive
   // before we overwrite it with the new (higher) target.
   if (getGoalProgress(goals[i]).done) archiveGoalIfNew(goals[i]);
@@ -4199,7 +4481,7 @@ function showToast(msg, ok=true) {
 // ═══════════════════════════════════════════════════════
 // DATA EXPORT / IMPORT
 // ═══════════════════════════════════════════════════════
-const DATA_KEYS = ['ll_workouts','ll_exercises','ll_unit','ll_lang','ll_profile','ll_goals','ll_goals_achieved','ll_migrated_v2','ll_migrated_v3','ll_migrated_v4','ll_exercise_muscles','ll_templates'];
+const DATA_KEYS = ['ll_workouts','ll_exercises','ll_unit','ll_lang','ll_profile','ll_goals','ll_goals_achieved','ll_bw_log','ll_migrated_v2','ll_migrated_v3','ll_migrated_v4','ll_exercise_muscles','ll_templates'];
 
 function notifSettingHTML() {
   if (!('Notification' in window)) {
@@ -5319,7 +5601,8 @@ function dashCardGoalRing() {
   let sum = 0, n = 0;
   for (const g of goals) {
     const gp = getGoalProgress(g);
-    if (gp.target1RM > 0) { sum += Math.min(100, (gp.currentKg / gp.target1RM) * 100); n++; }
+    if (gp.type === 'bodyweight') { sum += gp.pct; n++; }
+    else if (gp.target1RM > 0) { sum += Math.min(100, (gp.currentKg / gp.target1RM) * 100); n++; }
   }
   if (!n) return '';
   const pct = Math.round(sum / n);
@@ -5473,6 +5756,14 @@ function saveAchievedGoals(a) { localStorage.setItem('ll_goals_achieved', JSON.s
 
 // Earliest workout date where this exercise hit the goal's target weight.
 function goalAchievedDate(goal) {
+  if (isBodyWeightGoal(goal)) {
+    const start = goal.startWeightKg || currentBodyWeightKg() || goal.targetWeightKg;
+    const losing = goal.targetWeightKg <= start;
+    for (const e of DB.bwLog) {
+      if (losing ? e.kg <= goal.targetWeightKg : e.kg >= goal.targetWeightKg) return e.date;
+    }
+    return todayStr();
+  }
   const targetKg = goal.targetWeightKg || goalTarget1RM_kg(goal);
   if (!(targetKg > 0)) return todayStr();
   const sorted = [...DB.workouts].sort((a, b) => a.date.localeCompare(b.date));
@@ -5489,8 +5780,15 @@ function goalAchievedDate(goal) {
 // Record a reached goal once (re-records if the target was later raised & hit again).
 function archiveGoalIfNew(goal) {
   const tgtKg = goal.targetWeightKg || goalTarget1RM_kg(goal);
-  const key   = goal.id + ':' + tgtKg + 'x' + (goal.targetReps || '');
   const arr   = achievedGoals();
+  if (isBodyWeightGoal(goal)) {
+    const key = goal.id + ':bw' + tgtKg;
+    if (arr.some(a => a.key === key)) return;
+    arr.push({ key, type: 'bodyweight', targetWeightKg: tgtKg, date: goalAchievedDate(goal) });
+    saveAchievedGoals(arr);
+    return;
+  }
+  const key = goal.id + ':' + tgtKg + 'x' + (goal.targetReps || '');
   if (arr.some(a => a.key === key)) return;
   arr.push({ key, exercise: goal.exercise, targetWeightKg: tgtKg,
     targetReps: goal.targetReps || 1, date: goalAchievedDate(goal) });
@@ -5511,11 +5809,12 @@ function achievedSectionHTML(list) {
   </div>
   ${items.length ? items.map(a => {
     const w = Math.round(dispW(a.targetWeightKg || 0, 'kg') * 10) / 10;
+    const isBw = a.type === 'bodyweight';
     return `
     <div class="card-sm" style="display:flex;align-items:center;justify-content:space-between;border-color:var(--green)">
       <div style="min-width:0">
-        <div style="font-size:14px;font-weight:700">${a.exercise}</div>
-        <div style="font-size:11px;color:var(--muted)">${w}${unit} × ${a.targetReps || 1} reps</div>
+        <div style="font-size:14px;font-weight:700">${isBw ? '⚖️ ' + t('Body weight goal') : a.exercise}</div>
+        <div style="font-size:11px;color:var(--muted)">${isBw ? '→ ' + w + unit : w + unit + ' × ' + (a.targetReps || 1) + ' reps'}</div>
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;margin-left:10px">
         <div style="text-align:right">
