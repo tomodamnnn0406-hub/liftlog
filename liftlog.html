@@ -1016,7 +1016,7 @@ const I18N = {
     'In-app banner only':'アプリ内バナーのみ',"In-app reminder only — notifications aren't supported on this device.":'アプリ内リマインダーのみ — この端末は通知に対応していません。',
     'Please rotate to portrait':'画面を縦にしてください','Lift Log is designed to be used upright. Turn your phone vertical to continue.':'Lift Logは縦向きでの使用を想定しています。スマホを縦にして続けてください。',
     // ── body-weight goals / weigh-in ──
-    'Strength':'筋力','Body weight':'体重','Body weight goal':'体重の目標','Target weight':'目標体重','Amount to lose':'減らす量','Search exercises…':'種目を検索…','Collapse':'折りたたむ','Tap to choose session type':'タップしてセッションの種類を選択',
+    'Strength':'筋力','Body weight':'体重','Body weight goal':'体重の目標','Target weight':'目標体重','Amount to lose':'減らす量','Amount to gain':'増やす量','Search exercises…':'種目を検索…','Collapse':'折りたたむ','Tap to choose session type':'タップしてセッションの種類を選択',
     'Weigh in':'体重を記録','Weigh-in saved ⚖️':'体重を記録しました ⚖️','Weigh in to track progress':'体重を記録して進捗を確認',
     'Log at least 2 weigh-ins to see a chart':'グラフを見るには2回以上記録してください',
     'Set your current weight first, then come back.':'先に現在の体重を入力してください。','Set your current weight first':'先に現在の体重を入力してください',
@@ -4301,7 +4301,7 @@ function saveWeighIn() {
 }
 
 let addGoalType = 'lift';   // 'lift' | 'bw'
-let bwGoalMode  = 'target'; // 'target' | 'lose'
+let bwGoalMode  = 'target'; // 'target' | 'lose' | 'gain'
 let goalExBP    = null;     // active body-part filter chip in the goal picker
 function setAddGoalType(tp){ addGoalType = tp; openAddGoalModal(window.__goalPrefill, true); }
 function setBwGoalMode(m){ bwGoalMode = m; openAddGoalModal(window.__goalPrefill, true); }
@@ -4322,8 +4322,8 @@ function openAddGoalModal(prefillExercise, keepType) {
   // Goal-type toggle: strength (lift) vs body weight
   const typeToggle = `
   <div style="display:flex;gap:8px;margin-bottom:16px">
-    <button class="btn btn-full ${addGoalType==='lift'?'btn-primary':'btn-secondary'}" onclick="setAddGoalType('lift')">🏋️ ${t('Strength')}</button>
-    <button class="btn btn-full ${addGoalType==='bw'?'btn-primary':'btn-secondary'}" onclick="setAddGoalType('bw')">⚖️ ${t('Body weight')}</button>
+    <button class="btn btn-full ${addGoalType==='lift'?'btn-accent-outline':'btn-secondary'}" onclick="setAddGoalType('lift')">🏋️ ${t('Strength')}</button>
+    <button class="btn btn-full ${addGoalType==='bw'?'btn-accent-outline':'btn-secondary'}" onclick="setAddGoalType('bw')">⚖️ ${t('Body weight')}</button>
   </div>`;
 
   let body;
@@ -4331,15 +4331,16 @@ function openAddGoalModal(prefillExercise, keepType) {
     const cur     = currentBodyWeightKg();
     const curDisp = cur != null ? Math.round(dispW(cur, 'kg') * 10) / 10 : null;
     const modeToggle = `
-    <div style="display:flex;gap:8px;margin-bottom:14px">
-      <button class="btn btn-full btn-sm ${bwGoalMode==='target'?'btn-primary':'btn-secondary'}" onclick="setBwGoalMode('target')">${t('Target weight')}</button>
-      <button class="btn btn-full btn-sm ${bwGoalMode==='lose'?'btn-primary':'btn-secondary'}" onclick="setBwGoalMode('lose')">${t('Amount to lose')}</button>
+    <div style="display:flex;gap:6px;margin-bottom:14px">
+      <button class="btn btn-full btn-sm ${bwGoalMode==='target'?'btn-accent-outline':'btn-secondary'}" style="padding-left:4px;padding-right:4px" onclick="setBwGoalMode('target')">${t('Target weight')}</button>
+      <button class="btn btn-full btn-sm ${bwGoalMode==='lose'?'btn-accent-outline':'btn-secondary'}" style="padding-left:4px;padding-right:4px" onclick="setBwGoalMode('lose')">${t('Amount to lose')}</button>
+      <button class="btn btn-full btn-sm ${bwGoalMode==='gain'?'btn-accent-outline':'btn-secondary'}" style="padding-left:4px;padding-right:4px" onclick="setBwGoalMode('gain')">${t('Amount to gain')}</button>
     </div>`;
     const curLine = curDisp != null
       ? `<div style="font-size:12px;color:var(--muted);margin:-2px 0 12px">${t('Current')}: <strong style="color:var(--text)">${curDisp}${unit}</strong></div>`
       : `<div style="font-size:12px;color:var(--accent);margin:-2px 0 12px">${t('Set your current weight first, then come back.')}</div>`;
-    const field = bwGoalMode === 'lose'
-      ? `<div class="input-group"><div class="label">${t('Amount to lose')} (${unit})</div>
+    const field = (bwGoalMode === 'lose' || bwGoalMode === 'gain')
+      ? `<div class="input-group"><div class="label">${bwGoalMode==='lose'?t('Amount to lose'):t('Amount to gain')} (${unit})</div>
            <input type="number" inputmode="decimal" id="bw-amount" placeholder="${unit==='kg'?'e.g. 5':'e.g. 11'}" min="0.5" step="0.5"></div>`
       : `<div class="input-group"><div class="label">${t('Target weight')} (${unit})</div>
            <input type="number" inputmode="decimal" id="bw-target" placeholder="${unit==='kg'?'e.g. 58':'e.g. 128'}" min="20" step="0.5"></div>`;
@@ -4454,10 +4455,12 @@ function saveGoal() {
     const cur = currentBodyWeightKg();
     if (cur == null) { showToast(t('Set your current weight first'), false); return; }
     let targetKg;
-    if (bwGoalMode === 'lose') {
+    if (bwGoalMode === 'lose' || bwGoalMode === 'gain') {
       const amt = +document.getElementById('bw-amount').value;
       if (!amt || amt <= 0) { showToast(t('Enter an amount'), false); return; }
-      targetKg = cur - toKg(amt, DB.unit);
+      targetKg = bwGoalMode === 'lose'
+        ? cur - toKg(amt, DB.unit)
+        : cur + toKg(amt, DB.unit);
       if (targetKg <= 0) { showToast(t('Enter a smaller amount'), false); return; }
     } else {
       const tw = +document.getElementById('bw-target').value;
