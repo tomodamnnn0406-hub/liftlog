@@ -920,6 +920,7 @@ const I18N = {
     'Loading chart…':'グラフを読み込み中…','Last 5 weeks':'直近5週間','No data last week':'先週のデータなし',
     'No data in this time range for':'この期間のデータがありません：','No actual 1-rep sets logged yet for':'まだ実際の1レップセットが記録されていません：','No sets logged yet for':'まだセットが記録されていません：',
     'Log at least 2 sessions to see a chart':'グラフを見るには2セッション以上記録してください','Log more sets to estimate':'推定するにはセットをもっと記録してください',
+    'Log a few more sessions to see your trajectory':'推移を見るにはあと数回記録してください',
     'Log some workouts to see which muscle groups you train most (last 30 days).':'ワークアウトを記録すると、よく鍛えている部位がわかります（直近30日）。',
     'Sets per muscle group · last 30 days':'部位ごとのセット数 · 直近30日',
     'Tap a group to see all exercises · Tap exercise for progress chart':'グループをタップで全種目を表示 · 種目をタップで進捗グラフ',
@@ -1261,7 +1262,7 @@ let timerStartTs   = null;      // epoch ms when the current run segment started
 // Dashboard chart state
 let dashChart         = null;
 let volTrendChart     = null;   // weekly-volume mini chart (optional card)
-let dashChartMode     = '1rm';   // '1rm' (actual single) | 'e1rm' | '5' | '8'
+let dashChartMode     = 'e1rm';  // chart always shows estimated 1RM (from every set) for a real trajectory
 let dashChartExercise = null;
 let dashChartRange    = 'all';   // 'all' | '6m' | '3m' | '1m'
 
@@ -1463,10 +1464,11 @@ function getProgressByMode(name, mode) {
         }
       }
     } else if (mode === 'e1rm') {
-      // Estimated 1RM from the best set this session (any rep count) → every
-      // session with this exercise contributes a point, giving a full trajectory.
+      // Estimated 1RM from the best set this session → every session with this
+      // exercise contributes a point, giving a full trajectory. Sets above 12
+      // reps are skipped because the 1RM formula loses accuracy on high reps.
       for (const s of ex.sets) {
-        if (s.weight && s.reps && !s.failed) {
+        if (s.weight && s.reps && +s.reps <= 12 && !s.failed) {
           const e1Kg = toKg(calc1RM(+s.weight, +s.reps), du);
           if (e1Kg > best) best = e1Kg;
         }
@@ -1483,6 +1485,21 @@ function getProgressByMode(name, mode) {
     if (best > 0) data.push({ date: workout.date, weightKg: best });
   }
   return data;
+}
+
+// Least-squares trend line over a series of y-values (x = evenly-spaced index).
+// Returns fitted y-values (same length) so the chart can draw a straight trend
+// line, or null when there aren't enough points to fit one.
+function trendLineValues(ys) {
+  const n = ys.length;
+  if (n < 2) return null;
+  let sx = 0, sy = 0, sxx = 0, sxy = 0;
+  for (let i = 0; i < n; i++) { sx += i; sy += ys[i]; sxx += i * i; sxy += i * ys[i]; }
+  const denom = n * sxx - sx * sx;
+  if (denom === 0) return null;
+  const slope = (n * sxy - sx * sy) / denom;
+  const intercept = (sy - slope * sx) / n;
+  return ys.map((_, i) => Math.round((intercept + slope * i) * 10) / 10);
 }
 
 // Estimate weeks to hit targetKg (est-1RM) using linear regression on recent progress.
@@ -2111,6 +2128,22 @@ function renderDashboardChart() {
     fill:               true
   }];
 
+  // Trend line — shows the direction of progress (best practice: the trend
+  // matters more than any single point). Only drawn with 2+ data points.
+  const trend = trendLineValues(weights);
+  if (trend) {
+    datasets.push({
+      label:       'Trend',
+      data:        trend,
+      borderColor: 'rgba(249,115,22,0.5)',
+      borderDash:  [4, 4],
+      borderWidth: 1.5,
+      pointRadius: 0,
+      tension:     0,
+      fill:        false
+    });
+  }
+
   // Goal reference line
   if (goal) {
     const goalDisplay = goalLineForMode(goal, dashChartMode);
@@ -2133,6 +2166,11 @@ function renderDashboardChart() {
       responsive: true, maintainAspectRatio: false,
       plugins: {
         legend: { labels: { color:'#888', font:{ size:11 }, boxWidth:12, padding:12 } },
+        subtitle: {
+          display: progress.length < 3,
+          text: t('Log a few more sessions to see your trajectory'),
+          color:'#666', font:{ size:10 }, padding:{ bottom:8 }
+        },
         tooltip: {
           backgroundColor:'#1a1a1a', borderColor:'#2a2a2a', borderWidth:1,
           titleColor:'#f0f0f0', bodyColor:'#aaa',
