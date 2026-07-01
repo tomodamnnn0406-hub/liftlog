@@ -21,6 +21,7 @@
   --text:#f0f0f0;--muted:#777;--border:#2a2a2a;
   --green:#22c55e;--red:#ef4444;--blue:#3b82f6;
   --purple:#a855f7;
+  --amber:#f59e0b;--amber-dim:rgba(245,158,11,0.14);
 }
 html,body{height:100%}
 body{
@@ -1943,8 +1944,10 @@ function renderDashboard() {
           ${gp.done
             ? `<span style="color:var(--green);font-weight:700">🎉 Goal reached!</span>`
             : `<span style="color:var(--muted)">${timeStr ? 'Est. '+timeStr+' away' : ''}</span>`}
-          ${(() => { const dl = deadlineInfo(goal.targetDate); return (!gp.done && dl)
-            ? `<span style="color:${dl.overdue?'var(--red)':'var(--muted)'};font-weight:600">📅 ${dl.label}</span>` : ''; })()}
+          ${(() => { const dl = deadlineInfo(goal.targetDate); if(gp.done||!dl) return '';
+            return dl.overdue
+              ? `<span style="display:inline-flex;align-items:center;gap:4px;background:var(--amber-dim);color:var(--amber);font-weight:600;padding:2px 8px;border-radius:99px">📅 Deadline reached</span>`
+              : `<span style="color:var(--muted);font-weight:600">📅 ${dl.label}</span>`; })()}
         </div>
       </div>`;
     }
@@ -4076,7 +4079,7 @@ function renderGoals() {
       ${done ? `
       <div class="goal-celebrate"><span class="trophy">🏆</span><span>Goal reached!</span></div>
       <button class="goal-cta" onclick="event.stopPropagation();raiseGoalTarget('${goal.id}')">Set a New Target →</button>
-      ` : `
+      ` : goalDeadlinePassed(goal) ? goalReviewHTML(goal) : `
       <div class="goal-meta">
         <span>${etaText}</span>
         ${(() => { const dl = deadlineInfo(goal.targetDate); return dl
@@ -4145,7 +4148,7 @@ function bodyWeightGoalCardHTML(goal) {
     ${done ? `
     <div class="goal-celebrate"><span class="trophy">🏆</span><span>${t('Goal reached!')}</span></div>
     <button class="goal-cta" onclick="raiseGoalTarget('${goal.id}')">${t('Set a New Target →')}</button>
-    ` : `
+    ` : goalDeadlinePassed(goal) ? goalReviewHTML(goal) : `
     <div class="goal-meta">
       <span>${cur!=null ? remLabel : t('Weigh in to track progress')}</span>
       ${(() => { const dl = deadlineInfo(goal.targetDate); return dl
@@ -6001,6 +6004,128 @@ function checkGoalCelebrations() {
 // CTA from a reached goal → open its editor so the user can raise the target
 function raiseGoalTarget(id) {
   openEditGoalModal(id);
+}
+
+// ═══════════════════════════════════════════════════════
+// MISSED-GOAL REVIEW  (deadline passed, target not yet hit)
+// Reframes an "overdue" goal as a decision point instead of a failure.
+// ═══════════════════════════════════════════════════════
+function addDaysStr(n) {
+  const d = new Date(); d.setDate(d.getDate() + n);
+  return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+}
+
+// True when a goal's deadline has passed but the target hasn't been reached.
+function goalDeadlinePassed(goal) {
+  const gp = getGoalProgress(goal);
+  if (gp.done || !goal.targetDate) return false;
+  const dl = deadlineInfo(goal.targetDate);
+  return !!(dl && dl.overdue);
+}
+
+// Positive-framed review block: earned progress + four forward actions.
+function goalReviewHTML(goal) {
+  const unit  = DB.unit;
+  const gp    = getGoalProgress(goal);
+  const curKg = gp.currentKg || 0;
+  const tgtKg = gp.target1RM || goal.targetWeightKg || 0;
+  const curDisp = Math.round(dispW(curKg, 'kg') * 10) / 10;
+  const tgtDisp = Math.round(dispW(tgtKg, 'kg') * 10) / 10;
+  const pct = (gp.pct != null) ? gp.pct
+            : (tgtKg > 0 ? Math.min(100, Math.round((curKg / tgtKg) * 100)) : 0);
+  const progressLine = curKg > 0
+    ? `You've reached <strong>${curDisp}${unit}</strong> of your ${tgtDisp}${unit} goal · <strong>${pct}% there</strong>`
+    : `Deadline passed — pick up where you left off`;
+  return `
+    <div class="goal-meta" style="margin-bottom:2px">
+      <span style="display:inline-flex;align-items:center;gap:4px;background:var(--amber-dim);color:var(--amber);font-size:11px;font-weight:700;padding:3px 9px;border-radius:99px">📅 Deadline reached</span>
+    </div>
+    <div style="font-size:12px;color:var(--green);font-weight:600;margin:8px 0 2px">${progressLine}</div>
+    <div style="font-size:11px;color:var(--muted);margin:8px 0 8px">What next?</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();goalExtendDeadline('${goal.id}')">📆 Extend</button>
+      <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();goalAdjustTarget('${goal.id}')">🎯 Adjust target</button>
+      <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();goalMarkDone('${goal.id}')">✓ Mark done</button>
+      <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();goalArchive('${goal.id}')">🗄️ Archive</button>
+    </div>`;
+}
+
+// ── Extend deadline ──
+function goalExtendDeadline(id) {
+  const goal = DB.goals.find(g => g.id === id); if (!goal) return;
+  const name = isBodyWeightGoal(goal) ? t('Body weight goal') : goal.exercise;
+  const d14 = addDaysStr(14), d30 = addDaysStr(30);
+  document.getElementById('modal-content').innerHTML = `
+  <div style="font-size:18px;font-weight:700;margin-bottom:6px">Extend deadline</div>
+  <div style="font-size:13px;color:var(--muted);margin-bottom:16px">Keep your ${name} target — just give it more time.</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
+    <button class="btn btn-secondary" onclick="applyGoalExtend('${id}','${d14}')">+2 weeks</button>
+    <button class="btn btn-secondary" onclick="applyGoalExtend('${id}','${d30}')">+1 month</button>
+  </div>
+  <div class="input-group">
+    <div class="label">Or pick a date</div>
+    <input type="date" id="ext-date" value="${d14}" min="${todayStr()}">
+  </div>
+  <button class="btn btn-primary btn-full" style="margin-top:8px" onclick="applyGoalExtend('${id}', document.getElementById('ext-date').value)">Save</button>`;
+  openModal();
+}
+function applyGoalExtend(id, date) {
+  if (!date) { showToast('Pick a date', false); return; }
+  const goals = DB.goals; const i = goals.findIndex(g => g.id === id); if (i < 0) return;
+  goals[i].targetDate = date;
+  DB.saveGoals(goals);
+  closeModal(); showToast('Deadline extended 📆'); renderGoals();
+}
+
+// ── Adjust target (suggest an easier interim goal) ──
+function goalAdjustTarget(id) {
+  const goal = DB.goals.find(g => g.id === id); if (!goal) return;
+  const unit  = DB.unit;
+  const gp    = getGoalProgress(goal);
+  const curKg = gp.currentKg || 0;
+  const tgtKg = gp.target1RM || goal.targetWeightKg || 0;
+  const interimKg = curKg > 0 ? curKg + (tgtKg - curKg) / 2 : tgtKg;
+  const step = unit === 'kg' ? 2.5 : 5;
+  const interimDisp = Math.round(dispW(interimKg, 'kg') / step) * step;
+  const tgtDisp = Math.round(dispW(tgtKg, 'kg') * 10) / 10;
+  document.getElementById('modal-content').innerHTML = `
+  <div style="font-size:18px;font-weight:700;margin-bottom:6px">Adjust target</div>
+  <div style="font-size:13px;color:var(--muted);margin-bottom:14px">This one's been slow. A smaller interim target is easier to hit and keeps your momentum going.</div>
+  <div class="card" style="background:var(--accent-dim);border-color:var(--accent);margin-bottom:14px;cursor:pointer" onclick="document.getElementById('adj-weight').value='${interimDisp}'">
+    <div style="font-size:11px;color:var(--accent);font-weight:700;text-transform:uppercase;letter-spacing:.4px">Suggested interim target</div>
+    <div style="font-size:22px;font-weight:800;margin-top:2px">${interimDisp}${unit} <span style="font-size:12px;color:var(--muted);font-weight:600">was ${tgtDisp}${unit}</span></div>
+    <div style="font-size:11px;color:var(--muted);margin-top:2px">Tap to use</div>
+  </div>
+  <div class="input-group">
+    <div class="label">Target weight (${unit})</div>
+    <input type="number" inputmode="decimal" id="adj-weight" value="${interimDisp}" min="1" step="${step}">
+  </div>
+  <button class="btn btn-primary btn-full" style="margin-top:8px" onclick="applyGoalAdjust('${id}')">Update target</button>`;
+  openModal();
+}
+function applyGoalAdjust(id) {
+  const goals = DB.goals; const i = goals.findIndex(g => g.id === id); if (i < 0) return;
+  const v = +document.getElementById('adj-weight').value;
+  if (!v || v <= 0) { showToast('Enter a valid weight', false); return; }
+  goals[i].targetWeightKg = Math.round(toKg(v, DB.unit) * 10) / 10;
+  DB.saveGoals(goals);
+  closeModal(); showToast('Target adjusted 🎯'); renderGoals();
+}
+
+// ── Mark done (hit it but didn't log the set) ──
+function goalMarkDone(id) {
+  const goal = DB.goals.find(g => g.id === id); if (!goal) return;
+  if (!confirm('Log this goal as achieved?')) return;
+  archiveGoalIfNew(goal);
+  DB.saveGoals(DB.goals.filter(g => g.id !== id));
+  fireConfetti(); showToast('Logged to Achieved 🏆'); renderGoals();
+}
+
+// ── Archive (set aside, no penalty) ──
+function goalArchive(id) {
+  if (!confirm('Archive this goal? It will be removed from your goals list.')) return;
+  DB.saveGoals(DB.goals.filter(g => g.id !== id));
+  showToast('Goal archived 🗄️'); renderGoals();
 }
 
 // ═══════════════════════════════════════════════════════
