@@ -997,7 +997,7 @@ const I18N = {
     'Quick Stats':'クイック統計','This Week':'今週','Personal Records':'自己ベスト','Training Streak':'連続記録','Weekly Volume':'週間ボリューム',
     'Muscle Balance':'筋肉バランス','Training Calendar':'トレーニングカレンダー','Goal Progress Ring':'目標進捗リング',
     'General':'一般','Hidden':'非表示','Shown':'表示中','vs last week':'先週比','Rest':'休憩','Start':'開始','Resume':'再開','Pause':'一時停止',
-    'Est':'推定','1M':'1か月','3M':'3か月','6M':'6か月','All':'全期間',
+    'Est':'推定','1M':'1か月','3M':'3か月','6M':'6か月','All':'全期間','Period':'期間',
     'Create Template':'テンプレートを作成','Save Template':'テンプレートを保存',
     'Body Weight (kg)':'体重 (kg)','Body Weight (lbs)':'体重 (lbs)','Target Weight (kg)':'目標重量 (kg)','Target Weight (lbs)':'目標重量 (lbs)',
     "You haven't backed up yet. Your data lives only on this device — save a copy so you don't lose it.":'まだバックアップしていません。データはこの端末にのみ保存されています — 失わないようにコピーを保存しましょう。',
@@ -1823,26 +1823,21 @@ function renderDashboard() {
       `<option value="${n}" ${n===dashChartExercise?'selected':''}>${n}</option>`
     ).join('');
 
-    const metricBtns = [['1rm','1RM'],['e1rm','Est'],['5','5 Rep'],['8','8 Rep']].map(([m,lbl]) =>
-      `<button id="dm-${m}" class="btn btn-sm ${dashChartMode===m?'btn-primary':'btn-secondary'}"
-        style="flex:1;padding:6px 0;font-size:11px" onclick="setDashChartMode('${m}')">${lbl}</button>`).join('');
-
     html += `
     <div class="card" style="margin-bottom:14px">
       <!-- Exercise selector -->
-      <div class="select-wrap" style="margin-bottom:8px">
+      <div class="select-wrap" style="margin-bottom:12px">
         <select id="dash-ex-select" onchange="setDashChartExercise(this.value)"
           style="font-size:13px;font-weight:700;padding:8px 30px 8px 10px;height:38px">
           ${exOpts}
         </select>
       </div>
-      <!-- Metric toggles -->
-      <div style="display:flex;gap:4px;margin-bottom:8px">${metricBtns}</div>
       <!-- Time-range selector -->
-      <div style="display:flex;gap:4px;margin-bottom:10px">
+      <div class="label" style="margin-bottom:6px">Period</div>
+      <div style="display:flex;gap:6px;margin-bottom:12px">
         ${['1m','3m','6m','all'].map(r => `
           <button id="dr-${r}" class="btn btn-sm ${dashChartRange===r?'btn-primary':'btn-secondary'}"
-            style="flex:1;padding:5px 0;font-size:11px" onclick="setDashChartRange('${r}')">
+            style="flex:1;justify-content:center;padding:7px 0;font-size:12px" onclick="setDashChartRange('${r}')">
             ${r==='all'?'All':r.toUpperCase()}</button>`).join('')}
       </div>
       <div id="dash-chart-wrap" style="position:relative;height:210px">
