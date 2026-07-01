@@ -998,7 +998,7 @@ const I18N = {
     'Quick Stats':'クイック統計','This Week':'今週','Personal Records':'自己ベスト','Training Streak':'連続記録','Weekly Volume':'週間ボリューム',
     'Muscle Balance':'筋肉バランス','Training Calendar':'トレーニングカレンダー','Goal Progress Ring':'目標進捗リング',
     'General':'一般','Hidden':'非表示','Shown':'表示中','vs last week':'先週比','Rest':'休憩','Start':'開始','Resume':'再開','Pause':'一時停止',
-    'Est':'推定','1M':'1か月','3M':'3か月','6M':'6か月','All':'全期間','Period':'期間',
+    'Est':'推定','1M':'1ヶ月','3M':'3ヶ月','6M':'6ヶ月','All':'全期間','Period':'期間',
     'Create Template':'テンプレートを作成','Save Template':'テンプレートを保存',
     'Body Weight (kg)':'体重 (kg)','Body Weight (lbs)':'体重 (lbs)','Target Weight (kg)':'目標重量 (kg)','Target Weight (lbs)':'目標重量 (lbs)',
     "You haven't backed up yet. Your data lives only on this device — save a copy so you don't lose it.":'まだバックアップしていません。データはこの端末にのみ保存されています — 失わないようにコピーを保存しましょう。',
@@ -1043,7 +1043,7 @@ function tx(s){ const r = tkey(s); return r === null ? s : r; }
 function txTime(s){
   let m;
   if(m = s.match(/^~(\d+)w$/))     return '約' + m[1] + '週';
-  if(m = s.match(/^~(\d+)mo$/))    return '約' + m[1] + 'か月';
+  if(m = s.match(/^~(\d+)mo$/))    return '約' + m[1] + 'ヶ月';
   if(m = s.match(/^(\d+)\+ yr$/))  return m[1] + '年以上';
   if(m = s.match(/^(.+?) to go$/)) return 'あと' + m[1];
   return s;
@@ -1265,6 +1265,7 @@ let volTrendChart     = null;   // weekly-volume mini chart (optional card)
 let dashChartMode     = 'e1rm';  // chart always shows estimated 1RM (from every set) for a real trajectory
 let dashChartExercise = null;
 let dashChartRange    = 'all';   // 'all' | '6m' | '3m' | '1m'
+let bwChartRange      = 'all';   // time range for the body-weight goal chart (Goals tab)
 
 // History calendar state — 'YYYY-MM' of the month currently shown (null = latest)
 let historyMonth      = null;
@@ -1738,8 +1739,13 @@ function renderDashboard() {
   const profile  = DB.profile;
   const now      = new Date();
 
-  // Pick default chart exercise
-  if (!dashChartExercise || !prs[dashChartExercise]?.bestSet) {
+  // Body weight is selectable in the chart (value '__bw__') when there are weigh-ins.
+  const hasBwChart = DB.bwLog.length >= 2;
+
+  // Pick default chart exercise (keep a valid body-weight selection intact)
+  if (dashChartExercise === '__bw__') {
+    if (!hasBwChart) dashChartExercise = null;
+  } else if (!dashChartExercise || !prs[dashChartExercise]?.bestSet) {
     const gwd = goals.find(g => prs[g.exercise]?.bestSet);
     if (gwd) dashChartExercise = gwd.exercise;
     else {
@@ -1748,6 +1754,7 @@ function renderDashboard() {
       dashChartExercise = top ? top[0] : null;
     }
   }
+  if (!dashChartExercise && hasBwChart) dashChartExercise = '__bw__';
 
   // All exercises with PR data (for the "change" dropdown)
   const allWithData = Object.keys(prs).filter(n => prs[n]?.bestSet).sort();
@@ -1835,10 +1842,11 @@ function renderDashboard() {
 
   dashSec.chart = () => {
   let html = '';
-  if (allWithData.length) {
-    const exOpts = allWithData.map(n =>
+  if (allWithData.length || hasBwChart) {
+    let exOpts = allWithData.map(n =>
       `<option value="${n}" ${n===dashChartExercise?'selected':''}>${n}</option>`
     ).join('');
+    if (hasBwChart) exOpts += `<option value="__bw__" ${dashChartExercise==='__bw__'?'selected':''}>⚖️ ${t('Body weight')}</option>`;
 
     html += `
     <div class="card" style="margin-bottom:14px">
@@ -2072,10 +2080,13 @@ function renderDashboardChart() {
 
   const exercise = dashChartExercise;
   if (!exercise) return;
+  const isBw = exercise === '__bw__';
 
   const unit     = DB.unit;
-  let   progress = getProgressByMode(exercise, dashChartMode);
-  const goal     = DB.goals.find(g => g.exercise === exercise);
+  let   progress = isBw
+    ? DB.bwLog.map(e => ({ date: e.date, weightKg: e.kg })).sort((a,b) => a.date.localeCompare(b.date))
+    : getProgressByMode(exercise, dashChartMode);
+  const goal     = isBw ? DB.goals.find(isBodyWeightGoal) : DB.goals.find(g => g.exercise === exercise);
 
   // Filter to the chosen time range.
   const cut = rangeCutoff(dashChartRange);
@@ -2085,15 +2096,17 @@ function renderDashboardChart() {
   if (!progress.length) {
     const what = allCount > 0
       ? 'No data in this time range for'
-      : dashChartMode === '1rm'
-        ? 'No actual 1-rep sets logged yet for'
-        : dashChartMode === 'e1rm'
-          ? 'No sets logged yet for'
-          : `No sets of ${dashChartMode}+ reps logged yet for`;
+      : isBw
+        ? 'No weigh-ins logged yet for'
+        : dashChartMode === '1rm'
+          ? 'No actual 1-rep sets logged yet for'
+          : dashChartMode === 'e1rm'
+            ? 'No sets logged yet for'
+            : `No sets of ${dashChartMode}+ reps logged yet for`;
     wrap.innerHTML = `
       <div style="height:200px;display:flex;align-items:center;justify-content:center;
                   color:var(--muted);font-size:13px;text-align:center;line-height:1.6">
-        ${what}<br><strong style="color:var(--text)">${exercise}</strong>
+        ${what}<br><strong style="color:var(--text)">${isBw ? t('Body weight') : exercise}</strong>
       </div>`;
     return;
   }
@@ -2109,11 +2122,13 @@ function renderDashboardChart() {
     new Date(p.date+'T12:00:00').toLocaleDateString(L(),{month:'short',day:'numeric'}));
   const weights = progress.map(p => Math.round(dispW(p.weightKg,'kg') * 10) / 10);
 
-  const modeLabel = dashChartMode === '1rm'
-    ? `1-rep max (${unit})`
-    : dashChartMode === 'e1rm'
-      ? `Est. 1-rep max (${unit})`
-      : `Best weight @ ${dashChartMode}+ reps (${unit})`;
+  const modeLabel = isBw
+    ? `${t('Body weight')} (${unit})`
+    : dashChartMode === '1rm'
+      ? `1-rep max (${unit})`
+      : dashChartMode === 'e1rm'
+        ? `Est. 1-rep max (${unit})`
+        : `Best weight @ ${dashChartMode}+ reps (${unit})`;
 
   const datasets = [{
     label:              modeLabel,
@@ -2146,7 +2161,9 @@ function renderDashboardChart() {
 
   // Goal reference line
   if (goal) {
-    const goalDisplay = goalLineForMode(goal, dashChartMode);
+    const goalDisplay = isBw
+      ? Math.round(dispW(goal.targetWeightKg, 'kg') * 10) / 10
+      : goalLineForMode(goal, dashChartMode);
     datasets.push({
       label:       `Goal: ${goalDisplay}${unit}`,
       data:        Array(labels.length).fill(goalDisplay),
@@ -4190,38 +4207,58 @@ function bodyWeightGoalCardHTML(goal) {
     </div>`}
 
     ${hasChart
-      ? `<div style="position:relative;height:150px;margin-top:14px"><canvas id="bwchart-${goal.id}"></canvas></div>`
+      ? `<div class="label" style="margin:14px 0 6px">${t('Period')}</div>
+         <div style="display:flex;gap:6px;margin-bottom:8px">
+           ${['1m','3m','6m','all'].map(r => `
+             <button class="btn btn-sm ${bwChartRange===r?'btn-primary':'btn-secondary'}"
+               style="flex:1;justify-content:center;padding:6px 0;font-size:11px" onclick="setBwChartRange('${r}')">
+               ${r==='all'?'All':r.toUpperCase()}</button>`).join('')}
+         </div>
+         <div style="position:relative;height:150px"><canvas id="bwchart-${goal.id}"></canvas></div>`
       : `<div style="font-size:11px;color:var(--muted);margin-top:10px">${t('Log at least 2 weigh-ins to see a chart')}</div>`}
     <button class="btn btn-secondary btn-sm btn-full" style="margin-top:10px" onclick="openWeighInModal()">⚖️ ${t('Weigh in')}</button>
   </div>`;
 }
 
 let bwGoalCharts = [];
+function setBwChartRange(range) {
+  bwChartRange = range;
+  renderGoals();
+}
 function initBwGoalCharts() {
   bwGoalCharts.forEach(c => { try { c.destroy(); } catch(e){} });
   bwGoalCharts = [];
   if (typeof Chart === 'undefined') return;
-  const unit = DB.unit, log = DB.bwLog;
-  if (log.length < 2) return;
+  const unit = DB.unit;
+  const cut  = rangeCutoff(bwChartRange);
+  let   log  = DB.bwLog;
+  if (cut) log = log.filter(e => new Date(e.date + 'T12:00:00') >= cut);
+  if (!log.length) return;
   const labels = log.map(e => new Date(e.date + 'T12:00:00').toLocaleDateString(L(), { month:'short', day:'numeric' }));
   const data   = log.map(e => Math.round(dispW(e.kg, 'kg') * 10) / 10);
+  const trend  = trendLineValues(data);
   for (const goal of DB.goals) {
     if (!isBodyWeightGoal(goal)) continue;
     const cv = document.getElementById('bwchart-' + goal.id);
     if (!cv) continue;
     const target = Math.round(dispW(goal.targetWeightKg, 'kg') * 10) / 10;
+    const datasets = [
+      { label: t('Body weight'), data, borderColor:'#f97316', backgroundColor:'rgba(249,115,22,.12)',
+        borderWidth:2.5, pointRadius:2, tension:.3, fill:true },
+      { label: t('Target'), data: labels.map(() => target), borderColor:'#22c55e',
+        borderWidth:1.5, borderDash:[5,4], pointRadius:0 }
+    ];
+    if (trend) datasets.push({ label:'Trend', data:trend, borderColor:'rgba(249,115,22,0.5)',
+      borderDash:[4,4], borderWidth:1.5, pointRadius:0, tension:0, fill:false });
     bwGoalCharts.push(new Chart(cv, {
       type: 'line',
-      data: { labels, datasets: [
-        { label: t('Body weight'), data, borderColor:'#f97316', backgroundColor:'rgba(249,115,22,.12)',
-          borderWidth:2.5, pointRadius:2, tension:.3, fill:true },
-        { label: t('Target'), data: labels.map(() => target), borderColor:'#22c55e',
-          borderWidth:1.5, borderDash:[5,4], pointRadius:0 }
-      ]},
+      data: { labels, datasets },
       options: {
         responsive:true, maintainAspectRatio:false,
         plugins: {
           legend:{ labels:{ color:'#888', font:{ size:11 }, boxWidth:12, padding:10 } },
+          subtitle:{ display: log.length < 3, text: t('Log a few more sessions to see your trajectory'),
+            color:'#666', font:{ size:10 }, padding:{ bottom:8 } },
           tooltip:{ backgroundColor:'#1a1a1a', borderColor:'#2a2a2a', borderWidth:1,
             titleColor:'#f0f0f0', bodyColor:'#aaa', callbacks:{ label: c => ` ${c.dataset.label}: ${c.parsed.y}${unit}` } }
         },
