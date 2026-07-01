@@ -922,7 +922,8 @@ const I18N = {
     'Log at least 2 sessions to see a chart':'グラフを見るには2セッション以上記録してください','Log more sets to estimate':'推定するにはセットをもっと記録してください',
     'Log a few more sessions to see your trajectory':'推移を見るにはあと数回記録してください',
     'Log some workouts to see which muscle groups you train most (last 30 days).':'ワークアウトを記録すると、よく鍛えている部位がわかります（直近30日）。',
-    'Sets per muscle group · last 30 days':'部位ごとのセット数 · 直近30日',
+    'Sets per muscle group · last 30 days':'部位ごとのセット数 · 直近30日','Sets per muscle group · last 7 days':'部位ごとのセット数 · 直近7日',
+    'Weight Trend':'体重の推移','Weekly':'週間','Monthly':'月間',
     'Tap a group to see all exercises · Tap exercise for progress chart':'グループをタップで全種目を表示 · 種目をタップで進捗グラフ',
     'Tap all the muscles this exercise hits — e.g. Deadlift → Lats + Hamstrings + Glutes':'この種目で使う筋肉をすべてタップ — 例：デッドリフト → 広背筋＋ハムストリング＋臀筋',
     'Set a target weight and reps — see your timeline here':'目標の重量とレップを設定すると、ここにタイムラインが表示されます',
@@ -1266,6 +1267,8 @@ let dashChartMode     = 'e1rm';  // chart always shows estimated 1RM (from every
 let dashChartExercise = null;
 let dashChartRange    = 'all';   // 'all' | '6m' | '3m' | '1m'
 let bwChartRange      = 'all';   // time range for the body-weight goal chart (Goals tab)
+let muscleRange       = 'week';  // 'week' | 'month' — window for the muscle-balance set counts
+let dashWeightChart   = null;    // dashboard body-weight trajectory chart
 
 // History calendar state — 'YYYY-MM' of the month currently shown (null = latest)
 let historyMonth      = null;
@@ -1730,6 +1733,7 @@ function syncUnitToggle() {
 function renderDashboard() {
   if (dashChart) { dashChart.destroy(); dashChart = null; }
   if (volTrendChart) { volTrendChart.destroy(); volTrendChart = null; }
+  if (dashWeightChart) { dashWeightChart.destroy(); dashWeightChart = null; }
 
   const workouts = DB.workouts;
   const prs      = getPRs();
@@ -2070,6 +2074,7 @@ function renderDashboard() {
   const _dl = getDashLayout();
   if (dashChartExercise && _dl.find(s => s.id === 'chart' && s.on)) setTimeout(() => renderDashboardChart(), 60);
   if (_dl.find(s => s.id === 'voltrend' && s.on)) setTimeout(() => renderVolTrendChart(), 60);
+  if (_dl.find(s => s.id === 'weight' && s.on)) setTimeout(() => renderDashWeightChart(), 60);
 }
 
 // ── Dashboard chart renderer ──────────────────────────
@@ -5469,20 +5474,20 @@ function startActiveDrag(item, container, onReorder, captureEl, startClientY, po
 // The original four stay on by default; the richer cards are off until turned on.
 const DASH_SECTIONS = {
   chart:      { label: 'Progress Chart',     emoji: '📈', on: true  },
+  weight:     { label: 'Weight Trend',       emoji: '⚖️', on: true  },
   goals:      { label: 'My Goals',           emoji: '🎯', on: true  },
   last:       { label: 'Last Workout',       emoji: '🕒', on: true  },
   stats:      { label: 'Body Stats',         emoji: '⚖️', on: true  },
   quickstats: { label: 'Quick Stats',        emoji: '📊', on: false },
   thisweek:   { label: 'This Week',          emoji: '🗓️', on: false },
   records:    { label: 'Personal Records',   emoji: '🏆', on: false },
-  streak:     { label: 'Training Streak',    emoji: '🔥', on: false },
   voltrend:   { label: 'Weekly Volume',      emoji: '📉', on: false },
   muscle:     { label: 'Muscle Balance',     emoji: '💪', on: false },
   minical:    { label: 'Training Calendar',  emoji: '📅', on: false },
   goalring:   { label: 'Goal Progress Ring', emoji: '🎯', on: false }
 };
 // Order shown in the customize list (and default dashboard order).
-const DASH_DEFAULT = ['chart','goals','last','stats','quickstats','thisweek','records','streak','voltrend','muscle','minical','goalring'];
+const DASH_DEFAULT = ['chart','weight','goals','last','stats','quickstats','thisweek','records','voltrend','muscle','minical','goalring'];
 
 function getDashLayout() {
   const saved = DB.dashLayout;
@@ -5704,8 +5709,64 @@ function renderVolTrendChart() {
   });
 }
 
+function dashCardWeight() {
+  if (DB.bwLog.length < 2) {
+    return dashLabel('⚖️ Weight Trend') + `
+    <div class="card" style="margin-bottom:14px;text-align:center;padding:20px">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:12px">${t('Log at least 2 weigh-ins to see a chart')}</div>
+      <button class="btn btn-secondary btn-sm" onclick="openWeighInModal()">⚖️ ${t('Weigh in')}</button>
+    </div>`;
+  }
+  return dashLabel('⚖️ Weight Trend') + `
+  <div class="card" style="margin-bottom:14px">
+    <div style="position:relative;height:190px"><canvas id="dash-weight-canvas"></canvas></div>
+  </div>`;
+}
+function renderDashWeightChart() {
+  const ctx = document.getElementById('dash-weight-canvas');
+  if (!ctx) return;
+  if (dashWeightChart) { dashWeightChart.destroy(); dashWeightChart = null; }
+  const unit = DB.unit;
+  const log  = [...DB.bwLog].sort((a, b) => a.date.localeCompare(b.date));
+  if (log.length < 2) return;
+  const labels = log.map(e => new Date(e.date + 'T12:00:00').toLocaleDateString(L(), { month:'short', day:'numeric' }));
+  const data   = log.map(e => Math.round(dispW(e.kg, 'kg') * 10) / 10);
+  const trend  = trendLineValues(data);
+  const goal   = DB.goals.find(isBodyWeightGoal);
+  const datasets = [
+    { label: t('Body weight'), data, borderColor:'#f97316', backgroundColor:'rgba(249,115,22,.12)',
+      borderWidth:2.5, pointRadius:2, tension:.3, fill:true }
+  ];
+  if (trend) datasets.push({ label:'Trend', data:trend, borderColor:'rgba(249,115,22,0.5)',
+    borderDash:[4,4], borderWidth:1.5, pointRadius:0, tension:0, fill:false });
+  if (goal) {
+    const target = Math.round(dispW(goal.targetWeightKg, 'kg') * 10) / 10;
+    datasets.push({ label:`${t('Target')}: ${target}${unit}`, data: labels.map(() => target),
+      borderColor:'#22c55e', borderWidth:1.5, borderDash:[5,4], pointRadius:0 });
+  }
+  dashWeightChart = new Chart(ctx, {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins: {
+        legend:{ labels:{ color:'#888', font:{ size:11 }, boxWidth:12, padding:10 } },
+        subtitle:{ display: log.length < 3, text: t('Log a few more sessions to see your trajectory'),
+          color:'#666', font:{ size:10 }, padding:{ bottom:8 } },
+        tooltip:{ backgroundColor:'#1a1a1a', borderColor:'#2a2a2a', borderWidth:1,
+          titleColor:'#f0f0f0', bodyColor:'#aaa', callbacks:{ label: c => ` ${c.dataset.label}: ${c.parsed.y}${unit}` } }
+      },
+      scales: {
+        x:{ offset:true, grid:{ color:'#1f1f1f' }, ticks:{ color:'#555', font:{ size:10 }, maxTicksLimit:6 } },
+        y:{ grid:{ color:'#1f1f1f' }, ticks:{ color:'#555', font:{ size:10 }, callback:v => v+unit } }
+      }
+    }
+  });
+}
+
 function dashCardMuscle() {
-  const since = new Date(); since.setDate(since.getDate() - 30);
+  const days  = muscleRange === 'week' ? 7 : 30;
+  const since = new Date(); since.setDate(since.getDate() - days);
   const counts = {};
   for (const w of DB.workouts) {
     if (new Date(w.date + 'T12:00:00') < since) continue;
@@ -5732,12 +5793,19 @@ function dashCardMuscle() {
         <div style="height:100%;width:${Math.round(n / max * 100)}%;background:var(--accent);border-radius:4px"></div>
       </div>
     </div>`).join('');
+  const rangeToggle = `
+  <div style="display:flex;gap:6px;margin-bottom:12px">
+    <button class="btn btn-sm ${muscleRange==='week'?'btn-accent-outline':'btn-secondary'}" style="flex:1;justify-content:center;padding:6px 0;font-size:11px" onclick="setMuscleRange('week')">Weekly</button>
+    <button class="btn btn-sm ${muscleRange==='month'?'btn-accent-outline':'btn-secondary'}" style="flex:1;justify-content:center;padding:6px 0;font-size:11px" onclick="setMuscleRange('month')">Monthly</button>
+  </div>`;
   return dashLabel('💪 Muscle Balance') + `
   <div class="card" style="margin-bottom:14px">
-    <div style="font-size:11px;color:var(--muted);margin-bottom:10px">Sets per muscle group · last 30 days</div>
+    ${rangeToggle}
+    <div style="font-size:11px;color:var(--muted);margin-bottom:10px">${days === 7 ? 'Sets per muscle group · last 7 days' : 'Sets per muscle group · last 30 days'}</div>
     ${bars}
   </div>`;
 }
+function setMuscleRange(r) { muscleRange = r; renderDashboard(); }
 
 function dashCardMiniCal() {
   const ws = DB.workouts;
@@ -5796,10 +5864,10 @@ function dashCardGoalRing() {
 }
 
 const dashCardRenderers = {
+  weight:     dashCardWeight,
   quickstats: dashCardQuickStats,
   thisweek:   dashCardThisWeek,
   records:    dashCardRecords,
-  streak:     dashCardStreak,
   voltrend:   dashCardVolTrend,
   muscle:     dashCardMuscle,
   minical:    dashCardMiniCal,
