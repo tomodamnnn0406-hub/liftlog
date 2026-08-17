@@ -1,9 +1,9 @@
-// Lift Log — Service Worker v44
+// Lift Log — Service Worker v45
 // Strategy:
 //   liftlog.html  → network-first (always get the latest version)
 //   everything else → cache-first (icons, Chart.js — safe to cache long-term)
 
-const CACHE_NAME = 'liftlog-v69';
+const CACHE_NAME = 'liftlog-v70';
 const STATIC_ASSETS = [
   './manifest.json',
   './icon-192.png',
@@ -13,9 +13,16 @@ const STATIC_ASSETS = [
 
 // ── Install: pre-cache static assets only (NOT the HTML) ──────────────────
 self.addEventListener('install', event => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => cache.addAll(STATIC_ASSETS))
-  );
+  event.waitUntil((async () => {
+    const cache = await caches.open(CACHE_NAME);
+    // Cache each asset independently. addAll() is all-or-nothing: one
+    // unreachable file (e.g. the Chart.js CDN while offline or blocked) would
+    // reject the whole install, leaving the app with NO service worker — so no
+    // offline support and no push notifications.
+    await Promise.all(STATIC_ASSETS.map(async url => {
+      try { await cache.add(url); } catch (e) { /* fetched on demand later */ }
+    }));
+  })());
   self.skipWaiting(); // take control immediately
 });
 
@@ -23,7 +30,8 @@ self.addEventListener('install', event => {
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
+      // 'll-state' holds draft/push flags shared with the page — never evict it.
+      Promise.all(keys.filter(k => k !== CACHE_NAME && k !== 'll-state').map(k => caches.delete(k)))
     )
   );
   self.clients.claim(); // take control of open tabs immediately
@@ -76,9 +84,64 @@ self.addEventListener('fetch', event => {
   }
 });
 
+// ── Push: real background notifications ────────────────────────────────────
+// Payload shape: { kind, title, body, view, version }
+//   kind 'update'  → a new version was deployed
+//   kind 'goal'    → monthly goal reminder
+//   kind 'unsaved' → only shown if this device actually has an unsaved workout
+self.addEventListener('push', event => {
+  event.waitUntil((async () => {
+    let d = {};
+    try { d = event.data ? event.data.json() : {}; } catch (e) { d = { body: event.data ? event.data.text() : '' }; }
+
+    const ja = (d.lang === 'ja');
+    let title = d.title || 'Lift Log';
+    let body  = d.body  || '';
+    let view  = d.view  || 'dashboard';
+
+    if (d.kind === 'unsaved') {
+      // The page mirrors draft state into the cache; skip the notification
+      // entirely when there's nothing unsaved on THIS device.
+      let draft = null;
+      try {
+        const c   = await caches.open('ll-state');
+        const res = await c.match('/__ll_draft');
+        if (res) draft = await res.json();
+      } catch (e) {}
+      if (!draft || !draft.hasDraft) return;          // nothing to nag about
+      title = ja ? '未保存のワークアウト' : 'Unsaved workout';
+      body  = ja ? `${draft.exercises}種目が保存されていません — タップして保存`
+                 : `${draft.exercises} exercise(s) not saved yet — tap to finish`;
+      view  = 'log';
+    }
+
+    await self.registration.showNotification(title, {
+      body,
+      icon: './icon-192.png',
+      badge: './icon-192.png',
+      tag: 'll-' + (d.kind || 'msg'),
+      renotify: true,
+      data: { view, kind: d.kind || '', version: d.version || 0 }
+    });
+    // Badge the home-screen icon too (best-effort — not on every platform).
+    try { if (self.navigator && self.navigator.setAppBadge) await self.navigator.setAppBadge(1); } catch (e) {}
+  })());
+});
+
+// iOS/browsers can rotate a subscription; drop our copy so the app re-registers.
+self.addEventListener('pushsubscriptionchange', event => {
+  event.waitUntil((async () => {
+    try {
+      const c = await caches.open('ll-state');
+      await c.put('/__ll_push_stale', new Response('1'));
+    } catch (e) {}
+  })());
+});
+
 // ── Notification click: focus the app and route to the right view ───────────
 self.addEventListener('notificationclick', event => {
   event.notification.close();
+  try { if (self.navigator && self.navigator.clearAppBadge) self.navigator.clearAppBadge(); } catch (e) {}
   const data   = event.notification.data || {};
   const target = data.url || './liftlog.html';
   const view   = data.view || null;

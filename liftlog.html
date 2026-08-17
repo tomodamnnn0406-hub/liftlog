@@ -1049,6 +1049,28 @@ const I18N = {
     'No data yet for this exercise':'この種目のデータはまだありません',
     'Current PR: <strong style="color:var(--text)">{w}{u} × {r}</strong> · est. 1RM <strong style="color:var(--accent)">{e}{u}</strong>':'現在の自己ベスト: <strong style="color:var(--text)">{w}{u} × {r}レップ</strong> · 推定1RM <strong style="color:var(--accent)">{e}{u}</strong>',
     'Press and hold a row (or its <span style="color:var(--text)">⠿</span> handle) to drag it into a new order, and use the switches to show or hide each section. Tap <strong style="color:var(--accent)">Done</strong> up top when you\'re finished.':'行（または <span style="color:var(--text)">⠿</span> ハンドル）を長押しするとドラッグして並べ替えでき、スイッチで各セクションの表示／非表示を切り替えられます。終わったら上部の <strong style="color:var(--accent)">完了</strong> をタップしてください。',
+    // ── push ──
+    'Background push':'バックグラウンド通知','Turn on background push':'バックグラウンド通知をオンにする',
+    'Turn off background push':'バックグラウンド通知をオフにする','Background push turned off':'バックグラウンド通知をオフにしました',
+    'Real notifications that arrive even when Lift Log is closed — a new version, a monthly goal nudge, or a workout you left unsaved.':'Lift Log を閉じていても届く本物の通知です — 新バージョン、月次の目標リマインダー、未保存のワークアウトなど。',
+    'This browser cannot do push notifications.':'このブラウザはプッシュ通知に対応していません。',
+    'Open Lift Log from your home screen icon, not from the browser — iOS only allows push there.':'ブラウザではなくホーム画面のアイコンから Lift Log を開いてください — iOSではその場合のみプッシュが使えます。',
+    'Push is not supported in this browser':'このブラウザはプッシュに対応していません',
+    'Add Lift Log to your home screen first':'先に Lift Log をホーム画面に追加してください',
+    'Notifications were not allowed':'通知が許可されませんでした','Could not turn on push':'プッシュを有効にできませんでした',
+    'This device is registered for push.':'この端末はプッシュに登録済みです。',
+    'Almost there — one paste left, see below.':'あと少し — 下の貼り付けが1回だけ必要です。',
+    'Step 1 — copy this device key':'ステップ1 — この端末キーをコピー','Copy':'コピー',
+    'Step 2 — paste it into GitHub':'ステップ2 — GitHubに貼り付け',
+    'Open your repo → Settings → Secrets and variables → Actions → New repository secret. Name it PUSH_SUBSCRIPTION and paste the key as the value.':'リポジトリ → Settings → Secrets and variables → Actions → New repository secret を開き、名前を PUSH_SUBSCRIPTION にして、このキーを値として貼り付けてください。',
+    'Open GitHub secrets':'GitHubのSecretsを開く',"I've pasted it":'貼り付けました',
+    'Copied — now paste it into GitHub':'コピーしました — GitHubに貼り付けてください','Push is set up 🔔':'プッシュの設定が完了しました 🔔',
+    'Push key changed — re-paste it in Settings':'プッシュキーが変わりました — 設定から貼り直してください',
+    'Notifications arrive even when Lift Log is closed.':'Lift Log を閉じていても通知が届きます。',
+    'Set this up once and notifications arrive even when the app is closed.':'一度設定すれば、アプリを閉じていても通知が届きます。',
+    'Real background push — notifications arrive with the app closed':'本物のバックグラウンド通知 — アプリを閉じていても届きます',
+    'Update, monthly goal and unsaved-workout alerts now work in the background':'アップデート・月次目標・未保存ワークアウトの通知がバックグラウンドで動作',
+    'Set it up once under Settings → Background push':'設定 → バックグラウンド通知 から一度設定してください',
     // ── updates ──
     '🔔 Update notifications':'🔔 アップデート通知',
     'Put a badge on the Lift Log icon when a new version lands. Needs notifications turned on below.':'新しいバージョンが公開されたら、Lift Logのアイコンにバッジを表示します。下の通知をオンにする必要があります。',
@@ -1573,10 +1595,15 @@ function allExerciseNames() {
 // phone silently. This surfaces it: a home-screen badge, a local notification
 // and a "what's new" banner, so an update is never invisible.
 // ═══════════════════════════════════════════════════════
-const APP_VERSION = 69;
+const APP_VERSION = 70;
 
 // Release notes, newest first. Keys are version numbers.
 const WHATS_NEW = {
+  70: [
+    'Real background push — notifications arrive with the app closed',
+    'Update, monthly goal and unsaved-workout alerts now work in the background',
+    'Set it up once under Settings → Background push'
+  ],
   69: [
     'One rest button showing its own length — hold it to change',
     'Rest length now updates everywhere the moment you change it',
@@ -1592,6 +1619,167 @@ const WHATS_NEW = {
     'Rename, re-tag, fix or delete any exercise from the Exercises tab'
   ]
 };
+
+// ── Background push ──────────────────────────────────────
+// Real push, delivered by Apple/Google's push service even with the app closed.
+// iOS requires: installed to the home screen, and permission asked from a tap.
+const VAPID_PUBLIC = 'BJlgTaTpwjfkHTV6KLOA-53_NYLOKTMoAJ1Jo62Kc4sPZgEPUabV8QI8S2IyLj28bPhVQ1DPGAvUB2oggD61NeE';
+
+function b64ToUint8(base64) {
+  const pad = '='.repeat((4 - base64.length % 4) % 4);
+  const raw = atob((base64 + pad).replace(/-/g, '+').replace(/_/g, '/'));
+  return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
+}
+
+// Is this context even capable of push? (Safari tab ≠ installed PWA on iOS.)
+function pushSupported() {
+  return !!(window.PushManager && navigator.serviceWorker && window.Notification);
+}
+function isStandalone() {
+  return window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+}
+
+function savedPushSub()      { try { return JSON.parse(localStorage.getItem('ll_push_sub') || 'null'); } catch (e) { return null; } }
+function savePushSub(sub)    { localStorage.setItem('ll_push_sub', JSON.stringify(sub)); }
+function pushRegistered()    { return localStorage.getItem('ll_push_sent') === '1'; }
+function markPushRegistered(v){ localStorage.setItem('ll_push_sent', v ? '1' : '0'); }
+
+// Subscribe (or return the existing subscription). Must be called from a tap.
+async function enablePush() {
+  if (!pushSupported()) {
+    showToast(t('Push is not supported in this browser'), false);
+    return null;
+  }
+  if (!isStandalone()) {
+    showToast(t('Add Lift Log to your home screen first'), false);
+    return null;
+  }
+  try {
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') { showToast(t('Notifications were not allowed'), false); return null; }
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: b64ToUint8(VAPID_PUBLIC)
+      });
+    }
+    const json = sub.toJSON();
+    savePushSub(json);
+    markPushRegistered(false);          // not yet pasted into GitHub
+    setAppBadge(0); clearAppBadge();
+    return json;
+  } catch (e) {
+    showToast(t('Could not turn on push') + ': ' + (e && e.message ? e.message : e), false);
+    return null;
+  }
+}
+
+async function disablePush() {
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if (sub) await sub.unsubscribe();
+  } catch (e) {}
+  localStorage.removeItem('ll_push_sub');
+  markPushRegistered(false);
+  showToast(t('Background push turned off'));
+  openPushModal();
+}
+
+// The setup sheet: turn it on, then copy the subscription for the GitHub secret.
+function openPushModal() {
+  const sub  = savedPushSub();
+  const done = pushRegistered();
+  const ok   = pushSupported() && isStandalone();
+  let body;
+  if (!sub) {
+    body = `
+    <div style="font-size:12px;color:var(--muted);line-height:1.7;margin-bottom:16px">
+      ${t('Real notifications that arrive even when Lift Log is closed — a new version, a monthly goal nudge, or a workout you left unsaved.')}
+    </div>
+    ${!ok ? `<div class="card-sm" style="border-color:var(--red);margin-bottom:14px">
+      <div style="font-size:12px;color:var(--red);line-height:1.6">
+        ${!pushSupported() ? t('This browser cannot do push notifications.')
+                           : t('Open Lift Log from your home screen icon, not from the browser — iOS only allows push there.')}
+      </div>
+    </div>` : ''}
+    <button class="btn btn-primary btn-full" ${ok?'':'disabled style="opacity:.5"'} onclick="pushSetupStep1()">🔔 ${t('Turn on background push')}</button>`;
+  } else {
+    const txt = JSON.stringify(sub);
+    body = `
+    <div class="card-sm" style="border-color:${done?'var(--green,#22c55e)':'var(--accent)'};margin-bottom:14px">
+      <div style="font-size:12px;line-height:1.7;color:${done?'var(--muted)':'var(--text)'}">
+        ${done ? `✅ ${t('This device is registered for push.')}`
+                : `⚠️ ${t('Almost there — one paste left, see below.')}`}
+      </div>
+    </div>
+    <div class="label" style="margin-bottom:6px">${t('Step 1 — copy this device key')}</div>
+    <textarea id="push-sub-json" rows="4" readonly
+      style="font-size:10px;font-family:ui-monospace,monospace;margin-bottom:8px;word-break:break-all">${txt.replace(/</g,'&lt;')}</textarea>
+    <button class="btn btn-secondary btn-full btn-sm" style="margin-bottom:16px" onclick="copyPushSub()">📋 ${t('Copy')}</button>
+
+    <div class="label" style="margin-bottom:6px">${t('Step 2 — paste it into GitHub')}</div>
+    <div style="font-size:12px;color:var(--muted);line-height:1.8;margin-bottom:12px">
+      ${t('Open your repo → Settings → Secrets and variables → Actions → New repository secret. Name it PUSH_SUBSCRIPTION and paste the key as the value.')}
+    </div>
+    <button class="btn btn-secondary btn-full btn-sm" style="margin-bottom:8px"
+      onclick="window.open('https://github.com/tomodamnnn0406-hub/liftlog/settings/secrets/actions','_blank')">${t('Open GitHub secrets')}</button>
+    <button class="btn ${done?'btn-secondary':'btn-primary'} btn-full" style="margin-bottom:8px"
+      onclick="markPushRegistered(true);openPushModal();showToast(t('Push is set up 🔔'))">${t("I've pasted it")}</button>
+    <button class="btn btn-danger btn-full btn-sm" onclick="disablePush()">${t('Turn off background push')}</button>`;
+  }
+  document.getElementById('modal-content').innerHTML = `
+  <div style="font-size:18px;font-weight:700;margin-bottom:6px">🔔 ${t('Background push')}</div>
+  ${body}`;
+  openModal();
+}
+async function pushSetupStep1() {
+  const sub = await enablePush();
+  if (sub) openPushModal();
+}
+function copyPushSub() {
+  const el = document.getElementById('push-sub-json');
+  if (!el) return;
+  el.select(); el.setSelectionRange(0, 99999);
+  const done = () => showToast(t('Copied — now paste it into GitHub'));
+  if (navigator.clipboard) navigator.clipboard.writeText(el.value).then(done).catch(() => { document.execCommand('copy'); done(); });
+  else { document.execCommand('copy'); done(); }
+}
+
+// iOS can silently rotate a subscription. Notice it and ask for one re-paste.
+async function verifyPushSub() {
+  if (!pushSupported() || !savedPushSub()) return;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if (!sub) { markPushRegistered(false); localStorage.removeItem('ll_push_sub'); return; }
+    const json = sub.toJSON();
+    if (JSON.stringify(json) !== JSON.stringify(savedPushSub())) {
+      savePushSub(json);
+      markPushRegistered(false);        // endpoint changed → GitHub has a dead one
+      showToast(t('Push key changed — re-paste it in Settings'), false);
+    }
+  } catch (e) {}
+}
+
+// ── Draft mirror for the service worker ──
+// The SW can't read localStorage, so mirror "is there an unsaved workout?" into
+// the Cache API, which both sides can reach.
+async function mirrorDraftState() {
+  try {
+    if (!window.caches) return;
+    const c = await caches.open('ll-state');
+    const draft = loadDraft();
+    const body = JSON.stringify({
+      hasDraft: !!draft,
+      exercises: draft ? (draft.exercises || []).length : 0,
+      at: Date.now()
+    });
+    await c.put('/__ll_draft', new Response(body, { headers: { 'Content-Type': 'application/json' } }));
+  } catch (e) {}
+}
 
 function seenVersion()      { return +localStorage.getItem('ll_seen_version') || 0; }
 function markVersionSeen()  { localStorage.setItem('ll_seen_version', String(APP_VERSION)); }
@@ -1701,7 +1889,8 @@ async function applyUpdate() {
   try {
     if (window.caches) {
       const keys = await caches.keys();
-      await Promise.all(keys.map(k => caches.delete(k)));
+      // 'll-state' is the page↔service-worker channel (draft mirror) — keep it.
+      await Promise.all(keys.filter(k => k !== 'll-state').map(k => caches.delete(k)));
     }
   } catch (e) {}
   location.reload();
@@ -6239,6 +6428,14 @@ function openDataModal() {
     <button class="dash-toggle${updateBadgeOn()?' on':''}" role="switch" aria-checked="${updateBadgeOn()}"
       onclick="setUpdateBadge(!updateBadgeOn());openDataModal()"><span></span></button>
   </div>
+  <button class="btn btn-accent-outline btn-full" style="margin-bottom:8px" onclick="openPushModal()">
+    🔔 ${t('Background push')}${pushRegistered() ? ' ✅' : (savedPushSub() ? ' ⚠️' : '')}
+  </button>
+  <div style="font-size:11px;color:var(--muted);margin-bottom:12px;line-height:1.6">
+    ${pushRegistered()
+      ? t('Notifications arrive even when Lift Log is closed.')
+      : t('Set this up once and notifications arrive even when the app is closed.')}
+  </div>
   <button class="btn btn-secondary btn-full btn-sm" style="margin-bottom:6px" onclick="checkForUpdate();showToast(t('Checking for updates…'))">Check for updates now</button>
   <div style="font-size:11px;color:var(--muted);text-align:center;margin-bottom:20px">${tf('Version {v}', { v: APP_VERSION })}</div>
 
@@ -7994,6 +8191,8 @@ if (__draft) setTimeout(() => showToast(t('Picked up your unsaved workout 💪')
 setupMonthlyNotification(false);   // re-arm push (won't prompt; just schedules if already granted)
 scheduleUnsavedReminder();         // re-arm unsaved-workout reminder if one is pending
 checkVersionChanged();             // did we just come up on a newer build?
+verifyPushSub();                   // did iOS rotate our push subscription?
+mirrorDraftState();                // let the service worker see draft state
 if (__showWhatsNew && currentView === 'dashboard') renderDashboard();
 setTimeout(checkForUpdate, 3000);  // and is an even newer one already deployed?
 setInterval(checkForUpdate, 30 * 60 * 1000);
@@ -8001,7 +8200,7 @@ gdBootstrap();                     // warm Google Drive token + sync if connecte
 
 // Persist the in-progress workout whenever the app is hidden or closed.
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden') saveDraft();   // saveDraft() also re-arms the reminder
+  if (document.visibilityState === 'hidden') { saveDraft(); mirrorDraftState(); }
   else checkForUpdate();                                    // returning to the app → look for a new build
 });
 window.addEventListener('pagehide', saveDraft);
