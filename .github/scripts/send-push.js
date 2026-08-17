@@ -8,8 +8,16 @@ const PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY;
 const RAW_SUBS    = process.env.PUSH_SUBSCRIPTION;
 const KIND        = process.env.KIND || 'test';
 
-if (!PRIVATE_KEY) { console.log('No VAPID_PRIVATE_KEY secret set — nothing to do.'); process.exit(0); }
-if (!RAW_SUBS)    { console.log('No PUSH_SUBSCRIPTION secret set — no devices registered yet.'); process.exit(0); }
+// A missing key is a setup mistake, not a normal state — fail loudly, otherwise
+// the run goes green and it looks like the notification was delivered.
+if (!PRIVATE_KEY) {
+  console.log('::error::VAPID_PRIVATE_KEY secret is not set. Add it under Settings → Secrets and variables → Actions.');
+  process.exit(1);
+}
+if (!RAW_SUBS) {
+  console.log('::error::PUSH_SUBSCRIPTION secret is not set. Copy the device key from Lift Log → Settings → Background push.');
+  process.exit(1);
+}
 
 let subs;
 try {
@@ -58,8 +66,21 @@ const payload = JSON.stringify({ kind: KIND, lang: 'ja', version, ...PAYLOADS[KI
       }
     }
   }
-  console.log(`\n${KIND}: ${sent} sent, ${gone} expired, ${subs.length} total`);
-  // An expired subscription isn't a build failure — it just needs a re-paste.
+  const summary = `${KIND}: ${sent} sent, ${gone} expired, ${subs.length} total`;
+  console.log('\n' + summary);
+  // Surface the result on the run page so "Success" can't be mistaken for "delivered".
+  try {
+    if (process.env.GITHUB_STEP_SUMMARY) {
+      fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,
+        `### Push: ${KIND}\n\n- **Sent:** ${sent}\n- **Expired:** ${gone}\n- **Registered devices:** ${subs.length}\n`);
+    }
+  } catch (e) {}
+  if (sent === 0) {
+    console.log('::error::No notification was delivered. ' +
+      (gone ? 'Every subscription has expired — re-copy the device key from the app.'
+            : 'Check the errors above.'));
+    process.exit(1);
+  }
+  if (gone) console.log('::warning::' + gone + ' subscription(s) expired and should be re-pasted.');
   process.exit(0);
 })();
-
