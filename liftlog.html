@@ -1051,6 +1051,7 @@ const I18N = {
     'Press and hold a row (or its <span style="color:var(--text)">⠿</span> handle) to drag it into a new order, and use the switches to show or hide each section. Tap <strong style="color:var(--accent)">Done</strong> up top when you\'re finished.':'行（または <span style="color:var(--text)">⠿</span> ハンドル）を長押しするとドラッグして並べ替えでき、スイッチで各セクションの表示／非表示を切り替えられます。終わったら上部の <strong style="color:var(--accent)">完了</strong> をタップしてください。',
     'Anyone can now turn on notifications — just one switch in Settings':'誰でも通知をオンにできるようになりました — 設定のスイッチ1つで完了',
     'Notifications no longer need any setup on your side':'通知に面倒な設定は不要になりました',
+    'Fixed notifications silently replacing each other instead of alerting':'通知が前の通知を上書きして鳴らない問題を修正',
     // ── push ──
     'Background push is on 🔔':'バックグラウンド通知をオンにしました 🔔',
     'Could not reach the notification server — try again later':'通知サーバーに接続できませんでした — 後でもう一度お試しください',
@@ -1600,10 +1601,13 @@ function allExerciseNames() {
 // phone silently. This surfaces it: a home-screen badge, a local notification
 // and a "what's new" banner, so an update is never invisible.
 // ═══════════════════════════════════════════════════════
-const APP_VERSION = 71;
+const APP_VERSION = 72;
 
 // Release notes, newest first. Keys are version numbers.
 const WHATS_NEW = {
+  72: [
+    'Fixed notifications silently replacing each other instead of alerting'
+  ],
   71: [
     'Anyone can now turn on notifications — just one switch in Settings',
     'Notifications no longer need any setup on your side'

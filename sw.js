@@ -1,9 +1,9 @@
-// Lift Log — Service Worker v45
+// Lift Log — Service Worker v46
 // Strategy:
 //   liftlog.html  → network-first (always get the latest version)
 //   everything else → cache-first (icons, Chart.js — safe to cache long-term)
 
-const CACHE_NAME = 'liftlog-v71';
+const CACHE_NAME = 'liftlog-v72';
 const STATIC_ASSETS = [
   './manifest.json',
   './icon-192.png',
@@ -115,11 +115,16 @@ self.addEventListener('push', event => {
       view  = 'log';
     }
 
+    // The tag MUST be unique per send. iOS treats a repeated tag as "replace the
+    // existing notification", which it does silently — no banner, no sound — so a
+    // second update/test notification looked like nothing had arrived at all.
+    // `renotify` is supposed to force a re-alert but WebKit doesn't honour it.
+    const tag = 'll-' + (d.kind || 'msg') + '-' + (d.ts || Date.now());
     await self.registration.showNotification(title, {
       body,
       icon: './icon-192.png',
       badge: './icon-192.png',
-      tag: 'll-' + (d.kind || 'msg'),
+      tag,
       renotify: true,
       data: { view, kind: d.kind || '', version: d.version || 0 }
     });
