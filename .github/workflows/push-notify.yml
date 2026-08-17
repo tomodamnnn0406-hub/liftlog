@@ -1,0 +1,57 @@
+name: Push notifications
+
+# Sends real Web Push notifications to registered devices.
+#
+# Required repository secrets (Settings → Secrets and variables → Actions):
+#   VAPID_PRIVATE_KEY  – the private half of the VAPID keypair
+#   PUSH_SUBSCRIPTION  – the device key copied from Lift Log → Settings → Background push
+#                        (one JSON object, or a JSON array of objects for several devices)
+
+on:
+  push:
+    branches: [main]
+    paths: ['version.json']        # a deploy that bumps the version → "update ready"
+  schedule:
+    - cron: '0 0 1 * *'            # 1st of the month, 09:00 JST → goal reminder
+    - cron: '0 12 * * *'           # every day 21:00 JST → unsaved-workout check
+  workflow_dispatch:               # manual "send me a test" button
+    inputs:
+      kind:
+        description: 'Which notification to send'
+        required: true
+        default: 'test'
+        type: choice
+        options: [test, update, goal, unsaved]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - run: npm install web-push@3
+
+      - name: Decide what to send
+        id: what
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "kind=update" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "kind=${{ inputs.kind }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event.schedule }}" = "0 0 1 * *" ]; then
+            echo "kind=goal" >> "$GITHUB_OUTPUT"
+          else
+            echo "kind=unsaved" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Send push
+        env:
+          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+          PUSH_SUBSCRIPTION: ${{ secrets.PUSH_SUBSCRIPTION }}
+          KIND: ${{ steps.what.outputs.kind }}
+        run: node .github/scripts/send-push.js
+
