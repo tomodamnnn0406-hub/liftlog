@@ -283,6 +283,21 @@ input:focus,textarea:focus,select:focus{border-color:var(--accent)}
 }
 .bp-ex-row:last-child{border-bottom:none}
 .bp-ex-row:active{background:var(--card2)}
+.ex-more-btn{flex-shrink:0;margin-left:10px;width:34px;height:34px;border-radius:9px;
+  background:var(--card2);border:1px solid var(--border);color:var(--muted);
+  font-size:18px;font-weight:800;line-height:1;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  -webkit-tap-highlight-color:transparent;touch-action:manipulation}
+.ex-more-btn:active{background:var(--accent-dim);color:var(--accent);border-color:var(--accent)}
+.opt-row{display:flex;align-items:center;gap:12px;width:100%;text-align:left;
+  padding:14px 14px;background:var(--card2);border:1px solid var(--border);border-radius:12px;
+  margin-bottom:8px;cursor:pointer;color:var(--text);font-size:14px;font-weight:600;
+  -webkit-tap-highlight-color:transparent;touch-action:manipulation}
+.opt-row:active{border-color:var(--accent)}
+.opt-row .opt-ico{font-size:17px;width:22px;text-align:center;flex-shrink:0}
+.opt-row .opt-sub{font-size:11px;font-weight:500;color:var(--muted);margin-top:2px}
+.opt-row.danger{color:var(--red)}
+.opt-row.danger:active{border-color:var(--red)}
 .bp-ex-name{font-size:14px;font-weight:600}
 .bp-ex-date{font-size:10px;color:var(--muted);margin-top:2px}
 .bp-ex-pr{text-align:right}
@@ -470,6 +485,13 @@ input:focus,textarea:focus,select:focus{border-color:var(--accent)}
 #rest-bar .rb-skip{color:var(--red);border-color:var(--red)}
 #rest-bar .rb-track{height:5px;background:var(--card2);border-radius:3px;margin-top:9px;overflow:hidden}
 #rest-bar .rb-fill{height:100%;background:linear-gradient(90deg,var(--accent),#fbbf24);border-radius:3px;transition:width .25s linear}
+#rest-bar .rb-presets{display:flex;gap:5px;margin-top:9px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+#rest-bar .rb-presets::-webkit-scrollbar{display:none}
+#rest-bar .rb-preset{flex:1 0 auto;background:var(--card2);border:1px solid var(--border);color:var(--muted);
+  border-radius:7px;padding:5px 9px;font-size:11px;font-weight:700;cursor:pointer;font-variant-numeric:tabular-nums;
+  -webkit-tap-highlight-color:transparent;touch-action:manipulation;white-space:nowrap}
+#rest-bar .rb-preset.on{background:var(--accent-dim);border-color:var(--accent);color:var(--accent)}
+#rest-bar .rb-preset:active{opacity:.7}
 
 /* ── Floating workout-duration pill (visible on all screens while running) ── */
 #wk-timer{
@@ -1006,6 +1028,45 @@ const I18N = {
     'No data yet for this exercise':'この種目のデータはまだありません',
     'Current PR: <strong style="color:var(--text)">{w}{u} × {r}</strong> · est. 1RM <strong style="color:var(--accent)">{e}{u}</strong>':'現在の自己ベスト: <strong style="color:var(--text)">{w}{u} × {r}レップ</strong> · 推定1RM <strong style="color:var(--accent)">{e}{u}</strong>',
     'Press and hold a row (or its <span style="color:var(--text)">⠿</span> handle) to drag it into a new order, and use the switches to show or hide each section. Tap <strong style="color:var(--accent)">Done</strong> up top when you\'re finished.':'行（または <span style="color:var(--text)">⠿</span> ハンドル）を長押しするとドラッグして並べ替えでき、スイッチで各セクションの表示／非表示を切り替えられます。終わったら上部の <strong style="color:var(--accent)">完了</strong> をタップしてください。',
+    // ── rest timer ──
+    'Rest timer':'休憩タイマー','⏱ Rest timer':'⏱ 休憩タイマー','⏱ Rest timer settings':'⏱ 休憩タイマーの設定',
+    'How long to rest between sets.':'セット間の休憩時間です。',
+    'Custom (seconds)':'カスタム（秒）','Auto-start rest timer':'休憩タイマーを自動スタート',
+    'Starts counting the moment a set has weight and reps.':'セットに重量とレップを入力した瞬間にカウントを開始します。',
+    'Beep when rest ends':'休憩終了時に音を鳴らす','Sound plus vibration.':'サウンドとバイブレーション。',
+    'Only applies to this exercise. Everything else uses the default.':'この種目のみに適用されます。他はデフォルトを使用します。',
+    'Rest length saved ⏱':'休憩時間を保存しました ⏱','Enter at least 10 seconds':'10秒以上を入力してください',
+    'Rest for {name}':'{name} の休憩','Rest set to {t}':'休憩を {t} に設定','Skip':'スキップ',
+    'Rest between sets':'セット間の休憩','⏱ Rest':'⏱ 休憩',
+    // ── exercise options (Exercises tab) ──
+    'Save muscles':'筋肉を保存','Rename exercise':'種目名を変更','Updates every past workout too':'過去のワークアウトもすべて更新されます',
+    'Target muscles':'対象の筋肉','Not tagged yet':'未設定','No muscles tagged':'筋肉タグなし',
+    'Correct best set':'ベストセットを修正','Delete exercise':'種目を削除',
+    'Remove from the list, and optionally its history':'一覧から削除（履歴も任意で削除）',
+    'Default weight & reps':'デフォルトの重量とレップ','Uses your last session':'前回のセッションを使用',
+    'Renaming updates this exercise everywhere — past workouts, PRs, templates and goals.':'名前を変更すると、過去のワークアウト・自己ベスト・テンプレート・目標のすべてに反映されます。',
+    'New name':'新しい名前','That name is already used':'その名前はすでに使われています',
+    'Exercise renamed ✏️':'種目名を変更しました ✏️','Muscles updated 🎯':'対象の筋肉を更新しました 🎯',
+    'Fixing a mistyped set removes the fake PR.':'入力ミスのセットを直すと、誤った自己ベストも消えます。',
+    'Delete this set':'このセットを削除','Set updated 🏆':'セットを更新しました 🏆','Set deleted':'セットを削除しました',
+    'Delete this set? Your next-best set becomes the new record.':'このセットを削除しますか？次に良いセットが新しい記録になります。',
+    'No logged sets for this exercise yet':'この種目にはまだ記録がありません',
+    'Enter valid reps':'有効なレップ数を入力してください',
+    'Leave blank to keep using your last session.':'空欄にすると前回のセッションを使用します。',
+    'Clear default':'デフォルトを解除','Default saved ⚖️':'デフォルトを保存しました ⚖️','Default cleared':'デフォルトを解除しました',
+    'Last session':'前回','No history yet':'履歴はまだありません',
+    'Remove from the list only':'一覧からのみ削除',
+    'Past workouts, PRs and charts stay exactly as they are':'過去のワークアウト・自己ベスト・グラフはそのまま残ります',
+    'Delete everything':'すべて削除',
+    'Exercise removed from the list':'種目を一覧から削除しました','Exercise and history deleted':'種目と履歴を削除しました',
+    'Permanently delete {name} and all {n} logged sets? This cannot be undone.':'{name} と記録済みの{n}セットをすべて完全に削除しますか？この操作は取り消せません。',
+    'Already in this workout':'この種目はすでに追加されています',
+    'Edit or delete':'編集・削除','Close':'閉じる',
+    '{n} sets logged':'{n}セット記録済み','{n} sets logged across your history.':'これまでに{n}セット記録されています。',
+    'Also wipes all {n} logged sets — cannot be undone':'記録済みの{n}セットもすべて削除 — 取り消せません',
+    'set {n}':'{n}セット目','This set was logged in {u}, so it is edited in {u}.':'このセットは{u}で記録されたため、{u}で編集します。',
+    'Pre-fills the first set whenever you add {name} to a workout.':'{name} をワークアウトに追加したとき、最初のセットに自動入力されます。',
+    'Default {t} between sets':'セット間はデフォルト {t}','Auto-start':'自動スタート','Beep':'サウンド','on':'オン','off':'オフ',
     // ── misc labels / empty states ──
     'Edit Goal':'目標を編集','Edit Workout':'ワークアウトを編集','Exercises (':'種目（','selected)':'選択中）',
     'Unsaved workout in progress':'未保存のワークアウトがあります','Tap to open the Log screen and finish saving it.':'タップして記録画面を開き、保存を完了しましょう。',
@@ -1095,7 +1156,12 @@ const EX_TOKENS = {
   'Mountain':'マウンテン','Climber':'クライマー','Climbers':'クライマー','Treadmill':'トレッドミル','Running':'ランニング','Run':'ラン','Cycling':'サイクリング','Bike':'バイク','Rowing':'ローイング','Stair':'ステア','Elliptical':'エリプティカル','Jump':'ジャンプ','Skipping':'縄跳び',
   'Kettlebell':'ケトルベル','Swing':'スイング','Swings':'スイング','Burpee':'バーピー','Burpees':'バーピー','Back':'バック','Supported':'サポート','Neutral':'ニュートラル','Vertical':'バーティカル','Horizontal':'ホリゾンタル','Underhand':'アンダーハンド','Overhand':'オーバーハンド',
   'Single':'シングル','Single-arm':'シングルアーム','One-arm':'ワンアーム','One':'ワン','Assisted':'アシステッド','Banded':'バンド','Band':'バンド','Inverted':'インバーテッド','Floor':'フロア','Landmine':'ランドマイン','Spider':'スパイダー','Drag':'ドラッグ','Resistance':'レジスタンス',
-  'Extensions':'エクステンション','Wide-grip':'ワイドグリップ','Close-grip':'クローズグリップ','Cossack':'コサック','Pistol':'ピストル','Box':'ボックス','Sissy':'シシー','Nordic':'ノルディック','Jefferson':'ジェファーソン','Zercher':'ゼルチャー'
+  'Extensions':'エクステンション','Wide-grip':'ワイドグリップ','Close-grip':'クローズグリップ','Cossack':'コサック','Pistol':'ピストル','Box':'ボックス','Sissy':'シシー','Nordic':'ノルディック','Jefferson':'ジェファーソン','Zercher':'ゼルチャー',
+  'Bent':'ベント','Bent-over':'ベントオーバー','Bentover':'ベントオーバー','Chest-supported':'チェストサポート','Cross':'クロス','Body':'ボディ','Weight':'ウェイト','Bodyweight':'自重','Hammer-strength':'ハンマーストレングス','Pec-deck':'ペックデック',
+  'Straight-bar':'ストレートバー','V-bar':'Vバー','Reverse-grip':'リバースグリップ','Hip-thrust':'ヒップスラスト','Belt':'ベルト','Sled':'スレッド','Push-down':'プッシュダウン','Kickback':'キックバック','Kickbacks':'キックバック','Pushup':'腕立て伏せ','Pushups':'腕立て伏せ','Pullup':'懸垂','Pullups':'懸垂','Chinup':'チンアップ',
+  'Trap':'トラップ','Traps':'トラップ','Rotator':'ローテーター','Cuff':'カフ','External':'エクスターナル','Internal':'インターナル','Rotation':'ローテーション','Wood':'ウッド','Chop':'チョップ','Woodchop':'ウッドチョップ','Cable-crossover':'ケーブルクロスオーバー',
+  'Hyperextension':'ハイパーエクステンション','Hyperextensions':'ハイパーエクステンション','Superman':'スーパーマン','Bird':'バード','Dog':'ドッグ','Dead':'デッド','Bug':'バグ','Hollow':'ホロー','Hold':'ホールド','Holds':'ホールド','Carry':'キャリー','Carries':'キャリー','Farmer':'ファーマーズ','Farmers':'ファーマーズ',
+  'Thruster':'スラスター','Thrusters':'スラスター','Clean':'クリーン','Jerk':'ジャーク','Snatch':'スナッチ','Power':'パワー','High':'ハイ','Low':'ロー','Mid':'ミッド','Half':'ハーフ','Full':'フル','Wide-Grip':'ワイドグリップ','Behind':'ビハインド','Neck':'ネック','Chain':'チェーン','Paused':'ポーズ','Pause':'ポーズ','Tempo':'テンポ','Explosive':'エクスプローシブ','Slow':'スロー','Eccentric':'エキセントリック','Negative':'ネガティブ','Drop':'ドロップ','Set':'セット','Superset':'スーパーセット','Giant':'ジャイアント','Rest':'レスト'
 };
 function exTranslate(name){
   const s = String(name).trim();
@@ -1118,7 +1184,7 @@ function tkeyAtom(key){
   for(const [re, fn] of I18N_PATTERNS){ const m = key.match(re); if(m) return fn(m); }
   // emoji- or symbol-prefixed label e.g. "🎽 Chest", "▶ Take the tour", "📅 5 days left"
   const mm = key.match(/^(\S+)\s+(.+)$/);
-  if(mm && !/[A-Za-z]/.test(mm[1])){ const sub = tkey(mm[2]); if(sub !== null) return mm[1] + ' ' + sub; }
+  if(mm && !/[A-Za-z0-9]/.test(mm[1])){ const sub = tkey(mm[2]); if(sub !== null) return mm[1] + ' ' + sub; }
   // custom exercise names: combinations of known exercise words
   if(/^[A-Za-z][A-Za-z'’()\/ -]*$/.test(key)){ const ex = exTranslate(key); if(ex !== null) return ex; }
   return null;
@@ -1440,6 +1506,72 @@ function allExerciseNames() {
   const names = new Set(DB.exercises);
   for(const w of DB.workouts) for(const e of w.exercises) names.add(e.name);
   return [...names].sort();
+}
+
+// ═══════════════════════════════════════════════════════
+// BILINGUAL EXERCISE SEARCH
+// Every exercise is stored under its English name, but the UI may show the
+// Japanese one. These helpers let a search box match either language — and
+// tolerate hiragana input, half-width katakana, long-vowel marks and spacing.
+// ═══════════════════════════════════════════════════════
+const _KANA_HALF = 'ｶﾞｷﾞｸﾞｹﾞｺﾞｻﾞｼﾞｽﾞｾﾞｿﾞﾀﾞﾁﾞﾂﾞﾃﾞﾄﾞﾊﾞﾋﾞﾌﾞﾍﾞﾎﾞﾊﾟﾋﾟﾌﾟﾍﾟﾎﾟｳﾞ';
+const _KANA_FULL = 'ガギグゲゴザジズゼゾダヂヅデドバビブベボパピプペポヴ';
+const _KANA_S_H  = 'ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓﾔﾕﾖﾗﾘﾙﾚﾛﾜｦﾝｧｨｩｪｫｯｬｭｮｰ';
+const _KANA_S_F  = 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲンァィゥェォッャュョー';
+
+// Normalise a string for fuzzy matching in either language.
+function searchNorm(s) {
+  let x = String(s || '');
+  // full-width ASCII → half-width
+  x = x.replace(/[！-～]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
+  // half-width katakana (with dakuten) → full-width
+  for (let i = 0; i < _KANA_HALF.length; i += 2) {
+    x = x.split(_KANA_HALF.substr(i, 2)).join(_KANA_FULL[i / 2]);
+  }
+  x = x.replace(/[ｦ-ﾝ]/g, c => {
+    const i = _KANA_S_H.indexOf(c); return i >= 0 ? _KANA_S_F[i] : c;
+  });
+  // hiragana → katakana, so べんちぷれす matches ベンチプレス
+  x = x.replace(/[ぁ-ゖ]/g, c => String.fromCharCode(c.charCodeAt(0) + 0x60));
+  // drop long-vowel marks, middots, punctuation and all whitespace
+  x = x.replace(/[ー―‐\-・･·　\s'’"“”()（）\/･.,]/g, '');
+  return x.toLowerCase();
+}
+
+// Japanese name for an exercise (or null when it has no translation).
+function exJa(name) { try { return tkey(name); } catch (e) { return null; } }
+
+// Name to SHOW for an exercise, honouring the current language.
+function exDisp(name) {
+  if (DB.lang !== 'ja') return name;
+  return exJa(name) || name;
+}
+
+// Does this exercise match the typed query, in English or Japanese?
+function exMatch(name, q) {
+  const nq = searchNorm(q);
+  if (!nq) return true;
+  if (searchNorm(name).includes(nq)) return true;
+  const ja = exJa(name);
+  return !!(ja && searchNorm(ja).includes(nq));
+}
+
+// Sort exercise names by how they're displayed (so the JA list reads properly).
+function exSortDisplay(list) {
+  const coll = DB.lang === 'ja' ? new Intl.Collator('ja') : new Intl.Collator('en');
+  return [...list].sort((a, b) => coll.compare(exDisp(a), exDisp(b)));
+}
+
+// Resolve typed text (either language) to an EXISTING exercise name, else null.
+// Prevents "ベンチプレス" being created as a duplicate of "Bench Press".
+function resolveExerciseName(typed, pool) {
+  const nq = searchNorm(typed);
+  if (!nq) return null;
+  const all = pool || allExerciseNames();
+  let hit = all.find(e => searchNorm(e) === nq);
+  if (hit) return hit;
+  hit = all.find(e => { const ja = exJa(e); return ja && searchNorm(ja) === nq; });
+  return hit || null;
 }
 
 // ═══════════════════════════════════════════════════════
@@ -2487,6 +2619,12 @@ function lastSetsFor(exName) {
 }
 // Build a fresh exercise entry with placeholder sets from history
 function exerciseWithPlaceholders(name) {
+  // An explicit default (set in the Exercises tab) wins over history.
+  const def = (typeof exDefaultFor === 'function') ? exDefaultFor(name) : null;
+  if (def && (def.weight || def.reps)) {
+    const w = def.weight ? Math.round(dispW(+def.weight, def.unit || 'kg') * 10) / 10 : '';
+    return { name, sets: [{ weight:'', reps:'', phW:w, phR:def.reps || '' }] };
+  }
   const last = lastSetsFor(name);
   const sets = last
     ? last.map(p => ({ weight:'', reps:'', phW:p.phW, phR:p.phR }))
@@ -2529,17 +2667,17 @@ function saveCurrentAsTemplate() {
   const name = currentLog.name;
   const exNames = currentLog.exercises.map(e => e.name);
   if (!name || !exNames.length) return;
-  const t = DB.templates;
-  t[name] = exNames;
-  DB.saveTemplates(t);
+  const tpls = DB.templates;                 // NOTE: never name this `t` — it shadows the translator
+  tpls[name] = exNames;
+  DB.saveTemplates(tpls);
   showToast(tf('Saved as your {name} template 📋', {name:t(name)}));
   renderLog();
 }
 function deleteTemplate(name) {
   if (!confirm(tf('Delete the "{name}" template?', {name:t(name)}))) return;
-  const t = DB.templates;
-  delete t[name];
-  DB.saveTemplates(t);
+  const tpls = DB.templates;
+  delete tpls[name];
+  DB.saveTemplates(tpls);
   openDataModal();
   showToast(t('Template deleted'));
 }
@@ -2618,8 +2756,28 @@ let restEndTs     = 0;
 let restTotal     = 0;     // planned length (s) — drives the progress bar
 let restRemaining = 0;
 let restAudioCtx  = null;
+let restExercise  = '';    // which exercise this rest belongs to (label only)
+let restPaused    = false;
 
-function restDefault() { return Math.max(15, Math.min(600, +localStorage.getItem('ll_rest_default') || 90)); }
+const REST_PRESETS = [45, 60, 90, 120, 180, 300];
+
+// ── Preferences ──────────────────────────────────────────
+function restDefault() { return Math.max(10, Math.min(900, +localStorage.getItem('ll_rest_default') || 90)); }
+function setRestDefault(sec) { localStorage.setItem('ll_rest_default', String(Math.max(10, Math.min(900, sec)))); }
+function restAutoOn()  { return localStorage.getItem('ll_rest_auto') !== '0'; }   // default ON
+function setRestAuto(on) { localStorage.setItem('ll_rest_auto', on ? '1' : '0'); }
+function restSoundOn() { return localStorage.getItem('ll_rest_sound') !== '0'; }  // default ON
+function setRestSound(on) { localStorage.setItem('ll_rest_sound', on ? '1' : '0'); }
+
+// Per-exercise rest lengths: { 'Squat': 180, 'Bicep Curl': 60 }
+function restPerEx()      { try { return JSON.parse(localStorage.getItem('ll_rest_per_ex') || '{}'); } catch (e) { return {}; } }
+function saveRestPerEx(m) { localStorage.setItem('ll_rest_per_ex', JSON.stringify(m)); }
+function restFor(name)    { const m = restPerEx(); return (name && m[name]) ? m[name] : restDefault(); }
+function setRestFor(name, sec) {
+  sec = Math.max(10, Math.min(900, sec));
+  if (name) { const m = restPerEx(); m[name] = sec; saveRestPerEx(m); }
+  else setRestDefault(sec);
+}
 
 // Unlock audio during the user's tap so the end-beep can play later (esp. iOS).
 function ensureRestAudio() {
@@ -2630,18 +2788,28 @@ function ensureRestAudio() {
   } catch (e) {}
 }
 
-function startRest(sec) {
+function startRest(sec, exName) {
   ensureRestAudio();
-  sec = sec || restDefault();
+  restExercise  = exName || '';
+  sec = sec || restFor(restExercise);
   restTotal     = sec;
   restRemaining = sec;
   restEndTs     = Date.now() + sec * 1000;
+  restPaused    = false;
   clearInterval(restInterval);
   restInterval = setInterval(tickRest, 250);
   renderRestBar();
 }
 
+// Auto-start after a set is completed — respects the per-exercise length.
+function autoStartRest(exName) {
+  if (!restAutoOn()) return;
+  if (editingWorkout) return;              // only while actively logging
+  startRest(restFor(exName), exName);
+}
+
 function tickRest() {
+  if (restPaused) return;
   restRemaining = Math.max(0, Math.round((restEndTs - Date.now()) / 1000));
   if (restRemaining <= 0) { finishRest(); return; }
   paintRest();
@@ -2652,20 +2820,34 @@ function addRestTime(delta) {
   restRemaining = Math.max(1, restRemaining + delta);
   restTotal     = Math.max(restTotal + delta, restRemaining);
   restEndTs     = Date.now() + restRemaining * 1000;
-  // Remember the adjusted length as the new default for next time.
-  localStorage.setItem('ll_rest_default', String(Math.max(15, Math.min(600, restDefault() + delta))));
+  // Remember the adjusted length for this exercise next time.
+  setRestFor(restExercise, restFor(restExercise) + delta);
+  renderRestBar();
+}
+
+// Tap a preset while resting → restart at that length AND remember it.
+function setRestPreset(sec) {
+  setRestFor(restExercise, sec);
+  startRest(sec, restExercise);
+  showToast(tf('Rest set to {t}', { t: fmtDuration(sec) }));
+}
+
+function toggleRestPause() {
+  if (restRemaining <= 0 && !restInterval) return;
+  restPaused = !restPaused;
+  if (!restPaused) restEndTs = Date.now() + restRemaining * 1000;
   renderRestBar();
 }
 
 function skipRest() {
   clearInterval(restInterval); restInterval = null;
-  restRemaining = 0;
+  restRemaining = 0; restPaused = false;
   renderRestBar();
 }
 
 function finishRest() {
   clearInterval(restInterval); restInterval = null;
-  restRemaining = 0;
+  restRemaining = 0; restPaused = false;
   restAlert();
   renderRestBar();
 }
@@ -2673,28 +2855,30 @@ function finishRest() {
 function restAlert() {
   try { if (navigator.vibrate) navigator.vibrate([180, 90, 180]); } catch (e) {}
   // Two short rising beeps via Web Audio.
-  try {
-    if (restAudioCtx) {
-      const beep = (freq, when) => {
-        const o = restAudioCtx.createOscillator(), g = restAudioCtx.createGain();
-        o.connect(g); g.connect(restAudioCtx.destination);
-        o.type = 'sine'; o.frequency.value = freq;
-        const t = restAudioCtx.currentTime + when;
-        g.gain.setValueAtTime(0.0001, t);
-        g.gain.exponentialRampToValueAtTime(0.3, t + 0.02);
-        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.45);
-        o.start(t); o.stop(t + 0.45);
-      };
-      beep(880, 0); beep(1175, 0.22);
-    }
-  } catch (e) {}
+  if (restSoundOn()) {
+    try {
+      if (restAudioCtx) {
+        const beep = (freq, when) => {
+          const o = restAudioCtx.createOscillator(), g = restAudioCtx.createGain();
+          o.connect(g); g.connect(restAudioCtx.destination);
+          o.type = 'sine'; o.frequency.value = freq;
+          const t = restAudioCtx.currentTime + when;
+          g.gain.setValueAtTime(0.0001, t);
+          g.gain.exponentialRampToValueAtTime(0.3, t + 0.02);
+          g.gain.exponentialRampToValueAtTime(0.0001, t + 0.45);
+          o.start(t); o.stop(t + 0.45);
+        };
+        beep(880, 0); beep(1175, 0.22); beep(1568, 0.44);
+      }
+    } catch (e) {}
+  }
   showToast(t('Rest done — next set 💪'));
 }
 
 function paintRest() {
-  const t = document.getElementById('rb-time');
-  const f = document.getElementById('rb-fill');
-  if (t) t.textContent = fmtDuration(restRemaining);
+  const el = document.getElementById('rb-time');
+  const f  = document.getElementById('rb-fill');
+  if (el) el.textContent = fmtDuration(restRemaining);
   if (f) f.style.width = (restTotal ? Math.max(0, Math.min(100, restRemaining / restTotal * 100)) : 0) + '%';
 }
 
@@ -2703,20 +2887,84 @@ function renderRestBar() {
   if (!bar) return;
   if (restRemaining <= 0 && !restInterval) { bar.classList.remove('show'); return; }
   const pct = restTotal ? Math.max(0, Math.min(100, restRemaining / restTotal * 100)) : 0;
+  const who = restExercise ? exDisp(restExercise) : '';
+  const presets = REST_PRESETS.map(sec =>
+    `<button class="rb-preset${restTotal===sec?' on':''}" onclick="setRestPreset(${sec})">${fmtDuration(sec)}</button>`).join('');
   bar.innerHTML = `
     <div class="rb-top">
-      <div>
-        <div class="rb-label">⏱ Rest</div>
+      <div style="min-width:0">
+        <div class="rb-label">⏱ ${t('Rest')}${who ? ` · <span style="color:var(--accent);text-transform:none;letter-spacing:0">${who}</span>` : ''}</div>
         <div class="rb-time" id="rb-time">${fmtDuration(restRemaining)}</div>
       </div>
-      <div style="display:flex;gap:6px">
+      <div style="display:flex;gap:6px;flex-shrink:0">
         <button class="rb-btn" onclick="addRestTime(-15)">−15</button>
         <button class="rb-btn" onclick="addRestTime(15)">+15</button>
+        <button class="rb-btn" onclick="toggleRestPause()">${restPaused ? '▶' : '⏸'}</button>
         <button class="rb-btn rb-skip" onclick="skipRest()">Skip</button>
       </div>
     </div>
-    <div class="rb-track"><div class="rb-fill" id="rb-fill" style="width:${pct}%"></div></div>`;
+    <div class="rb-track"><div class="rb-fill" id="rb-fill" style="width:${pct}%"></div></div>
+    <div class="rb-presets">${presets}</div>`;
   bar.classList.add('show');
+  if (typeof applyLangSafe === 'function') applyLangSafe();
+}
+
+// Background tabs throttle setInterval — resync the moment we come back.
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && restInterval && !restPaused) tickRest();
+});
+
+// Rest-length picker (used from Settings and the per-exercise sheet)
+function openRestSettingsModal(exName) {
+  exName = exName || '';
+  const cur   = exName ? restFor(exName) : restDefault();
+  const title = exName ? tf('Rest for {name}', { name: exDisp(exName) }) : t('Rest timer');
+  const chips = REST_PRESETS.map(sec =>
+    `<span class="ex-chip" onclick="pickRestLen(${sec},'${esc(exName)}')"
+       style="${cur===sec?'background:var(--accent);color:#fff;border-color:var(--accent)':''}">${fmtDuration(sec)}</span>`).join('');
+  document.getElementById('modal-content').innerHTML = `
+  <div style="font-size:18px;font-weight:700;margin-bottom:6px">${title}</div>
+  <div style="font-size:12px;color:var(--muted);margin-bottom:14px">How long to rest between sets.</div>
+  <div id="rest-chips" style="margin-bottom:14px">${chips}</div>
+  <div class="input-group">
+    <div class="label">Custom (seconds)</div>
+    <input type="number" inputmode="numeric" id="rest-custom" min="10" max="900" step="5" value="${cur}">
+  </div>
+  ${exName ? `<div style="font-size:11px;color:var(--muted);margin:-4px 0 12px">Only applies to this exercise. Everything else uses the default.</div>` : `
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 0;border-top:1px solid var(--border)">
+    <div style="min-width:0">
+      <div style="font-size:13px;font-weight:700">Auto-start rest timer</div>
+      <div style="font-size:11px;color:var(--muted)">Starts counting the moment a set has weight and reps.</div>
+    </div>
+    <button class="dash-toggle${restAutoOn()?' on':''}" role="switch" aria-checked="${restAutoOn()}" onclick="setRestAuto(!restAutoOn());openRestSettingsModal()"><span></span></button>
+  </div>
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 0;border-top:1px solid var(--border)">
+    <div style="min-width:0">
+      <div style="font-size:13px;font-weight:700">Beep when rest ends</div>
+      <div style="font-size:11px;color:var(--muted)">Sound plus vibration.</div>
+    </div>
+    <button class="dash-toggle${restSoundOn()?' on':''}" role="switch" aria-checked="${restSoundOn()}" onclick="setRestSound(!restSoundOn());openRestSettingsModal()"><span></span></button>
+  </div>`}
+  <button class="btn btn-primary btn-full" style="margin-top:14px" onclick="saveRestLen('${esc(exName)}')">Save</button>`;
+  openModal();
+}
+function pickRestLen(sec, exName) {
+  const inp = document.getElementById('rest-custom');
+  if (inp) inp.value = sec;
+  document.querySelectorAll('#rest-chips .ex-chip').forEach((el, i) => {
+    const on = REST_PRESETS[i] === sec;
+    el.style.background  = on ? 'var(--accent)' : '';
+    el.style.color       = on ? '#fff' : '';
+    el.style.borderColor = on ? 'var(--accent)' : '';
+  });
+}
+function saveRestLen(exName) {
+  const v = +(document.getElementById('rest-custom')?.value || 0);
+  if (!v || v < 10) { showToast(t('Enter at least 10 seconds'), false); return; }
+  setRestFor(exName || '', v);
+  ensureRestAudio();                     // unlock audio on this user gesture
+  closeModal();
+  showToast(t('Rest length saved ⏱'));
 }
 
 function renderExercisesHTML() {
@@ -2789,7 +3037,8 @@ function renderExercisesHTML() {
     }).join('')}
     <div style="display:flex;gap:8px;margin-top:8px">
       <button class="btn btn-secondary btn-sm" style="flex:1" onclick="addSet(${ei})">+ Add Set</button>
-      <button class="btn btn-secondary btn-sm" onclick="startRest()" title="Start rest timer">⏱ Rest</button>
+      <button class="btn btn-secondary btn-sm" onclick="startRest(0,'${esc(ex.name)}')" title="Start rest timer">⏱ Rest</button>
+      <button class="btn btn-secondary btn-sm" onclick="openRestSettingsModal('${esc(ex.name)}')" title="Rest length" style="padding-left:10px;padding-right:10px">${fmtDuration(restFor(ex.name))}</button>
     </div>
     <input type="text" class="ex-note-input" placeholder="Note for this exercise… (grip, tempo, how it felt)"
       value="${(ex.note||'').replace(/"/g,'&quot;')}"
@@ -2832,9 +3081,20 @@ function initLogExDrag() {
 }
 
 function updateSet(ei, si, field, val) {
-  currentLog.exercises[ei].sets[si][field] = val;
+  const set = currentLog.exercises[ei].sets[si];
+  const wasComplete = !!(set.weight && set.reps);
+  set[field] = val;
   saveDraft();
+  // Auto-start the rest countdown the moment a set has both weight and reps.
+  // Debounced so it fires once the user stops typing, not on every keystroke.
+  const nowComplete = !!(set.weight && set.reps);
+  if (!wasComplete && nowComplete && !set.failed) {
+    clearTimeout(__autoRestT);
+    const name = currentLog.exercises[ei]?.name || '';
+    __autoRestT = setTimeout(() => autoStartRest(name), 700);
+  }
 }
+let __autoRestT = null;
 function refreshRM(ei, si) {
   const set = currentLog.exercises[ei].sets[si];
   const el  = document.getElementById(`rm-${ei}-${si}`);
@@ -2902,7 +3162,7 @@ function toggleFailed(ei, si) {
 function openAddExModal() {
   const active = getActiveLog();
   const used   = new Set(active.exercises.map(e=>e.name));
-  const avail  = allExerciseNames().filter(e=>!used.has(e));
+  const avail  = exSortDisplay(allExerciseNames().filter(e=>!used.has(e)));
   document.getElementById('modal-content').innerHTML = `
   <div style="font-size:18px;font-weight:700;margin-bottom:14px">Add Exercise</div>
   <div class="input-wrapper" style="margin-bottom:8px;position:relative">
@@ -2914,20 +3174,20 @@ function openAddExModal() {
   </div>
   <button class="btn btn-primary btn-full" style="margin-bottom:14px" onclick="pickExerciseName(document.getElementById('ex-search').value.trim())">Next: Pick Muscle →</button>
   <div class="label">Common Exercises</div>
-  <div>${avail.map(e=>`<span class="ex-chip" onclick="pickExerciseName('${esc(e)}')">${e}</span>`).join('')}</div>`;
+  <div>${avail.map(e=>`<span class="ex-chip" onclick="pickExerciseName('${esc(e)}')">${exDisp(e)}</span>`).join('')}</div>`;
   openModal();
   setTimeout(()=>document.getElementById('ex-search')?.focus(), 100);
 }
 
 // Multi-select muscle picker (shared by log flow and Exercises-tab flow)
 let pickedMuscles = new Set();
-function renderMusclePicker(name, backFn, confirmFn) {
+function renderMusclePicker(name, backFn, confirmFn, confirmLabel) {
   let html = `
   <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
     <button class="btn btn-secondary btn-sm" onclick="${backFn}" style="padding:8px 10px">← Back</button>
     <div style="font-size:18px;font-weight:700">Target Muscles</div>
   </div>
-  <div style="font-size:14px;color:var(--accent);font-weight:600;margin-bottom:4px">${name}</div>
+  <div style="font-size:14px;color:var(--accent);font-weight:600;margin-bottom:4px">${exDisp(name)}</div>
   <div style="font-size:12px;color:var(--muted);margin-bottom:14px">Tap all the muscles this exercise hits — e.g. Deadlift → Lats + Hamstrings + Glutes</div>`;
 
   for (const [bp, data] of Object.entries(MUSCLE_GROUPS)) {
@@ -2942,7 +3202,7 @@ function renderMusclePicker(name, backFn, confirmFn) {
   }
   html += `
   <button class="btn btn-primary btn-full" style="margin-top:4px" onclick="${confirmFn}">
-    Add Exercise<span id="mcount">${pickedMuscles.size?` (${pickedMuscles.size} muscle${pickedMuscles.size>1?'s':''})`:''}</span>
+    ${confirmLabel || 'Add Exercise'}<span id="mcount">${pickedMuscles.size?` (${pickedMuscles.size} muscle${pickedMuscles.size>1?'s':''})`:''}</span>
   </button>
   <button class="btn btn-secondary btn-full" style="margin-top:8px" onclick="pickedMuscles.clear();${confirmFn}">Skip — don't tag muscles</button>`;
   document.getElementById('modal-content').innerHTML = html;
@@ -2964,6 +3224,11 @@ function toggleMuscleChip(m) {
 function pickExerciseName(name) {
   name = name.trim();
   if (!name) { showToast(t('Enter an exercise name'), false); return; }
+  name = resolveExerciseName(name) || name;   // typed in JA → use the stored name
+  // Already in this workout? Just jump to it instead of adding a duplicate.
+  const active = getActiveLog();
+  const dupe = active.exercises.findIndex(e => e.name === name);
+  if (dupe >= 0) { closeModal(); showToast(t('Already in this workout'), false); return; }
   pickedMuscles = new Set(getMusclesForExercise(name));
   renderMusclePicker(name, 'openAddExModal()', `confirmAddExercise('${esc(name)}')`);
 }
@@ -2976,10 +3241,12 @@ function filterExDropdown(q) {
   if(!q.trim()) { dd.style.display='none'; return }
   const active = getActiveLog();
   const used   = new Set(active.exercises.map(e=>e.name));
-  const matches = allExerciseNames().filter(e=>!used.has(e)&&e.toLowerCase().includes(q.toLowerCase()));
-  const isNew  = q.trim() && !allExerciseNames().map(e=>e.toLowerCase()).includes(q.trim().toLowerCase());
+  const all     = allExerciseNames();
+  const matches = exSortDisplay(all.filter(e=>!used.has(e)&&exMatch(e,q)));
+  // Only offer to create when the typed text doesn't already exist in EITHER language
+  const isNew  = q.trim() && !resolveExerciseName(q, all);
   const items  = [
-    ...matches.map(e=>`<div class="ac-item" onclick="pickExerciseName('${esc(e)}')">${e}</div>`),
+    ...matches.map(e=>`<div class="ac-item" onclick="pickExerciseName('${esc(e)}')">${exDisp(e)}</div>`),
     isNew ? `<div class="ac-item" onclick="pickExerciseName('${esc(q.trim())}')" style="color:var(--accent)">+ Add "${q.trim()}"</div>` : ''
   ].join('');
   dd.innerHTML = items || `<div class="ac-item" style="color:var(--muted)">No matches</div>`;
@@ -3696,7 +3963,7 @@ function renderPRs() {
         bodyHtml += `
         <div class="bp-ex-row" onclick="selectPRExercise('${esc(name)}')"
           style="${sel?'background:var(--accent-dim);border-left:3px solid var(--accent);':''}">
-          <div>
+          <div style="min-width:0;flex:1">
             <div class="bp-ex-name" style="${sel?'color:var(--accent)':''}">${name}</div>
             <div class="bp-ex-date">${hasData ? fmtDate(pr.date) : 'No data yet'}</div>
           </div>
@@ -3707,6 +3974,8 @@ function renderPRs() {
             <div class="bp-ex-1rm">est. 1RM ${pr.best1RM}${unit}</div>
           </div>`
           : `<div class="bp-ex-pr"><div style="font-size:12px;color:var(--muted)">— ${unit}</div><div class="bp-ex-reps" style="color:var(--accent)">Log to set</div></div>`}
+          <button class="ex-more-btn" title="Edit or delete"
+            onclick="event.stopPropagation();openExerciseOptions('${esc(name)}')">⋯</button>
         </div>`;
       }
     }
@@ -3791,7 +4060,7 @@ function selectPRExercise(name) {
 // ── Add an exercise straight from the Exercises tab (no workout needed) ──
 function openExercisesAddModal() {
   const known = new Set(allExerciseNames());
-  const avail = DEFAULT_EXERCISES.filter(e => !known.has(e));
+  const avail = exSortDisplay(DEFAULT_EXERCISES.filter(e => !known.has(e)));
   document.getElementById('modal-content').innerHTML = `
   <div style="font-size:18px;font-weight:700;margin-bottom:14px">Add Exercise</div>
   <div class="input-wrapper" style="margin-bottom:8px;position:relative">
@@ -3803,7 +4072,7 @@ function openExercisesAddModal() {
   </div>
   <button class="btn btn-primary btn-full" style="margin-bottom:14px" onclick="pickExerciseAddName(document.getElementById('exadd-search').value.trim())">Next: Pick Muscle →</button>
   ${avail.length ? `<div class="label">Common Exercises</div>
-  <div>${avail.map(e=>`<span class="ex-chip" onclick="pickExerciseAddName('${esc(e)}')">${e}</span>`).join('')}</div>` : ''}`;
+  <div>${avail.map(e=>`<span class="ex-chip" onclick="pickExerciseAddName('${esc(e)}')">${exDisp(e)}</span>`).join('')}</div>` : ''}`;
   openModal();
   setTimeout(()=>document.getElementById('exadd-search')?.focus(), 100);
 }
@@ -3812,11 +4081,10 @@ function filterExAddDropdown(q) {
   const dd = document.getElementById('exadd-dropdown');
   if(!q.trim()) { dd.style.display='none'; return }
   const all     = allExerciseNames();
-  const lower   = all.map(e=>e.toLowerCase());
-  const matches = all.filter(e=>e.toLowerCase().includes(q.toLowerCase()));
-  const isNew   = q.trim() && !lower.includes(q.trim().toLowerCase());
+  const matches = exSortDisplay(all.filter(e=>exMatch(e,q)));
+  const isNew   = q.trim() && !resolveExerciseName(q, all);
   const items   = [
-    ...matches.map(e=>`<div class="ac-item" onclick="pickExerciseAddName('${esc(e)}')">${e}</div>`),
+    ...matches.map(e=>`<div class="ac-item" onclick="pickExerciseAddName('${esc(e)}')">${exDisp(e)}</div>`),
     isNew ? `<div class="ac-item" onclick="pickExerciseAddName('${esc(q.trim())}')" style="color:var(--accent)">+ Add "${q.trim()}"</div>` : ''
   ].join('');
   dd.innerHTML = items || `<div class="ac-item" style="color:var(--muted)">No matches</div>`;
@@ -3826,6 +4094,7 @@ function filterExAddDropdown(q) {
 function pickExerciseAddName(name) {
   name = name.trim();
   if (!name) { showToast(t('Enter an exercise name'), false); return; }
+  name = resolveExerciseName(name) || name;   // typed in JA → use the stored name
   pickedMuscles = new Set(getMusclesForExercise(name));
   renderMusclePicker(name, 'openExercisesAddModal()', `confirmAddExerciseToLibrary('${esc(name)}')`);
 }
@@ -3835,14 +4104,14 @@ function confirmAddExerciseToLibrary(name) {
 
 // ── Templates section (top of Exercises tab) ─────────────
 function templatesSectionHTML() {
-  const t = DB.templates, keys = Object.keys(t);
+  const tpls = DB.templates, keys = Object.keys(tpls);
   let rows = '';
   for (const k of keys) {
     rows += `
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">
       <div style="min-width:0;flex:1;cursor:pointer" onclick="openTemplateBuilder('${esc(k)}')">
         <div style="font-size:14px;font-weight:700">${k}</div>
-        <div style="font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t[k].join(' · ')}</div>
+        <div style="font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${tpls[k].map(exDisp).join(' · ')}</div>
       </div>
       <button class="btn btn-secondary btn-sm" style="flex-shrink:0;padding:6px 10px;font-size:11px" onclick="openTemplateBuilder('${esc(k)}')">Edit</button>
     </div>`;
@@ -3894,7 +4163,7 @@ function renderTemplateBuilder() {
 
   <div class="label" style="margin-bottom:6px">Exercises (<span id="tpl-count">${tplBuilder.picked.length}</span> selected)</div>
   <div id="tpl-picked" style="margin-bottom:8px">
-    ${tplBuilder.picked.map(n=>`<span class="ex-chip" style="background:var(--accent);color:#fff;border-color:var(--accent)" onclick="tplToggle('${esc(n)}')">✓ ${n}</span>`).join('')}
+    ${tplBuilder.picked.map(n=>`<span class="ex-chip" style="background:var(--accent);color:#fff;border-color:var(--accent)" onclick="tplToggle('${esc(n)}')">✓ ${exDisp(n)}</span>`).join('')}
   </div>
 
   <input type="text" id="tpl-search" placeholder="Search exercises…" value="${tplBuilder.query.replace(/"/g,'&quot;')}"
@@ -3912,15 +4181,15 @@ function renderTemplateBuilder() {
   openModal();
 }
 function tplListHTML() {
-  const q = (tplBuilder.query || '').trim().toLowerCase();
-  const avail = allExerciseNames().filter(n => !tplBuilder.picked.includes(n))
-    .filter(n => !q || n.toLowerCase().includes(q));
+  const q = (tplBuilder.query || '').trim();
+  const avail = exSortDisplay(allExerciseNames().filter(n => !tplBuilder.picked.includes(n))
+    .filter(n => exMatch(n, q)));
   if (!avail.length) {
     return q
       ? `<div style="font-size:12px;color:var(--muted);padding:8px 2px">No match for "${tplBuilder.query}". Add it from the Exercises tab first.</div>`
       : `<div style="font-size:12px;color:var(--muted);padding:8px 2px">All exercises selected</div>`;
   }
-  return avail.map(n=>`<span class="ex-chip" onclick="tplToggle('${esc(n)}')">${n}</span>`).join('');
+  return avail.map(n=>`<span class="ex-chip" onclick="tplToggle('${esc(n)}')">${exDisp(n)}</span>`).join('');
 }
 function tplRefreshList() {
   const el = document.getElementById('tpl-list');
@@ -3931,7 +4200,7 @@ function tplToggle(n) {
   if (i >= 0) tplBuilder.picked.splice(i, 1); else tplBuilder.picked.push(n);
   // Update picked chips, count, and list in place (keeps search focus & keyboard)
   const picked = document.getElementById('tpl-picked');
-  if (picked) picked.innerHTML = tplBuilder.picked.map(x=>`<span class="ex-chip" style="background:var(--accent);color:#fff;border-color:var(--accent)" onclick="tplToggle('${esc(x)}')">✓ ${x}</span>`).join('');
+  if (picked) picked.innerHTML = tplBuilder.picked.map(x=>`<span class="ex-chip" style="background:var(--accent);color:#fff;border-color:var(--accent)" onclick="tplToggle('${esc(x)}')">✓ ${exDisp(x)}</span>`).join('');
   const count = document.getElementById('tpl-count');
   if (count) count.textContent = tplBuilder.picked.length;
   tplRefreshList();
@@ -3940,21 +4209,353 @@ function saveTemplateFromBuilder() {
   const name = (tplBuilder.name || '').trim();
   if (!name) { showToast(t('Pick a session type'), false); return; }
   if (!tplBuilder.picked.length) { showToast(t('Select at least one exercise'), false); return; }
-  const t = DB.templates;
-  t[name] = [...tplBuilder.picked];
-  DB.saveTemplates(t);
+  const tpls = DB.templates;                 // NOTE: never name this `t` — it shadows the translator
+  tpls[name] = [...tplBuilder.picked];
+  DB.saveTemplates(tpls);
   closeModal();
   showToast(tf('{name} template saved 📋', {name:t(name)}));
   if (currentView === 'prs') renderPRs(); else showView('prs');
 }
 function deleteTemplateFromBuilder(name) {
   if (!confirm(tf('Delete the "{name}" template?', {name:t(name)}))) return;
-  const t = DB.templates;
-  delete t[name];
-  DB.saveTemplates(t);
+  const tpls = DB.templates;
+  delete tpls[name];
+  DB.saveTemplates(tpls);
   closeModal();
   renderPRs();
   showToast(t('Template deleted'));
+}
+
+// ═══════════════════════════════════════════════════════
+// EXERCISE OPTIONS — rename / re-tag / correct PR / defaults / delete
+// (opened from the ⋯ button on each row in the Exercises tab)
+// ═══════════════════════════════════════════════════════
+
+// Per-exercise starting weight & reps, used to pre-fill a new set.
+function exDefaults()      { try { return JSON.parse(localStorage.getItem('ll_ex_defaults') || '{}'); } catch (e) { return {}; } }
+function saveExDefaults(m) { localStorage.setItem('ll_ex_defaults', JSON.stringify(m)); }
+function exDefaultFor(name){ return exDefaults()[name] || null; }
+
+// How many logged sets exist for this exercise, across all workouts.
+function exHistoryCount(name) {
+  let n = 0;
+  for (const w of DB.workouts) for (const e of w.exercises) if (e.name === name) n += e.sets.length;
+  return n;
+}
+
+function openExerciseOptions(name) {
+  const pr    = getPRs()[name];
+  const unit  = DB.unit;
+  const ms    = getMusclesForExercise(name);
+  const hist  = exHistoryCount(name);
+  const def   = exDefaultFor(name);
+  const prLine = pr?.bestSet
+    ? `${pr.displayWeight}${unit} × ${pr.bestSet.reps} · ${fmtDate(pr.date)}`
+    : t('No data yet');
+  document.getElementById('modal-content').innerHTML = `
+  <div style="font-size:18px;font-weight:700;margin-bottom:2px">${exDisp(name)}</div>
+  <div style="font-size:12px;color:var(--muted);margin-bottom:16px">
+    ${ms.length ? ms.map(m=>tx(m)).join(' · ') : t('No muscles tagged')} · ${tf('{n} sets logged', {n:hist})}
+  </div>
+
+  <button class="opt-row" onclick="openRenameExercise('${esc(name)}')">
+    <span class="opt-ico">✏️</span>
+    <span style="min-width:0"><span>Rename exercise</span><div class="opt-sub">Updates every past workout too</div></span>
+  </button>
+
+  <button class="opt-row" onclick="openRetagExercise('${esc(name)}')">
+    <span class="opt-ico">🎯</span>
+    <span style="min-width:0"><span>Target muscles</span><div class="opt-sub">${ms.length ? ms.map(m=>tx(m)).join(' · ') : t('Not tagged yet')}</div></span>
+  </button>
+
+  <button class="opt-row" onclick="openEditPRSet('${esc(name)}')">
+    <span class="opt-ico">🏆</span>
+    <span style="min-width:0"><span>Correct best set</span><div class="opt-sub">${prLine}</div></span>
+  </button>
+
+  <button class="opt-row" onclick="openExDefaults('${esc(name)}')">
+    <span class="opt-ico">⚖️</span>
+    <span style="min-width:0"><span>Default weight &amp; reps</span><div class="opt-sub">${def ? `${def.weight}${unit} × ${def.reps}` : t('Uses your last session')}</div></span>
+  </button>
+
+  <button class="opt-row" onclick="openRestSettingsModal('${esc(name)}')">
+    <span class="opt-ico">⏱</span>
+    <span style="min-width:0"><span>Rest between sets</span><div class="opt-sub">${fmtDuration(restFor(name))}</div></span>
+  </button>
+
+  <button class="opt-row danger" onclick="openDeleteExercise('${esc(name)}')">
+    <span class="opt-ico">🗑</span>
+    <span style="min-width:0"><span>Delete exercise</span><div class="opt-sub">Remove from the list, and optionally its history</div></span>
+  </button>
+
+  <button class="btn btn-secondary btn-full" style="margin-top:6px" onclick="closeModal()">Close</button>`;
+  openModal();
+}
+
+// ── Rename (propagates through history, templates, goals, settings) ──
+function openRenameExercise(name) {
+  document.getElementById('modal-content').innerHTML = `
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+    <button class="btn btn-secondary btn-sm" onclick="openExerciseOptions('${esc(name)}')" style="padding:8px 10px">← Back</button>
+    <div style="font-size:18px;font-weight:700">Rename exercise</div>
+  </div>
+  <div style="font-size:12px;color:var(--muted);margin-bottom:14px">
+    Renaming updates this exercise everywhere — past workouts, PRs, templates and goals.
+  </div>
+  <div class="input-group">
+    <div class="label">New name</div>
+    <input type="text" id="ex-rename" value="${String(name).replace(/"/g,'&quot;')}" autocapitalize="words" autocorrect="off" spellcheck="false">
+  </div>
+  <button class="btn btn-primary btn-full" style="margin-top:8px" onclick="saveRenameExercise('${esc(name)}')">Save</button>`;
+  openModal();
+  setTimeout(()=>document.getElementById('ex-rename')?.select(), 100);
+}
+function saveRenameExercise(oldName) {
+  const raw = (document.getElementById('ex-rename')?.value || '').trim();
+  if (!raw) { showToast(t('Enter an exercise name'), false); return; }
+  if (raw === oldName) { closeModal(); return; }
+  // Typing the Japanese name of a DIFFERENT exercise would silently merge — block it.
+  const clash = resolveExerciseName(raw);
+  if (clash && clash !== oldName) { showToast(t('That name is already used'), false); return; }
+  const newName = raw;
+
+  // 1. workout history
+  const ws = DB.workouts;
+  for (const w of ws) for (const e of w.exercises) if (e.name === oldName) e.name = newName;
+  DB.save(ws);
+  // 2. exercise list
+  const exs = DB.exercises.map(e => e === oldName ? newName : e);
+  DB.saveExercises([...new Set(exs)]);
+  // 3. muscle tags
+  const mm = DB.exerciseMuscles;
+  if (mm[oldName]) { mm[newName] = mm[oldName]; delete mm[oldName]; DB.saveExerciseMuscles(mm); }
+  else if (DEFAULT_MUSCLES[oldName]) { mm[newName] = DEFAULT_MUSCLES[oldName]; DB.saveExerciseMuscles(mm); }
+  // 4. templates
+  const tpls = DB.templates; let tplDirty = false;
+  for (const k of Object.keys(tpls)) {
+    const idx = tpls[k].indexOf(oldName);
+    if (idx >= 0) { tpls[k][idx] = newName; tplDirty = true; }
+  }
+  if (tplDirty) DB.saveTemplates(tpls);
+  // 5. goals + achievements
+  const gs = DB.goals; let gDirty = false;
+  for (const g of gs) if (g.exercise === oldName) { g.exercise = newName; gDirty = true; }
+  if (gDirty) DB.saveGoals(gs);
+  try {
+    const ach = achievedGoals(); let aDirty = false;
+    for (const a of ach) if (a.exercise === oldName) { a.exercise = newName; aDirty = true; }
+    if (aDirty) saveAchievedGoals(ach);
+  } catch (e) {}
+  // 6. per-exercise settings
+  const rp = restPerEx();   if (rp[oldName]) { rp[newName] = rp[oldName]; delete rp[oldName]; saveRestPerEx(rp); }
+  const dd = exDefaults();  if (dd[oldName]) { dd[newName] = dd[oldName]; delete dd[oldName]; saveExDefaults(dd); }
+  // 7. the in-progress workout
+  if (typeof currentLog === 'object' && currentLog?.exercises)
+    for (const e of currentLog.exercises) if (e.name === oldName) e.name = newName;
+
+  if (selectedPREx === oldName) selectedPREx = newName;
+  closeModal();
+  renderPRs();
+  showToast(t('Exercise renamed ✏️'));
+}
+
+// ── Re-tag target muscles ──
+function openRetagExercise(name) {
+  pickedMuscles = new Set(getMusclesForExercise(name));
+  renderMusclePicker(name, `openExerciseOptions('${esc(name)}')`, `saveRetagExercise('${esc(name)}')`, 'Save muscles');
+  openModal();
+}
+function saveRetagExercise(name) {
+  const mm = DB.exerciseMuscles;
+  if (pickedMuscles.size) mm[name] = [...pickedMuscles]; else delete mm[name];
+  DB.saveExerciseMuscles(mm);
+  closeModal();
+  openBPGroups.add(getBodyPartForExercise(name));
+  renderPRs();
+  showToast(t('Muscles updated 🎯'));
+}
+
+// ── Correct the record-setting set (fixes typo PRs) ──
+function findBestSetRef(name) {
+  // Mirrors getPRs() but returns the actual workout/exercise/set indices.
+  let ref = null, bestKg = -1, bestReps = -1;
+  const ws = DB.workouts;
+  for (let wi = 0; wi < ws.length; wi++) {
+    const du = wUnit(ws[wi]);
+    for (let ei = 0; ei < ws[wi].exercises.length; ei++) {
+      if (ws[wi].exercises[ei].name !== name) continue;
+      const sets = ws[wi].exercises[ei].sets;
+      for (let si = 0; si < sets.length; si++) {
+        const st = sets[si];
+        if (!st.weight || !st.reps || st.failed) continue;
+        const kg = toKg(+st.weight, du), reps = +st.reps;
+        if (kg > bestKg || (kg === bestKg && reps > bestReps)) {
+          bestKg = kg; bestReps = reps; ref = { wi, ei, si, du };
+        }
+      }
+    }
+  }
+  return ref;
+}
+function openEditPRSet(name) {
+  const ref = findBestSetRef(name);
+  if (!ref) {
+    showToast(t('No logged sets for this exercise yet'), false);
+    openExerciseOptions(name);
+    return;
+  }
+  const w   = DB.workouts[ref.wi];
+  const set = w.exercises[ref.ei].sets[ref.si];
+  document.getElementById('modal-content').innerHTML = `
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+    <button class="btn btn-secondary btn-sm" onclick="openExerciseOptions('${esc(name)}')" style="padding:8px 10px">← Back</button>
+    <div style="font-size:18px;font-weight:700">Correct best set</div>
+  </div>
+  <div style="font-size:12px;color:var(--muted);margin-bottom:16px">
+    ${exDisp(name)} · ${fmtDate(w.date)} · ${tf('set {n}', {n:ref.si + 1})} — ${t('Fixing a mistyped set removes the fake PR.')}
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+    <div class="input-group">
+      <div class="label">Weight (${ref.du})</div>
+      <input type="number" inputmode="decimal" id="prset-w" min="0" step="0.5" value="${set.weight}">
+    </div>
+    <div class="input-group">
+      <div class="label">Reps</div>
+      <input type="number" inputmode="numeric" id="prset-r" min="1" max="100" step="1" value="${set.reps}">
+    </div>
+  </div>
+  <div style="font-size:11px;color:var(--muted);margin:-4px 0 14px">
+    ${tf('This set was logged in {u}, so it is edited in {u}.', {u:ref.du})}
+  </div>
+  <button class="btn btn-primary btn-full" onclick="savePRSet('${esc(name)}',${ref.wi},${ref.ei},${ref.si})">Save</button>
+  <button class="btn btn-danger btn-full" style="margin-top:8px" onclick="deletePRSet('${esc(name)}',${ref.wi},${ref.ei},${ref.si})">Delete this set</button>`;
+  openModal();
+}
+function savePRSet(name, wi, ei, si) {
+  const wv = +(document.getElementById('prset-w')?.value || 0);
+  const rv = +(document.getElementById('prset-r')?.value || 0);
+  if (!wv || wv <= 0) { showToast(t('Enter a valid weight'), false); return; }
+  if (!rv || rv <= 0) { showToast(t('Enter valid reps'), false); return; }
+  const ws = DB.workouts;
+  ws[wi].exercises[ei].sets[si].weight = wv;
+  ws[wi].exercises[ei].sets[si].reps   = rv;
+  DB.save(ws);
+  closeModal();
+  renderPRs();
+  showToast(t('Set updated 🏆'));
+}
+function deletePRSet(name, wi, ei, si) {
+  if (!confirm(t('Delete this set? Your next-best set becomes the new record.'))) return;
+  const ws = DB.workouts;
+  ws[wi].exercises[ei].sets.splice(si, 1);
+  if (!ws[wi].exercises[ei].sets.length) ws[wi].exercises.splice(ei, 1);   // drop the empty exercise
+  if (!ws[wi].exercises.length) ws.splice(wi, 1);                          // drop the empty workout
+  DB.save(ws);
+  closeModal();
+  renderPRs();
+  showToast(t('Set deleted'));
+}
+
+// ── Default weight & reps for new sets ──
+function openExDefaults(name) {
+  const unit = DB.unit;
+  const def  = exDefaultFor(name) || {};
+  const last = lastSetsFor(name);
+  const hint = last?.length ? `${t('Last session')}: ${last[0].phW || '—'}${unit} × ${last[0].phR || '—'}` : t('No history yet');
+  document.getElementById('modal-content').innerHTML = `
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+    <button class="btn btn-secondary btn-sm" onclick="openExerciseOptions('${esc(name)}')" style="padding:8px 10px">← Back</button>
+    <div style="font-size:18px;font-weight:700">Default weight &amp; reps</div>
+  </div>
+  <div style="font-size:12px;color:var(--muted);margin-bottom:16px">
+    ${tf('Pre-fills the first set whenever you add {name} to a workout.', {name:exDisp(name)})} ${t('Leave blank to keep using your last session.')} ${hint}
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+    <div class="input-group">
+      <div class="label">Weight (${unit})</div>
+      <input type="number" inputmode="decimal" id="exdef-w" min="0" step="0.5" value="${def.weight ?? ''}" placeholder="—">
+    </div>
+    <div class="input-group">
+      <div class="label">Reps</div>
+      <input type="number" inputmode="numeric" id="exdef-r" min="1" max="100" step="1" value="${def.reps ?? ''}" placeholder="—">
+    </div>
+  </div>
+  <button class="btn btn-primary btn-full" style="margin-top:4px" onclick="saveExDefault('${esc(name)}')">Save</button>
+  ${def.weight != null ? `<button class="btn btn-secondary btn-full" style="margin-top:8px" onclick="clearExDefault('${esc(name)}')">Clear default</button>` : ''}`;
+  openModal();
+}
+function saveExDefault(name) {
+  const w = +(document.getElementById('exdef-w')?.value || 0);
+  const r = +(document.getElementById('exdef-r')?.value || 0);
+  const m = exDefaults();
+  if (!w && !r) { delete m[name]; }
+  else m[name] = { weight: w || '', reps: r || '', unit: DB.unit };
+  saveExDefaults(m);
+  closeModal();
+  renderPRs();
+  showToast(t('Default saved ⚖️'));
+}
+function clearExDefault(name) {
+  const m = exDefaults(); delete m[name]; saveExDefaults(m);
+  closeModal(); renderPRs();
+  showToast(t('Default cleared'));
+}
+
+// ── Delete, with a choice about history ──
+function openDeleteExercise(name) {
+  const hist = exHistoryCount(name);
+  document.getElementById('modal-content').innerHTML = `
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+    <button class="btn btn-secondary btn-sm" onclick="openExerciseOptions('${esc(name)}')" style="padding:8px 10px">← Back</button>
+    <div style="font-size:18px;font-weight:700">Delete exercise</div>
+  </div>
+  <div style="font-size:13px;font-weight:600;color:var(--accent);margin-bottom:4px">${exDisp(name)}</div>
+  <div style="font-size:12px;color:var(--muted);margin-bottom:18px">${tf('{n} sets logged across your history.', {n:hist})}</div>
+
+  <button class="opt-row" onclick="doDeleteExercise('${esc(name)}',false)">
+    <span class="opt-ico">📋</span>
+    <span style="min-width:0"><span>Remove from the list only</span><div class="opt-sub">Past workouts, PRs and charts stay exactly as they are</div></span>
+  </button>
+
+  <button class="opt-row danger" onclick="doDeleteExercise('${esc(name)}',true)">
+    <span class="opt-ico">🔥</span>
+    <span style="min-width:0"><span>Delete everything</span><div class="opt-sub">${tf('Also wipes all {n} logged sets — cannot be undone', {n:hist})}</div></span>
+  </button>
+
+  <button class="btn btn-secondary btn-full" style="margin-top:6px" onclick="openExerciseOptions('${esc(name)}')">Cancel</button>`;
+  openModal();
+}
+function doDeleteExercise(name, wipeHistory) {
+  const hist = exHistoryCount(name);
+  if (wipeHistory && hist) {
+    if (!confirm(tf('Permanently delete {name} and all {n} logged sets? This cannot be undone.', { name: exDisp(name), n: hist }))) return;
+  }
+  // Remove from the exercise list + its per-exercise settings
+  DB.saveExercises(DB.exercises.filter(e => e !== name));
+  const mm = DB.exerciseMuscles; if (mm[name]) { delete mm[name]; DB.saveExerciseMuscles(mm); }
+  const rp = restPerEx();  if (rp[name]) { delete rp[name]; saveRestPerEx(rp); }
+  const dd = exDefaults(); if (dd[name]) { delete dd[name]; saveExDefaults(dd); }
+  // Remove from every template
+  const tpls = DB.templates; let tplDirty = false;
+  for (const k of Object.keys(tpls)) {
+    const next = tpls[k].filter(n => n !== name);
+    if (next.length !== tpls[k].length) { tpls[k] = next; tplDirty = true; }
+    if (!next.length) { delete tpls[k]; tplDirty = true; }
+  }
+  if (tplDirty) DB.saveTemplates(tpls);
+
+  if (wipeHistory) {
+    const ws = DB.workouts;
+    for (const w of ws) w.exercises = w.exercises.filter(e => e.name !== name);
+    DB.save(ws.filter(w => w.exercises.length));      // drop workouts left with nothing
+    // Goals and achievements for a deleted exercise no longer mean anything
+    DB.saveGoals(DB.goals.filter(g => g.exercise !== name));
+    try { saveAchievedGoals(achievedGoals().filter(a => a.exercise !== name)); } catch (e) {}
+  }
+  if (selectedPREx === name) selectedPREx = null;
+  closeModal();
+  renderPRs();
+  showToast(wipeHistory ? t('Exercise and history deleted') : t('Exercise removed from the list'));
 }
 
 function addExerciseToLibrary(name, muscle) {
@@ -4357,7 +4958,7 @@ function openAddGoalModal(prefillExercise, keepType) {
     ${curDisp == null ? `<button class="btn btn-secondary btn-full" style="margin-bottom:8px" onclick="openWeighInModal()">⚖️ ${t('Weigh in')}</button>` : ''}
     <button class="btn btn-primary btn-full" style="margin-top:4px" onclick="saveGoal()">${t('Save Goal')}</button>`;
   } else {
-    const prefillDisp = prefillExercise ? (DB.lang === 'ja' ? (tkey(prefillExercise) || prefillExercise) : prefillExercise) : '';
+    const prefillDisp = prefillExercise ? exDisp(prefillExercise) : '';
     const bpChips = ['Chest','Back','Legs','Glutes','Shoulders','Arms','Abs'].map(bp =>
       `<span class="ex-chip${goalExBP===bp?' active':''}" id="goalbp-${bp}" onclick="setGoalExBP('${bp}')">${bodyPartLabel(bp)}</span>`).join('');
     body = `
@@ -4415,17 +5016,14 @@ function setGoalExBP(bp) {
 function renderGoalExResults(q) {
   const box = document.getElementById('goal-ex-results');
   if (!box) return;
-  const ql = (q || '').trim().toLowerCase(), bp = goalExBP, prs = getPRs(), unit = DB.unit;
+  const ql = (q || '').trim(), bp = goalExBP, prs = getPRs(), unit = DB.unit;
   if (!ql && !bp) { box.style.display = 'none'; box.innerHTML = ''; return; }   // nothing chosen yet
-  const matches = allExerciseNames().filter(e => {
+  const matches = exSortDisplay(allExerciseNames().filter(e => {
     if (bp && getBodyPartForExercise(e) !== bp) return false;
-    if (!ql) return true;
-    if (e.toLowerCase().includes(ql)) return true;
-    const ja = tkey(e);                          // also match the Japanese name
-    return ja && ja.toLowerCase().includes(ql);
-  }).slice(0, 80);
+    return exMatch(e, ql);                       // matches English OR Japanese
+  })).slice(0, 80);
   box.innerHTML = matches.length ? matches.map(e => {
-    const disp = DB.lang === 'ja' ? (tkey(e) || e) : e;
+    const disp = exDisp(e);
     const pr   = prs[e];
     const sub  = pr?.bestSet ? ` <span style="color:var(--muted);font-size:12px">· ${pr.displayWeight}${unit}×${pr.bestSet.reps}</span>` : '';
     return `<div class="ac-item" onclick="pickGoalExercise('${esc(e)}')">${disp}${sub}</div>`;
@@ -4435,7 +5033,7 @@ function renderGoalExResults(q) {
 function pickGoalExercise(name) {
   document.getElementById('goal-exercise').value = name;
   const inp = document.getElementById('goal-ex-search');
-  if (inp) inp.value = DB.lang === 'ja' ? (tkey(name) || name) : name;
+  if (inp) inp.value = exDisp(name);
   const box = document.getElementById('goal-ex-results');
   if (box) { box.style.display = 'none'; box.innerHTML = ''; }
   updateGoalCurrentPR(name);
@@ -4488,8 +5086,7 @@ function saveGoal() {
   let exercise       = document.getElementById('goal-exercise').value;
   if (!exercise) {   // user typed but didn't tap a result → resolve the text
     const typed = (document.getElementById('goal-ex-search')?.value || '').trim();
-    if (typed) exercise = allExerciseNames().find(e =>
-      e.toLowerCase() === typed.toLowerCase() || (tkey(e) || '') === typed) || '';
+    if (typed) exercise = resolveExerciseName(typed) || '';
   }
   const targetDisp   = +document.getElementById('goal-target-weight').value;
   const targetReps   = +document.getElementById('goal-target-reps').value || 5;
@@ -4848,6 +5445,14 @@ function openDataModal() {
 
   <div class="divider" style="margin:0 0 20px"></div>
 
+  <div style="font-size:13px;font-weight:600;margin-bottom:6px">⏱ Rest timer</div>
+  <div style="font-size:12px;color:var(--muted);margin-bottom:12px">
+    ${tf('Default {t} between sets', {t:fmtDuration(restDefault())})} · ${t('Auto-start')} ${restAutoOn() ? t('on') : t('off')} · ${t('Beep')} ${restSoundOn() ? t('on') : t('off')}
+  </div>
+  <button class="btn btn-secondary btn-full" style="margin-bottom:20px" onclick="openRestSettingsModal()">⏱ Rest timer settings</button>
+
+  <div class="divider" style="margin:0 0 20px"></div>
+
   <div style="font-size:13px;font-weight:600;margin-bottom:10px">Help</div>
   <button class="btn btn-secondary btn-full" style="margin-bottom:8px" onclick="openHelpModal()">▶ Take the guided tour</button>
   ${gsDismissed() ? `<button class="btn btn-secondary btn-full" onclick="localStorage.removeItem('ll_gs_dismissed');closeModal();showView('dashboard');showToast(t('Checklist restored'))">🚀 Show getting-started checklist</button>` : ''}
@@ -4867,13 +5472,13 @@ function openDataModal() {
     Saved menus per session type. Build one from the Log screen: pick a session type, add exercises, then tap "Save as template".
   </div>
   ${(() => {
-    const t = DB.templates, keys = Object.keys(t);
+    const tpls = DB.templates, keys = Object.keys(tpls);
     if (!keys.length) return `<div style="font-size:12px;color:var(--muted);margin-bottom:4px">No templates yet</div>`;
     return keys.map(k => `
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;background:var(--card2);border:1px solid var(--border);border-radius:10px;margin-bottom:8px">
       <div style="min-width:0">
         <div style="font-size:13px;font-weight:700">${k}</div>
-        <div style="font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t[k].join(' · ')}</div>
+        <div style="font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${tpls[k].map(exDisp).join(' · ')}</div>
       </div>
       <button class="del-btn" style="flex-shrink:0;width:36px;height:36px" onclick="deleteTemplate('${esc(k)}')">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -6077,7 +6682,7 @@ function removeAchievement(key) {
 // Manually record a milestone the app didn't capture (e.g. a goal hit before this feature existed).
 function openAddAchievementModal() {
   const unit = DB.unit;
-  const opts = allExerciseNames().map(n => `<option value="${esc(n)}">`).join('');
+  const opts = exSortDisplay(allExerciseNames()).map(n => `<option value="${esc(exDisp(n))}">`).join('');
   document.getElementById('modal-content').innerHTML = `
   <div style="font-size:18px;font-weight:700;margin-bottom:16px">Add a past achievement</div>
   <div class="input-group">
@@ -6105,7 +6710,8 @@ function openAddAchievementModal() {
 }
 
 function saveManualAchievement() {
-  const exercise = (document.getElementById('ach-ex').value || '').trim();
+  let exercise = (document.getElementById('ach-ex').value || '').trim();
+  exercise = resolveExerciseName(exercise) || exercise;   // JA input → stored name
   const weight   = +document.getElementById('ach-weight').value;
   const reps     = +document.getElementById('ach-reps').value || 1;
   const date     = document.getElementById('ach-date').value || todayStr();
