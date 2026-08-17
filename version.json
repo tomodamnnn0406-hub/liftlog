@@ -1,5 +1,5 @@
 {
   "version": 71,
   "name": "v71 — self-service push notifications",
-  "pushEndpoint": ""
+  "pushEndpoint": "https://liftlog-push.tomodamnnn0406.workers.dev"
 }
