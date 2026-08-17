@@ -508,6 +508,11 @@ input:focus,textarea:focus,select:focus{border-color:var(--accent)}
   -webkit-tap-highlight-color:transparent;touch-action:manipulation;white-space:nowrap}
 #rest-bar .rb-preset.on{background:var(--accent-dim);border-color:var(--accent);color:var(--accent)}
 #rest-bar .rb-preset:active{opacity:.7}
+/* Merged "start rest / current length" button on each exercise card */
+.rest-btn{display:inline-flex;align-items:center;gap:7px;white-space:nowrap;padding-left:12px;padding-right:12px}
+.rest-btn .rest-len{font-variant-numeric:tabular-nums;font-weight:800;color:var(--accent);
+  background:var(--accent-dim);border-radius:6px;padding:2px 7px;font-size:12px}
+.rest-btn{-webkit-touch-callout:none;user-select:none;-webkit-user-select:none}
 
 /* ── Floating workout-duration pill (visible on all screens while running) ── */
 #wk-timer{
@@ -1044,6 +1049,24 @@ const I18N = {
     'No data yet for this exercise':'この種目のデータはまだありません',
     'Current PR: <strong style="color:var(--text)">{w}{u} × {r}</strong> · est. 1RM <strong style="color:var(--accent)">{e}{u}</strong>':'現在の自己ベスト: <strong style="color:var(--text)">{w}{u} × {r}レップ</strong> · 推定1RM <strong style="color:var(--accent)">{e}{u}</strong>',
     'Press and hold a row (or its <span style="color:var(--text)">⠿</span> handle) to drag it into a new order, and use the switches to show or hide each section. Tap <strong style="color:var(--accent)">Done</strong> up top when you\'re finished.':'行（または <span style="color:var(--text)">⠿</span> ハンドル）を長押しするとドラッグして並べ替えでき、スイッチで各セクションの表示／非表示を切り替えられます。終わったら上部の <strong style="color:var(--accent)">完了</strong> をタップしてください。',
+    // ── updates ──
+    '🔔 Update notifications':'🔔 アップデート通知',
+    'Put a badge on the Lift Log icon when a new version lands. Needs notifications turned on below.':'新しいバージョンが公開されたら、Lift Logのアイコンにバッジを表示します。下の通知をオンにする必要があります。',
+    'Badge the app icon':'アプリアイコンにバッジを表示','Check for updates now':'今すぐアップデートを確認',
+    'Checking for updates…':'アップデートを確認中…','Version {v}':'バージョン {v}',
+    'Updated to v{v}':'v{v} にアップデートしました','Lift Log updated — v{v}':'Lift Log がアップデートされました — v{v}',
+    'Version {v} is available — tap Update':'バージョン {v} が利用可能です — 更新をタップ',
+    'Version {v} is ready':'バージョン {v} の準備ができました',
+    'Tap to reload with the newest version.':'タップして最新バージョンで再読み込みします。','Update':'更新',
+    'One rest button showing its own length — hold it to change':'休憩ボタンを1つに統合、長押しで時間を変更',
+    'Rest length now updates everywhere the moment you change it':'休憩時間の変更が即座に画面へ反映されます',
+    'A badge on the app icon when a new version lands':'新バージョン公開時にアプリアイコンへバッジを表示',
+    'Cardio logging — speed, time and distance, with incline and calories':'有酸素の記録 — 速度・時間・距離、傾斜とカロリー',
+    'Total km, average pace and a distance chart per cardio exercise':'種目ごとの合計距離・平均ペース・距離グラフ',
+    'Search exercises in Japanese, including hiragana':'ひらがなを含む日本語で種目を検索',
+    'Rest timer starts on its own after each set':'セット後に休憩タイマーが自動スタート',
+    'Rename, re-tag, fix or delete any exercise from the Exercises tab':'種目タブから名前変更・タグ変更・修正・削除',
+    'Tap to start · hold to change length':'タップで開始 · 長押しで時間を変更',
     // ── cardio ──
     'Cardio':'有酸素','Speed (km/h)':'速度（km/h）','Time (min)':'時間（分）','Distance (km)':'距離（km）',
     'Incline %':'傾斜 %','kcal':'kcal','Pace':'ペース','Total km':'合計距離','Total time':'合計時間',
@@ -1542,6 +1565,146 @@ function allExerciseNames() {
   const names = new Set(DB.exercises);
   for(const w of DB.workouts) for(const e of w.exercises) names.add(e.name);
   return [...names].sort();
+}
+
+// ═══════════════════════════════════════════════════════
+// APP VERSION / UPDATE NOTICES
+// The app is a single HTML file served network-first, so a deploy reaches the
+// phone silently. This surfaces it: a home-screen badge, a local notification
+// and a "what's new" banner, so an update is never invisible.
+// ═══════════════════════════════════════════════════════
+const APP_VERSION = 69;
+
+// Release notes, newest first. Keys are version numbers.
+const WHATS_NEW = {
+  69: [
+    'One rest button showing its own length — hold it to change',
+    'Rest length now updates everywhere the moment you change it',
+    'A badge on the app icon when a new version lands'
+  ],
+  68: [
+    'Cardio logging — speed, time and distance, with incline and calories',
+    'Total km, average pace and a distance chart per cardio exercise'
+  ],
+  67: [
+    'Search exercises in Japanese, including hiragana',
+    'Rest timer starts on its own after each set',
+    'Rename, re-tag, fix or delete any exercise from the Exercises tab'
+  ]
+};
+
+function seenVersion()      { return +localStorage.getItem('ll_seen_version') || 0; }
+function markVersionSeen()  { localStorage.setItem('ll_seen_version', String(APP_VERSION)); }
+function updateBadgeOn()    { return localStorage.getItem('ll_update_badge') !== '0'; }   // default ON
+function setUpdateBadge(on) { localStorage.setItem('ll_update_badge', on ? '1' : '0'); if (!on) clearAppBadge(); }
+
+// The Badging API needs notification permission on iOS and simply isn't there
+// on some browsers — every call is best-effort and must never throw.
+function setAppBadge(n) {
+  if (!updateBadgeOn()) return;
+  try { if (navigator.setAppBadge) navigator.setAppBadge(n || 1).catch(() => {}); } catch (e) {}
+}
+function clearAppBadge() {
+  try { if (navigator.clearAppBadge) navigator.clearAppBadge().catch(() => {}); } catch (e) {}
+}
+
+// Fire a local notification for the update (only when already permitted —
+// this never prompts, so it can't interrupt a workout).
+function notifyUpdate(ver) {
+  if (!updateBadgeOn()) return;
+  try {
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    const body = (WHATS_NEW[ver] || []).slice(0, 2).map(x => '· ' + t(x)).join('\n');
+    if (navigator.serviceWorker && navigator.serviceWorker.ready) {
+      navigator.serviceWorker.ready.then(reg => {
+        reg.showNotification(tf('Lift Log updated — v{v}', { v: ver }),
+          { body, tag: 'll-update', icon: './icon-192.png', badge: './icon-192.png', data: { view: 'dashboard' } });
+      }).catch(() => {});
+    }
+  } catch (e) {}
+}
+
+// Called once at startup: did the running version change since last launch?
+function checkVersionChanged() {
+  const seen = seenVersion();
+  if (!seen) {
+    // No marker yet. Someone with workouts already logged is upgrading from a
+    // build that predates version tracking — show them the notes. A genuinely
+    // new install gets nothing.
+    if (!DB.workouts.length) { markVersionSeen(); return; }
+  } else if (seen >= APP_VERSION) return;
+  // `seen` is 0 for someone upgrading from before version tracking, so fall back
+  // to 1 — this flag only needs to be truthy for the banner to render.
+  __showWhatsNew = seen || 1;
+  setAppBadge(1);
+  notifyUpdate(APP_VERSION);
+}
+let __showWhatsNew = 0;
+
+// Banner shown on the dashboard until dismissed.
+function whatsNewHTML() {
+  if (!__showWhatsNew) return '';
+  const notes = WHATS_NEW[APP_VERSION] || [];
+  return `
+  <div class="month-banner" style="background:linear-gradient(135deg,rgba(249,115,22,.20),rgba(251,191,36,.10));border-color:var(--accent);align-items:flex-start">
+    <div class="month-banner-emoji">🎉</div>
+    <div style="flex:1;min-width:0">
+      <div style="font-weight:700;font-size:14px;margin-bottom:4px">${tf('Updated to v{v}', { v: APP_VERSION })}</div>
+      <div style="font-size:12px;color:var(--muted);line-height:1.6">
+        ${notes.map(n => `• ${t(n)}`).join('<br>')}
+      </div>
+    </div>
+    <button class="month-banner-x" onclick="dismissWhatsNew()" aria-label="Dismiss">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>`;
+}
+function dismissWhatsNew() {
+  __showWhatsNew = 0;
+  markVersionSeen();
+  clearAppBadge();
+  renderDashboard();
+}
+
+// ── Live check for a NEWER deploy while the app is open ──
+// version.json is tiny and never cached, so this is cheap to poll.
+let __updateAvailable = 0;
+async function checkForUpdate() {
+  try {
+    const r = await fetch('./version.json?_=' + Date.now(), { cache: 'no-store' });
+    if (!r.ok) return;
+    const j = await r.json();
+    const v = +j.version || 0;
+    if (v > APP_VERSION && v !== __updateAvailable) {
+      __updateAvailable = v;
+      setAppBadge(1);
+      if (currentView === 'dashboard') renderDashboard();
+      showToast(tf('Version {v} is available — tap Update', { v }));
+    }
+  } catch (e) {}   // offline or file missing — silently ignore
+}
+function updateAvailableHTML() {
+  if (!__updateAvailable) return '';
+  return `
+  <div class="month-banner" style="background:linear-gradient(135deg,rgba(34,197,94,.18),rgba(249,115,22,.10));border-color:var(--green,#22c55e);cursor:pointer" onclick="applyUpdate()">
+    <div class="month-banner-emoji">⬇️</div>
+    <div style="flex:1;min-width:0">
+      <div style="font-weight:700;font-size:14px;margin-bottom:2px">${tf('Version {v} is ready', { v: __updateAvailable })}</div>
+      <div style="font-size:12px;color:var(--muted)">${t('Tap to reload with the newest version.')}</div>
+    </div>
+    <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();applyUpdate()">${t('Update')}</button>
+  </div>`;
+}
+// Drop every cache, then hard-reload so the new HTML is fetched.
+async function applyUpdate() {
+  saveDraft();                       // never lose an in-progress workout to a reload
+  try {
+    if (window.caches) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map(k => caches.delete(k)));
+    }
+  } catch (e) {}
+  location.reload();
 }
 
 // ═══════════════════════════════════════════════════════
@@ -2107,6 +2270,10 @@ function renderDashboard() {
     setTimeout(initDashEditDrag, 30);
     return;
   }
+
+  // ── Update notices ─────────────────────────────────────
+  html += updateAvailableHTML();
+  html += whatsNewHTML();
 
   // ── Getting-started checklist (auto-hides when complete) ─
   html += gettingStartedHTML();
@@ -3062,12 +3229,42 @@ function addRestTime(delta) {
   // Remember the adjusted length for this exercise next time.
   setRestFor(restExercise, restFor(restExercise) + delta);
   renderRestBar();
+  refreshRestLenLabels();
+}
+
+// One button, two actions: tap starts the countdown, press-and-hold opens the
+// length picker. Keeps a single control on the card instead of two ambiguous ones.
+let __restHoldT = null, __restHeld = false;
+function restBtnDown(name) {
+  __restHeld = false;
+  clearTimeout(__restHoldT);
+  __restHoldT = setTimeout(() => {
+    __restHeld = true;
+    try { if (navigator.vibrate) navigator.vibrate(15); } catch (e) {}
+    openRestSettingsModal(name);
+  }, 500);
+}
+function restBtnUp(name) {
+  clearTimeout(__restHoldT);
+  if (__restHeld) { __restHeld = false; return; }   // the hold already opened the sheet
+  startRest(0, name);
+}
+function restBtnCancel() { clearTimeout(__restHoldT); __restHeld = false; }
+
+// The "⏱ Rest 1:30" buttons live inside an already-rendered exercise card, so
+// changing the length elsewhere (presets, ±15, the settings sheet) has to write
+// the new value straight into them — otherwise they keep showing the old time.
+function refreshRestLenLabels() {
+  document.querySelectorAll('.rest-len[data-rest-for]').forEach(el => {
+    el.textContent = fmtDuration(restFor(el.getAttribute('data-rest-for')));
+  });
 }
 
 // Tap a preset while resting → restart at that length AND remember it.
 function setRestPreset(sec) {
   setRestFor(restExercise, sec);
   startRest(sec, restExercise);
+  refreshRestLenLabels();
   showToast(tf('Rest set to {t}', { t: fmtDuration(sec) }));
 }
 
@@ -3203,6 +3400,7 @@ function saveRestLen(exName) {
   setRestFor(exName || '', v);
   ensureRestAudio();                     // unlock audio on this user gesture
   closeModal();
+  refreshRestLenLabels();
   showToast(t('Rest length saved ⏱'));
 }
 
@@ -3288,8 +3486,12 @@ function renderExercisesHTML() {
     }).join('')}`}
     <div style="display:flex;gap:8px;margin-top:8px">
       <button class="btn btn-secondary btn-sm" style="flex:1" onclick="addSet(${ei})">${cardio ? '+ Add Interval' : '+ Add Set'}</button>
-      <button class="btn btn-secondary btn-sm" onclick="startRest(0,'${esc(ex.name)}')" title="Start rest timer">⏱ Rest</button>
-      <button class="btn btn-secondary btn-sm" onclick="openRestSettingsModal('${esc(ex.name)}')" title="Rest length" style="padding-left:10px;padding-right:10px">${fmtDuration(restFor(ex.name))}</button>
+      <button class="btn btn-secondary btn-sm rest-btn"
+        onpointerdown="restBtnDown('${esc(ex.name)}')" onpointerup="restBtnUp('${esc(ex.name)}')"
+        onpointerleave="restBtnCancel()" onpointercancel="restBtnCancel()"
+        oncontextmenu="event.preventDefault()"
+        title="Tap to start · hold to change length">⏱ Rest
+        <span class="rest-len" data-rest-for="${esc(ex.name)}">${fmtDuration(restFor(ex.name))}</span></button>
     </div>
     <input type="text" class="ex-note-input" placeholder="Note for this exercise… (grip, tempo, how it felt)"
       value="${(ex.note||'').replace(/"/g,'&quot;')}"
@@ -6028,6 +6230,20 @@ function openDataModal() {
 
   <div class="divider" style="margin:0 0 20px"></div>
 
+  <div style="font-size:13px;font-weight:600;margin-bottom:6px">🔔 Update notifications</div>
+  <div style="font-size:12px;color:var(--muted);margin-bottom:12px">
+    Put a badge on the Lift Log icon when a new version lands. Needs notifications turned on below.
+  </div>
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px">
+    <div style="font-size:13px;font-weight:700">Badge the app icon</div>
+    <button class="dash-toggle${updateBadgeOn()?' on':''}" role="switch" aria-checked="${updateBadgeOn()}"
+      onclick="setUpdateBadge(!updateBadgeOn());openDataModal()"><span></span></button>
+  </div>
+  <button class="btn btn-secondary btn-full btn-sm" style="margin-bottom:6px" onclick="checkForUpdate();showToast(t('Checking for updates…'))">Check for updates now</button>
+  <div style="font-size:11px;color:var(--muted);text-align:center;margin-bottom:20px">${tf('Version {v}', { v: APP_VERSION })}</div>
+
+  <div class="divider" style="margin:0 0 20px"></div>
+
   <div style="font-size:13px;font-weight:600;margin-bottom:6px">⏱ Rest timer</div>
   <div style="font-size:12px;color:var(--muted);margin-bottom:12px">
     ${tf('Default {t} between sets', {t:fmtDuration(restDefault())})} · ${t('Auto-start')} ${restAutoOn() ? t('on') : t('off')} · ${t('Beep')} ${restSoundOn() ? t('on') : t('off')}
@@ -7777,11 +7993,16 @@ startLangObserver();   // keep re-rendered screens translated (accordions, modal
 if (__draft) setTimeout(() => showToast(t('Picked up your unsaved workout 💪')), 600);
 setupMonthlyNotification(false);   // re-arm push (won't prompt; just schedules if already granted)
 scheduleUnsavedReminder();         // re-arm unsaved-workout reminder if one is pending
+checkVersionChanged();             // did we just come up on a newer build?
+if (__showWhatsNew && currentView === 'dashboard') renderDashboard();
+setTimeout(checkForUpdate, 3000);  // and is an even newer one already deployed?
+setInterval(checkForUpdate, 30 * 60 * 1000);
 gdBootstrap();                     // warm Google Drive token + sync if connected
 
 // Persist the in-progress workout whenever the app is hidden or closed.
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') saveDraft();   // saveDraft() also re-arms the reminder
+  else checkForUpdate();                                    // returning to the app → look for a new build
 });
 window.addEventListener('pagehide', saveDraft);
 

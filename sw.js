@@ -1,9 +1,9 @@
-// Lift Log — Service Worker v43
+// Lift Log — Service Worker v44
 // Strategy:
 //   liftlog.html  → network-first (always get the latest version)
 //   everything else → cache-first (icons, Chart.js — safe to cache long-term)
 
-const CACHE_NAME = 'liftlog-v68';
+const CACHE_NAME = 'liftlog-v69';
 const STATIC_ASSETS = [
   './manifest.json',
   './icon-192.png',
@@ -33,6 +33,15 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   const url = event.request.url;
   const isHTML = event.request.destination === 'document' || url.endsWith('liftlog.html');
+
+  // version.json is the update probe — it must ALWAYS come from the network,
+  // otherwise a cached copy would pin the app to whatever version it first saw.
+  if (url.includes('version.json')) {
+    event.respondWith(fetch(event.request, { cache: 'no-store' }).catch(() => new Response('{}', {
+      headers: { 'Content-Type': 'application/json' }
+    })));
+    return;
+  }
 
   if (isHTML) {
     // Network-first for the app shell: always try to fetch the latest,
