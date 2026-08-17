@@ -1,9 +1,9 @@
-// Lift Log — Service Worker v46
+// Lift Log — Service Worker v47
 // Strategy:
 //   liftlog.html  → network-first (always get the latest version)
 //   everything else → cache-first (icons, Chart.js — safe to cache long-term)
 
-const CACHE_NAME = 'liftlog-v72';
+const CACHE_NAME = 'liftlog-v73';
 const STATIC_ASSETS = [
   './manifest.json',
   './icon-192.png',
@@ -89,10 +89,26 @@ self.addEventListener('fetch', event => {
 //   kind 'update'  → a new version was deployed
 //   kind 'goal'    → monthly goal reminder
 //   kind 'unsaved' → only shown if this device actually has an unsaved workout
+// Record what actually reached this device, so "no notification arrived" can be
+// diagnosed instead of guessed. The app reads this back in Settings.
+async function pushLog(entry) {
+  try {
+    const c = await caches.open('ll-state');
+    let log = [];
+    const prev = await c.match('/__ll_push_log');
+    if (prev) { try { log = await prev.json(); } catch (e) { log = []; } }
+    log.unshift({ at: new Date().toISOString(), ...entry });
+    await c.put('/__ll_push_log', new Response(JSON.stringify(log.slice(0, 8)),
+      { headers: { 'Content-Type': 'application/json' } }));
+  } catch (e) {}
+}
+
 self.addEventListener('push', event => {
   event.waitUntil((async () => {
     let d = {};
-    try { d = event.data ? event.data.json() : {}; } catch (e) { d = { body: event.data ? event.data.text() : '' }; }
+    let decodeError = null;
+    try { d = event.data ? event.data.json() : {}; }
+    catch (e) { decodeError = String(e && e.message || e); d = { body: event.data ? event.data.text() : '' }; }
 
     const ja = (d.lang === 'ja');
     let title = d.title || 'Lift Log';
@@ -108,7 +124,10 @@ self.addEventListener('push', event => {
         const res = await c.match('/__ll_draft');
         if (res) draft = await res.json();
       } catch (e) {}
-      if (!draft || !draft.hasDraft) return;          // nothing to nag about
+      if (!draft || !draft.hasDraft) {                 // nothing to nag about
+        await pushLog({ kind: 'unsaved', shown: false, suppressed: 'no unsaved workout' });
+        return;
+      }
       title = ja ? '未保存のワークアウト' : 'Unsaved workout';
       body  = ja ? `${draft.exercises}種目が保存されていません — タップして保存`
                  : `${draft.exercises} exercise(s) not saved yet — tap to finish`;
@@ -120,14 +139,21 @@ self.addEventListener('push', event => {
     // second update/test notification looked like nothing had arrived at all.
     // `renotify` is supposed to force a re-alert but WebKit doesn't honour it.
     const tag = 'll-' + (d.kind || 'msg') + '-' + (d.ts || Date.now());
-    await self.registration.showNotification(title, {
-      body,
-      icon: './icon-192.png',
-      badge: './icon-192.png',
-      tag,
-      renotify: true,
-      data: { view, kind: d.kind || '', version: d.version || 0 }
-    });
+    let shown = false, showError = null;
+    try {
+      await self.registration.showNotification(title, {
+        body,
+        icon: './icon-192.png',
+        badge: './icon-192.png',
+        tag,
+        renotify: true,
+        data: { view, kind: d.kind || '', version: d.version || 0 }
+      });
+      shown = true;
+    } catch (e) {
+      showError = String(e && e.message || e);
+    }
+    await pushLog({ kind: d.kind || '?', title, shown, decodeError, showError, perm: (self.Notification && self.Notification.permission) || '?' });
     // Badge the home-screen icon too (best-effort — not on every platform).
     try { if (self.navigator && self.navigator.setAppBadge) await self.navigator.setAppBadge(1); } catch (e) {}
   })());

@@ -1052,6 +1052,12 @@ const I18N = {
     'Anyone can now turn on notifications — just one switch in Settings':'誰でも通知をオンにできるようになりました — 設定のスイッチ1つで完了',
     'Notifications no longer need any setup on your side':'通知に面倒な設定は不要になりました',
     'Fixed notifications silently replacing each other instead of alerting':'通知が前の通知を上書きして鳴らない問題を修正',
+    'Push diagnostics':'プッシュ診断','Pushes received by this device':'この端末が受信したプッシュ',
+    'No push has ever reached this device. The problem is delivery, not display.':'この端末にプッシュが届いたことは一度もありません。表示ではなく配信の問題です。',
+    'Installed to home screen':'ホーム画面に追加済み','Notification permission':'通知の許可','Service worker':'サービスワーカー',
+    'Subscription on this device':'この端末の登録','Matches the one we registered':'登録済みのものと一致','App version':'アプリのバージョン',
+    'kind':'種類','displayed':'表示された','not displayed':'表示されなかった','suppressed':'抑制','Refresh':'再読み込み',
+    'Added a push diagnostics screen under Settings → Background push':'設定 → バックグラウンド通知 にプッシュ診断画面を追加',
     // ── push ──
     'Background push is on 🔔':'バックグラウンド通知をオンにしました 🔔',
     'Could not reach the notification server — try again later':'通知サーバーに接続できませんでした — 後でもう一度お試しください',
@@ -1601,10 +1607,13 @@ function allExerciseNames() {
 // phone silently. This surfaces it: a home-screen badge, a local notification
 // and a "what's new" banner, so an update is never invisible.
 // ═══════════════════════════════════════════════════════
-const APP_VERSION = 72;
+const APP_VERSION = 73;
 
 // Release notes, newest first. Keys are version numbers.
 const WHATS_NEW = {
+  73: [
+    'Added a push diagnostics screen under Settings → Background push'
+  ],
   72: [
     'Fixed notifications silently replacing each other instead of alerting'
   ],
@@ -1736,6 +1745,66 @@ async function disablePush() {
   openPushModal();
 }
 
+// What has actually reached this device? Written by the service worker on every
+// push, so "nothing arrived" can be diagnosed instead of guessed at.
+async function readPushLog() {
+  try {
+    if (!window.caches) return [];
+    const c = await caches.open('ll-state');
+    const res = await c.match('/__ll_push_log');
+    return res ? await res.json() : [];
+  } catch (e) { return []; }
+}
+
+async function openPushDiagnostics() {
+  const log = await readPushLog();
+  const sub = savedPushSub();
+  let swInfo = {};
+  try {
+    const reg = await navigator.serviceWorker.getRegistration();
+    const live = reg ? await reg.pushManager.getSubscription() : null;
+    swInfo = {
+      sw: reg ? (reg.active ? 'active' : 'installing') : 'none',
+      scope: reg ? reg.scope : '—',
+      liveSub: live ? live.endpoint.slice(0, 48) + '…' : 'none',
+      matches: !!(live && sub && live.endpoint === sub.endpoint)
+    };
+  } catch (e) { swInfo = { sw: 'error: ' + e.message }; }
+
+  const rows = log.length ? log.map(e => `
+    <div style="padding:8px 0;border-top:1px solid var(--border);font-size:11px;line-height:1.6">
+      <div style="color:var(--accent);font-weight:700">${new Date(e.at).toLocaleString(L())}</div>
+      <div style="color:var(--muted)">
+        ${t('kind')}: ${e.kind || '?'} · ${e.shown ? '✅ ' + t('displayed') : '❌ ' + t('not displayed')}
+        ${e.suppressed ? '<br>' + t('suppressed') + ': ' + e.suppressed : ''}
+        ${e.decodeError ? '<br>decode: ' + e.decodeError : ''}
+        ${e.showError ? '<br>show: ' + e.showError : ''}
+        ${e.perm ? '<br>permission: ' + e.perm : ''}
+      </div>
+    </div>`).join('')
+    : `<div style="padding:12px 0;font-size:12px;color:var(--red);line-height:1.7">
+         ${t('No push has ever reached this device. The problem is delivery, not display.')}
+       </div>`;
+
+  document.getElementById('modal-content').innerHTML = `
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+    <button class="btn btn-secondary btn-sm" onclick="openPushModal()" style="padding:8px 10px">← Back</button>
+    <div style="font-size:18px;font-weight:700">${t('Push diagnostics')}</div>
+  </div>
+  <div class="card-sm" style="margin-bottom:12px;font-size:11px;line-height:1.8;color:var(--muted)">
+    ${t('Installed to home screen')}: ${isStandalone() ? '✅' : '❌'}<br>
+    ${t('Notification permission')}: ${('Notification' in window) ? Notification.permission : '—'}<br>
+    ${t('Service worker')}: ${swInfo.sw || '—'}<br>
+    ${t('Subscription on this device')}: ${swInfo.liveSub || '—'}<br>
+    ${t('Matches the one we registered')}: ${swInfo.matches ? '✅' : '❌'}<br>
+    ${t('App version')}: ${APP_VERSION}
+  </div>
+  <div class="label" style="margin-bottom:2px">${t('Pushes received by this device')}</div>
+  ${rows}
+  <button class="btn btn-secondary btn-full btn-sm" style="margin-top:14px" onclick="openPushDiagnostics()">${t('Refresh')}</button>`;
+  openModal();
+}
+
 // The setup sheet. With a registry configured this is a single switch; without
 // one it falls back to the owner-only copy-into-GitHub flow.
 function openPushModal() {
@@ -1794,7 +1863,10 @@ function openPushModal() {
   }
   document.getElementById('modal-content').innerHTML = `
   <div style="font-size:18px;font-weight:700;margin-bottom:6px">🔔 ${t('Background push')}</div>
-  ${body}`;
+  ${body}
+  <button class="btn btn-ghost btn-full btn-sm" style="margin-top:10px;color:var(--muted)" onclick="openPushDiagnostics()">
+    🩺 ${t('Push diagnostics')}
+  </button>`;
   openModal();
 }
 async function pushSetupStep1() {
