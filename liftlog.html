@@ -1049,7 +1049,12 @@ const I18N = {
     'No data yet for this exercise':'この種目のデータはまだありません',
     'Current PR: <strong style="color:var(--text)">{w}{u} × {r}</strong> · est. 1RM <strong style="color:var(--accent)">{e}{u}</strong>':'現在の自己ベスト: <strong style="color:var(--text)">{w}{u} × {r}レップ</strong> · 推定1RM <strong style="color:var(--accent)">{e}{u}</strong>',
     'Press and hold a row (or its <span style="color:var(--text)">⠿</span> handle) to drag it into a new order, and use the switches to show or hide each section. Tap <strong style="color:var(--accent)">Done</strong> up top when you\'re finished.':'行（または <span style="color:var(--text)">⠿</span> ハンドル）を長押しするとドラッグして並べ替えでき、スイッチで各セクションの表示／非表示を切り替えられます。終わったら上部の <strong style="color:var(--accent)">完了</strong> をタップしてください。',
+    'Anyone can now turn on notifications — just one switch in Settings':'誰でも通知をオンにできるようになりました — 設定のスイッチ1つで完了',
+    'Notifications no longer need any setup on your side':'通知に面倒な設定は不要になりました',
     // ── push ──
+    'Background push is on 🔔':'バックグラウンド通知をオンにしました 🔔',
+    'Could not reach the notification server — try again later':'通知サーバーに接続できませんでした — 後でもう一度お試しください',
+    'You will be notified about new versions, monthly goals, and workouts left unsaved.':'新バージョン、月次の目標、未保存のワークアウトについて通知します。',
     'Background push':'バックグラウンド通知','Turn on background push':'バックグラウンド通知をオンにする',
     'Turn off background push':'バックグラウンド通知をオフにする','Background push turned off':'バックグラウンド通知をオフにしました',
     'Real notifications that arrive even when Lift Log is closed — a new version, a monthly goal nudge, or a workout you left unsaved.':'Lift Log を閉じていても届く本物の通知です — 新バージョン、月次の目標リマインダー、未保存のワークアウトなど。',
@@ -1595,10 +1600,14 @@ function allExerciseNames() {
 // phone silently. This surfaces it: a home-screen badge, a local notification
 // and a "what's new" banner, so an update is never invisible.
 // ═══════════════════════════════════════════════════════
-const APP_VERSION = 70;
+const APP_VERSION = 71;
 
 // Release notes, newest first. Keys are version numbers.
 const WHATS_NEW = {
+  71: [
+    'Anyone can now turn on notifications — just one switch in Settings',
+    'Notifications no longer need any setup on your side'
+  ],
   70: [
     'Real background push — notifications arrive with the app closed',
     'Update, monthly goal and unsaved-workout alerts now work in the background',
@@ -1639,6 +1648,11 @@ function isStandalone() {
   return window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 }
 
+// The subscription registry (a small Cloudflare Worker). Its URL arrives in
+// version.json so it can be added or moved without shipping a new app build.
+function pushRegistry()      { return localStorage.getItem('ll_push_registry') || ''; }
+function setPushRegistry(u)  { if (u) localStorage.setItem('ll_push_registry', u); }
+
 function savedPushSub()      { try { return JSON.parse(localStorage.getItem('ll_push_sub') || 'null'); } catch (e) { return null; } }
 function savePushSub(sub)    { localStorage.setItem('ll_push_sub', JSON.stringify(sub)); }
 function pushRegistered()    { return localStorage.getItem('ll_push_sent') === '1'; }
@@ -1667,8 +1681,28 @@ async function enablePush() {
     }
     const json = sub.toJSON();
     savePushSub(json);
-    markPushRegistered(false);          // not yet pasted into GitHub
-    setAppBadge(0); clearAppBadge();
+    clearAppBadge();
+
+    // With a registry configured the device registers itself — nobody touches
+    // GitHub. Without one we fall back to the manual copy-paste flow.
+    const reg2 = pushRegistry();
+    if (reg2) {
+      try {
+        const res = await fetch(reg2.replace(/\/+$/,'') + '/subscribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ endpoint: json.endpoint, keys: json.keys, lang: DB.lang })
+        });
+        if (!res.ok) throw new Error('registry returned ' + res.status);
+        markPushRegistered(true);
+        showToast(t('Background push is on 🔔'));
+      } catch (e) {
+        markPushRegistered(false);
+        showToast(t('Could not reach the notification server — try again later'), false);
+      }
+    } else {
+      markPushRegistered(false);        // manual mode: still needs the paste
+    }
     return json;
   } catch (e) {
     showToast(t('Could not turn on push') + ': ' + (e && e.message ? e.message : e), false);
@@ -1677,24 +1711,37 @@ async function enablePush() {
 }
 
 async function disablePush() {
+  const prev = savedPushSub();
   try {
     const reg = await navigator.serviceWorker.ready;
     const sub = await reg.pushManager.getSubscription();
     if (sub) await sub.unsubscribe();
   } catch (e) {}
+  const reg2 = pushRegistry();
+  if (reg2 && prev?.endpoint) {
+    try {
+      await fetch(reg2.replace(/\/+$/,'') + '/unsubscribe', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ endpoint: prev.endpoint })
+      });
+    } catch (e) {}
+  }
   localStorage.removeItem('ll_push_sub');
   markPushRegistered(false);
   showToast(t('Background push turned off'));
   openPushModal();
 }
 
-// The setup sheet: turn it on, then copy the subscription for the GitHub secret.
+// The setup sheet. With a registry configured this is a single switch; without
+// one it falls back to the owner-only copy-into-GitHub flow.
 function openPushModal() {
   const sub  = savedPushSub();
   const done = pushRegistered();
   const ok   = pushSupported() && isStandalone();
+  const managed = !!pushRegistry();      // registry configured → self-service
   let body;
-  if (!sub) {
+
+  if (!sub || (managed && !done)) {
     body = `
     <div style="font-size:12px;color:var(--muted);line-height:1.7;margin-bottom:16px">
       ${t('Real notifications that arrive even when Lift Log is closed — a new version, a monthly goal nudge, or a workout you left unsaved.')}
@@ -1706,7 +1753,18 @@ function openPushModal() {
       </div>
     </div>` : ''}
     <button class="btn btn-primary btn-full" ${ok?'':'disabled style="opacity:.5"'} onclick="pushSetupStep1()">🔔 ${t('Turn on background push')}</button>`;
+  } else if (managed) {
+    // Registered through the registry — nothing else for the user to do.
+    body = `
+    <div class="card-sm" style="border-color:var(--green,#22c55e);margin-bottom:14px">
+      <div style="font-size:12px;line-height:1.7">✅ ${t('This device is registered for push.')}</div>
+    </div>
+    <div style="font-size:12px;color:var(--muted);line-height:1.7;margin-bottom:16px">
+      ${t('You will be notified about new versions, monthly goals, and workouts left unsaved.')}
+    </div>
+    <button class="btn btn-danger btn-full btn-sm" onclick="disablePush()">${t('Turn off background push')}</button>`;
   } else {
+    // Manual mode (owner's own setup, no registry configured).
     const txt = JSON.stringify(sub);
     body = `
     <div class="card-sm" style="border-color:${done?'var(--green,#22c55e)':'var(--accent)'};margin-bottom:14px">
@@ -1758,8 +1816,20 @@ async function verifyPushSub() {
     const json = sub.toJSON();
     if (JSON.stringify(json) !== JSON.stringify(savedPushSub())) {
       savePushSub(json);
-      markPushRegistered(false);        // endpoint changed → GitHub has a dead one
-      showToast(t('Push key changed — re-paste it in Settings'), false);
+      const reg2 = pushRegistry();
+      if (reg2) {
+        // Silently re-register the new endpoint — the user never sees this.
+        try {
+          const res = await fetch(reg2.replace(/\/+$/,'') + '/subscribe', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ endpoint: json.endpoint, keys: json.keys, lang: DB.lang })
+          });
+          markPushRegistered(res.ok);
+        } catch (e) { markPushRegistered(false); }
+      } else {
+        markPushRegistered(false);      // manual mode → GitHub holds a dead key
+        showToast(t('Push key changed — re-paste it in Settings'), false);
+      }
     }
   } catch (e) {}
 }
@@ -1862,6 +1932,7 @@ async function checkForUpdate() {
     const r = await fetch('./version.json?_=' + Date.now(), { cache: 'no-store' });
     if (!r.ok) return;
     const j = await r.json();
+    if (j.pushEndpoint) setPushRegistry(j.pushEndpoint);
     const v = +j.version || 0;
     if (v > APP_VERSION && v !== __updateAvailable) {
       __updateAvailable = v;

@@ -1,4 +1,5 @@
 {
-  "version": 70,
-  "name": "v70 — background push"
+  "version": 71,
+  "name": "v71 — self-service push notifications",
+  "pushEndpoint": ""
 }
