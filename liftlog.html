@@ -417,6 +417,39 @@ input:focus,textarea:focus,select:focus{border-color:var(--accent)}
 .dash-toggle.on{background:var(--accent-dim);border-color:var(--accent)}
 .dash-toggle.on span{transform:translateX(19px);background:var(--accent)}
 
+/* ── iOS-style grouped settings list ──
+   One column, every switch on the same right edge, so on/off scans at a glance. */
+.st-cap{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;
+  color:var(--muted);margin:22px 4px 7px}
+.st-cap.first{margin-top:2px}
+.st-group{background:var(--card2);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.st-row{display:flex;align-items:center;gap:11px;padding:12px 14px;min-height:52px;
+  border-top:1px solid var(--border);width:100%;text-align:left;color:var(--text);
+  font-size:14px;font-family:inherit;background:none;
+  -webkit-tap-highlight-color:transparent;touch-action:manipulation}
+.st-row:first-child{border-top:none}
+.st-row.tap{cursor:pointer}
+.st-row.tap:active{background:var(--card)}
+.st-ico{width:20px;text-align:center;flex-shrink:0;font-size:15px;line-height:1}
+.st-label{flex:1;min-width:0;font-weight:600}
+.st-sub{display:block;font-size:11px;font-weight:500;color:var(--muted);margin-top:3px;line-height:1.5;
+  white-space:normal}
+.st-val{flex-shrink:0;font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums;
+  max-width:48%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right}
+.st-chev{flex-shrink:0;color:var(--muted);font-size:18px;line-height:1;opacity:.55;margin-left:-4px}
+.st-foot{font-size:11px;color:var(--muted);line-height:1.6;margin:7px 4px 0}
+.st-row.danger .st-label{color:var(--red)}
+.st-row.accent .st-label{color:var(--accent)}
+.st-row .dash-toggle{display:inline-block;pointer-events:none}
+.st-ok{color:var(--green,#22c55e)}
+.st-warn{color:var(--accent)}
+/* Small inline segmented control (language, units) */
+.st-seg{display:flex;gap:0;flex-shrink:0;border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.st-seg button{background:var(--card);border:none;color:var(--muted);font-size:12px;font-weight:700;
+  padding:7px 11px;cursor:pointer;font-family:inherit;min-height:34px;
+  -webkit-tap-highlight-color:transparent;touch-action:manipulation}
+.st-seg button.on{background:var(--accent);color:#fff}
+
 /* ── Sticky action bars ── */
 .log-action-bar{position:fixed;left:50%;transform:translateX(-50%);
   bottom:calc(62px + env(safe-area-inset-bottom));
@@ -1058,6 +1091,28 @@ const I18N = {
     'Subscription on this device':'この端末の登録','Matches the one we registered':'登録済みのものと一致','App version':'アプリのバージョン',
     'kind':'種類','displayed':'表示された','not displayed':'表示されなかった','suppressed':'抑制','Refresh':'再読み込み',
     'Added a push diagnostics screen under Settings → Background push':'設定 → バックグラウンド通知 にプッシュ診断画面を追加',
+    'Settings rebuilt as one clean list — every switch in the same place':'設定を1つの見やすいリストに再構成 — スイッチの位置を統一',
+    'Starts when a set has weight and reps':'セットに重量とレップを入力すると開始',
+    'Sound plus vibration':'サウンドとバイブレーション',
+    'Not supported on this device':'この端末では利用できません',
+    // ── settings list ──
+    'Settings':'設定','General':'一般','Units':'単位','Notifications':'通知','Backup':'バックアップ','About':'このアプリについて',
+    'On':'オン','Off':'オフ','Needs setup':'設定が必要','Not connected':'未接続','Connected':'接続済み','In-app only':'アプリ内のみ',
+    'Shows a dot when a new version lands':'新バージョン公開時にドットを表示',
+    'Monthly goal reminder':'月次の目標リマインダー','A nudge on the 1st of each month':'毎月1日にお知らせします',
+    'Turn off from iPhone Settings → Notifications':'iPhoneの設定→通知 からオフにできます',
+    'Blocked in your iPhone settings':'iPhoneの設定でブロックされています',
+    'Unsaved workout reminder':'未保存ワークアウトのリマインダー',
+    'If a workout sits unsaved for an hour':'1時間以上保存されていない場合にお知らせ',
+    'Default length':'デフォルトの長さ','Google Drive':'Google ドライブ','Back up now':'今すぐバックアップ',
+    'Export all data':'すべてのデータを書き出す','Restore from backup':'バックアップから復元',
+    'No templates yet':'テンプレートはまだありません','Save one from the Log screen':'記録画面から保存できます',
+    'Take the guided tour':'ガイドツアーを見る','Show getting-started checklist':'はじめにチェックリストを表示',
+    'Send feedback':'フィードバックを送る','Version':'バージョン','Check for updates':'アップデートを確認',
+    '{n} workouts stored on this device':'この端末に{n}件のワークアウトを保存中',
+    'Choose your exported backup file to restore it.':'書き出したバックアップファイルを選んで復元します。',
+    'This will overwrite your current data.':'現在のデータは上書きされます。',
+    'Choose Backup File':'バックアップファイルを選択','Or paste the JSON manually:':'または JSON を直接貼り付け：',
     // ── push ──
     'Background push is on 🔔':'バックグラウンド通知をオンにしました 🔔',
     'Could not reach the notification server — try again later':'通知サーバーに接続できませんでした — 後でもう一度お試しください',
@@ -1607,10 +1662,13 @@ function allExerciseNames() {
 // phone silently. This surfaces it: a home-screen badge, a local notification
 // and a "what's new" banner, so an update is never invisible.
 // ═══════════════════════════════════════════════════════
-const APP_VERSION = 73;
+const APP_VERSION = 74;
 
 // Release notes, newest first. Keys are version numbers.
 const WHATS_NEW = {
+  74: [
+    'Settings rebuilt as one clean list — every switch in the same place'
+  ],
   73: [
     'Added a push diagnostics screen under Settings → Background push'
   ],
@@ -6401,6 +6459,7 @@ async function enableMonthlyReminders() {
   await setupMonthlyNotification(true);
   const row = document.getElementById('notif-row');
   if (row) { row.innerHTML = notifSettingHTML(); applyLang(); }
+  refreshSettingsIfOpen();
   if (Notification.permission === 'granted') showToast(t('Monthly reminders enabled 🔔'));
   else if (Notification.permission === 'denied') showToast(t('Notifications blocked in settings'), false);
 }
@@ -6552,146 +6611,180 @@ function fbCardHTML() {
   </div>`;
 }
 
+// ═══════════════════════════════════════════════════════
+// SETTINGS — one column, iOS-style grouped rows.
+// Every switch sits on the same right edge so what's on and off reads at a glance.
+// ═══════════════════════════════════════════════════════
+function stRow(o) {
+  const icon  = o.icon ? `<span class="st-ico">${o.icon}</span>` : '';
+  const sub   = o.sub ? `<span class="st-sub">${o.sub}</span>` : '';
+  const val   = o.value ? `<span class="st-val">${o.value}</span>` : '';
+  const right = o.right || '';
+  const chev  = (o.onclick && o.arrow !== false) ? '<span class="st-chev">›</span>' : '';
+  const cls   = ['st-row', o.onclick ? 'tap' : '', o.danger ? 'danger' : '', o.accent ? 'accent' : ''].filter(Boolean).join(' ');
+  const tap   = o.onclick ? ` onclick="${o.onclick}"` : '';
+  return `<div class="${cls}"${tap}>${icon}<span class="st-label">${o.label}${sub}</span>${val}${right}${chev}</div>`;
+}
+// A switch row: the whole row is tappable, the switch is decorative so we never
+// nest a button inside a button.
+function stToggle(label, sub, on, onclick, icon) {
+  return stRow({
+    icon, label, sub, onclick, arrow: false,
+    right: `<span class="dash-toggle${on ? ' on' : ''}" role="switch" aria-checked="${on}"><span></span></span>`
+  });
+}
+function stGroup(caption, rows, footer, first) {
+  const body = rows.filter(Boolean).join('');
+  if (!body) return '';
+  return `${caption ? `<div class="st-cap${first ? ' first' : ''}">${caption}</div>` : ''}
+    <div class="st-group">${body}</div>
+    ${footer ? `<div class="st-foot">${footer}</div>` : ''}`;
+}
+function stSeg(options) {   // [{label, on, onclick}]
+  return `<span class="st-seg">${options.map(o =>
+    `<button class="${o.on ? 'on' : ''}" onclick="event.stopPropagation();${o.onclick}">${o.label}</button>`).join('')}</span>`;
+}
+
+// Re-render the settings sheet in place after a toggle, if it's the open modal.
+function refreshSettingsIfOpen() {
+  if (document.getElementById('st-list')) openDataModal();
+}
+
 function openDataModal() {
-  const workoutCount = DB.workouts.length;
-  document.getElementById('modal-content').innerHTML = `
-  <div style="font-size:18px;font-weight:700;margin-bottom:6px">Data & Settings</div>
-  <div style="font-size:12px;color:var(--muted);margin-bottom:20px">${workoutCount} workout${workoutCount!==1?'s':''} stored on this device</div>
+  const n        = DB.workouts.length;
+  const canNotify = ('Notification' in window);
+  const perm      = canNotify ? Notification.permission : 'unsupported';
+  const pushState = pushRegistered() ? `<span class="st-ok">${t('On')}</span>`
+                  : savedPushSub()   ? `<span class="st-warn">${t('Needs setup')}</span>`
+                  : t('Off');
 
-  <div style="font-size:13px;font-weight:600;margin-bottom:10px">Language</div>
-  <div style="display:flex;gap:8px;margin-bottom:20px">
-    <button class="btn btn-full ${DB.lang==='en'?'btn-primary':'btn-secondary'}" onclick="setLang('en')">English</button>
-    <button class="btn btn-full ${DB.lang==='ja'?'btn-primary':'btn-secondary'}" onclick="setLang('ja')">日本語</button>
-  </div>
+  // ── General ──
+  const general = stGroup(t('General'), [
+    stRow({ icon:'🌐', label:t('Language'), right: stSeg([
+      { label:'English',  on: DB.lang === 'en', onclick:"setLang('en');openDataModal()" },
+      { label:'日本語',   on: DB.lang === 'ja', onclick:"setLang('ja');openDataModal()" }
+    ])}),
+    stRow({ icon:'⚖️', label:t('Units'), right: stSeg([
+      { label:'kg',  on: DB.unit === 'kg',  onclick:"setUnit('kg');openDataModal()" },
+      { label:'lbs', on: DB.unit === 'lbs', onclick:"setUnit('lbs');openDataModal()" }
+    ])})
+  ], '', true);
 
-  <div class="divider" style="margin:0 0 20px"></div>
+  // ── Notifications ──
+  const monthlyOn = perm === 'granted';
+  const notifications = stGroup(t('Notifications'), [
+    stRow({ icon:'🔔', label:t('Background push'), value: pushState, onclick:'openPushModal()' }),
+    stToggle(t('Badge the app icon'), t('Shows a dot when a new version lands'),
+      updateBadgeOn(), 'setUpdateBadge(!updateBadgeOn());openDataModal()', '🔴'),
+    canNotify
+      ? stToggle(t('Monthly goal reminder'),
+          perm === 'denied' ? t('Blocked in your iPhone settings')
+          : monthlyOn       ? t('Turn off from iPhone Settings → Notifications')
+                            : t('A nudge on the 1st of each month'),
+          monthlyOn,
+          monthlyOn ? '' : 'enableMonthlyReminders()', '🎯')
+      : stRow({ icon:'🎯', label:t('Monthly goal reminder'), value:t('In-app only') }),
+    canNotify && perm !== 'denied'
+      ? stToggle(t('Unsaved workout reminder'), t('If a workout sits unsaved for an hour'),
+          unsavedReminderOn(), 'toggleUnsavedReminder()', '📝')
+      : stRow({ icon:'📝', label:t('Unsaved workout reminder'),
+          sub: canNotify ? t('Blocked in your iPhone settings') : t('Not supported on this device'),
+          value: t('In-app only') }),
+    stRow({ icon:'🩺', label:t('Push diagnostics'), onclick:'openPushDiagnostics()' })
+  ]);
 
-  <div style="font-size:13px;font-weight:600;margin-bottom:6px">🔔 Update notifications</div>
-  <div style="font-size:12px;color:var(--muted);margin-bottom:12px">
-    Put a badge on the Lift Log icon when a new version lands. Needs notifications turned on below.
-  </div>
-  <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px">
-    <div style="font-size:13px;font-weight:700">Badge the app icon</div>
-    <button class="dash-toggle${updateBadgeOn()?' on':''}" role="switch" aria-checked="${updateBadgeOn()}"
-      onclick="setUpdateBadge(!updateBadgeOn());openDataModal()"><span></span></button>
-  </div>
-  <button class="btn btn-accent-outline btn-full" style="margin-bottom:8px" onclick="openPushModal()">
-    🔔 ${t('Background push')}${pushRegistered() ? ' ✅' : (savedPushSub() ? ' ⚠️' : '')}
-  </button>
-  <div style="font-size:11px;color:var(--muted);margin-bottom:12px;line-height:1.6">
-    ${pushRegistered()
-      ? t('Notifications arrive even when Lift Log is closed.')
-      : t('Set this up once and notifications arrive even when the app is closed.')}
-  </div>
-  <button class="btn btn-secondary btn-full btn-sm" style="margin-bottom:6px" onclick="checkForUpdate();showToast(t('Checking for updates…'))">Check for updates now</button>
-  <div style="font-size:11px;color:var(--muted);text-align:center;margin-bottom:20px">${tf('Version {v}', { v: APP_VERSION })}</div>
+  // ── Rest timer ──
+  const rest = stGroup(t('Rest timer'), [
+    stToggle(t('Auto-start rest timer'), t('Starts when a set has weight and reps'),
+      restAutoOn(), 'setRestAuto(!restAutoOn());openDataModal()', '▶️'),
+    stToggle(t('Beep when rest ends'), t('Sound plus vibration'),
+      restSoundOn(), 'setRestSound(!restSoundOn());openDataModal()', '🔊'),
+    stRow({ icon:'⏱', label:t('Default length'), value: fmtDuration(restDefault()),
+      onclick:'openRestSettingsModal()' })
+  ]);
 
-  <div class="divider" style="margin:0 0 20px"></div>
+  // ── Backup ──
+  const backup = stGroup(t('Backup'), [
+    stRow({ icon:'☁️', label:t('Google Drive'),
+      value: gdConnected() ? `<span class="st-ok">${t('Connected')}</span>` : t('Not connected'),
+      onclick:'openCloudBackupModal()' }),
+    gdConnected() ? stRow({ icon:'🔄', label:t('Back up now'), accent:true, arrow:false,
+      onclick:'cloudBackupNow(false)' }) : '',
+    stRow({ icon:'💾', label:t('Export all data'), accent:true, arrow:false, onclick:'exportData()' }),
+    stRow({ icon:'📥', label:t('Restore from backup'), onclick:'openRestoreModal()' })
+  ], lastBackupLabel());
 
-  <div style="font-size:13px;font-weight:600;margin-bottom:6px">⏱ Rest timer</div>
-  <div style="font-size:12px;color:var(--muted);margin-bottom:12px">
-    ${tf('Default {t} between sets', {t:fmtDuration(restDefault())})} · ${t('Auto-start')} ${restAutoOn() ? t('on') : t('off')} · ${t('Beep')} ${restSoundOn() ? t('on') : t('off')}
-  </div>
-  <button class="btn btn-secondary btn-full" style="margin-bottom:20px" onclick="openRestSettingsModal()">⏱ Rest timer settings</button>
-
-  <div class="divider" style="margin:0 0 20px"></div>
-
-  <div style="font-size:13px;font-weight:600;margin-bottom:10px">Help</div>
-  <button class="btn btn-secondary btn-full" style="margin-bottom:8px" onclick="openHelpModal()">▶ Take the guided tour</button>
-  ${gsDismissed() ? `<button class="btn btn-secondary btn-full" onclick="localStorage.removeItem('ll_gs_dismissed');closeModal();showView('dashboard');showToast(t('Checklist restored'))">🚀 Show getting-started checklist</button>` : ''}
-
-  <div class="divider" style="margin:20px 0"></div>
-
-  <div style="font-size:13px;font-weight:600;margin-bottom:6px">${t('Feedback')}</div>
-  <div style="font-size:12px;color:var(--muted);margin-bottom:12px">
-    ${t('Found a bug or missing a feature? Tell us — it shapes what gets built next.')}
-  </div>
-  <button class="btn btn-accent-outline btn-full" onclick="openFeedbackModal('settings')">💬 ${t('Send feedback')}</button>
-
-  <div class="divider" style="margin:20px 0"></div>
-
-  <div style="font-size:13px;font-weight:600;margin-bottom:6px">Workout templates</div>
-  <div style="font-size:12px;color:var(--muted);margin-bottom:12px">
-    Saved menus per session type. Build one from the Log screen: pick a session type, add exercises, then tap "Save as template".
-  </div>
-  ${(() => {
-    const tpls = DB.templates, keys = Object.keys(tpls);
-    if (!keys.length) return `<div style="font-size:12px;color:var(--muted);margin-bottom:4px">No templates yet</div>`;
-    return keys.map(k => `
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;background:var(--card2);border:1px solid var(--border);border-radius:10px;margin-bottom:8px">
-      <div style="min-width:0">
-        <div style="font-size:13px;font-weight:700">${k}</div>
-        <div style="font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${tpls[k].map(exDisp).join(' · ')}</div>
-      </div>
-      <button class="del-btn" style="flex-shrink:0;width:36px;height:36px" onclick="deleteTemplate('${esc(k)}')">
+  // ── Templates ──
+  const tpls = DB.templates, keys = Object.keys(tpls);
+  const templates = stGroup(t('Workout templates'),
+    keys.length ? keys.map(k => stRow({
+      label: t(k),
+      sub: tpls[k].map(exDisp).join(' · '),
+      right: `<button class="del-btn" style="flex-shrink:0;width:34px;height:34px" onclick="event.stopPropagation();deleteTemplate('${esc(k)}')">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
-        </svg>
-      </button>
-    </div>`).join('');
-  })()}
+          <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg></button>`
+    })) : [stRow({ label: t('No templates yet'), sub: t('Save one from the Log screen') })]);
 
-  <div class="divider" style="margin:20px 0"></div>
+  // ── Help ──
+  const help = stGroup(t('Help'), [
+    stRow({ icon:'▶️', label:t('Take the guided tour'), onclick:'openHelpModal()' }),
+    gsDismissed() ? stRow({ icon:'🚀', label:t('Show getting-started checklist'),
+      onclick:"localStorage.removeItem('ll_gs_dismissed');closeModal();showView('dashboard');showToast(t('Checklist restored'))" }) : '',
+    stRow({ icon:'💬', label:t('Send feedback'), onclick:"openFeedbackModal('settings')" })
+  ]);
 
-  <div style="font-size:13px;font-weight:600;margin-bottom:6px">Monthly goal reminder</div>
-  <div style="font-size:12px;color:var(--muted);margin-bottom:12px">
-    Get a nudge on the 1st of each month to set a fresh workout goal.
-    ${('Notification' in window) ? '' : 'Notifications aren\'t supported on this device — you\'ll still see the in-app banner.'}
+  // ── About ──
+  const about = stGroup(t('About'), [
+    stRow({ icon:'📦', label:t('Version'), value: String(APP_VERSION) }),
+    stRow({ icon:'🔄', label:t('Check for updates'), accent:true, arrow:false,
+      onclick:"checkForUpdate();showToast(t('Checking for updates…'))" })
+  ], tf('{n} workouts stored on this device', { n }));
+
+  document.getElementById('modal-content').innerHTML = `
+  <div style="font-size:18px;font-weight:700;margin-bottom:2px">${t('Settings')}</div>
+  <div id="st-list">
+    ${general}${notifications}${rest}${backup}${templates}${help}${about}
+    <div style="height:8px"></div>
+  </div>`;
+  openModal();
+}
+
+// ── Cloud backup sub-sheet ──
+function openCloudBackupModal() {
+  document.getElementById('modal-content').innerHTML = `
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+    <button class="btn btn-secondary btn-sm" onclick="openDataModal()" style="padding:8px 10px">← Back</button>
+    <div style="font-size:18px;font-weight:700">☁️ ${t('Automatic cloud backup')}</div>
   </div>
-  <div id="notif-row">${notifSettingHTML()}</div>
+  ${gdSettingsHTML()}`;
+  openModal();
+}
 
-  <div class="divider" style="margin:20px 0"></div>
-
-  <div style="font-size:13px;font-weight:600;margin-bottom:6px">Unsaved workout reminder</div>
-  <div style="font-size:12px;color:var(--muted);margin-bottom:12px">
-    Start a workout but forget to save it? Get a reminder if it sits unsaved for over an hour, so you don't lose your sets.
+// ── Restore sub-sheet ──
+function openRestoreModal() {
+  document.getElementById('modal-content').innerHTML = `
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+    <button class="btn btn-secondary btn-sm" onclick="openDataModal()" style="padding:8px 10px">← Back</button>
+    <div style="font-size:18px;font-weight:700">${t('Restore from backup')}</div>
   </div>
-  <div id="unsaved-notif-row">${unsavedNotifSettingHTML()}</div>
-
-  <div class="divider" style="margin:20px 0"></div>
-
-  <div style="font-size:13px;font-weight:600;margin-bottom:10px">☁️ Automatic cloud backup</div>
-  ${gdSettingsHTML()}
-
-  <div class="divider" style="margin:20px 0"></div>
-
-  <div style="font-size:13px;font-weight:600;margin-bottom:10px">Manual backup (file)</div>
-  <div style="font-size:12px;color:var(--muted);margin-bottom:12px">
-    Export saves all your workouts, PRs, and goals as a file. Keep it somewhere safe (Files, Notes, email yourself).
-  </div>
-  <div style="font-size:12px;margin-bottom:12px;color:${backupOverdue()?'var(--red)':'var(--muted)'}">
-    ${lastBackupLabel()}
-  </div>
-  <button class="btn btn-primary btn-full" onclick="exportData()">
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-      <polyline points="7 10 12 15 17 10"/>
-      <line x1="12" y1="15" x2="12" y2="3"/>
-    </svg>
-    Export All Data
-  </button>
-
-  <div class="divider" style="margin:20px 0"></div>
-
-  <div style="font-size:13px;font-weight:600;margin-bottom:10px">Restore from backup</div>
-  <div style="font-size:12px;color:var(--muted);margin-bottom:12px">
-    Choose your exported backup file to restore it.
-    <strong style="color:var(--red)">This will overwrite your current data.</strong>
+  <div style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.6">
+    ${t('Choose your exported backup file to restore it.')}
+    <strong style="color:var(--red)">${t('This will overwrite your current data.')}</strong>
   </div>
   <input type="file" id="import-file" accept="application/json,.json"
     onchange="importFromFile(this)" style="display:none">
-  <button class="btn btn-secondary btn-full" style="margin-bottom:12px" onclick="document.getElementById('import-file').click()">
+  <button class="btn btn-secondary btn-full" style="margin-bottom:14px" onclick="document.getElementById('import-file').click()">
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
       <polyline points="7 10 12 15 17 10"/>
       <line x1="12" y1="15" x2="12" y2="3"/>
     </svg>
-    Choose Backup File
+    ${t('Choose Backup File')}
   </button>
-  <div style="font-size:11px;color:var(--muted);margin-bottom:8px">Or paste the JSON manually:</div>
-  <textarea id="import-json" rows="3" placeholder='Paste exported JSON here…'
+  <div style="font-size:11px;color:var(--muted);margin-bottom:8px">${t('Or paste the JSON manually:')}</div>
+  <textarea id="import-json" rows="3" placeholder="Paste exported JSON here…"
     style="font-size:12px;font-family:monospace;resize:none;margin-bottom:10px"></textarea>
-  <button class="btn btn-secondary btn-full" onclick="importData()">Import Pasted JSON</button>`;
+  <button class="btn btn-secondary btn-full" onclick="importData()">${t('Import Pasted JSON')}</button>`;
   openModal();
 }
 
@@ -8163,6 +8256,7 @@ async function toggleUnsavedReminder() {
   scheduleUnsavedReminder();
   const row = document.getElementById('unsaved-notif-row');
   if (row) { row.innerHTML = unsavedNotifSettingHTML(); applyLang(); }
+  refreshSettingsIfOpen();
 }
 
 // ═══════════════════════════════════════════════════════
