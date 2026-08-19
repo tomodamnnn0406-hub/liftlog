@@ -137,6 +137,18 @@ input:focus,textarea:focus,select:focus{border-color:var(--accent)}
   padding:8px 6px;text-align:center}
 .cardio-sum .cs-v{font-size:16px;font-weight:800;color:var(--accent);font-variant-numeric:tabular-nums;line-height:1.2}
 .cardio-sum .cs-l{font-size:10px;color:var(--muted);margin-top:2px}
+/* ── Stretch rows: a hold is just a duration ── */
+.stretch-header{display:grid;grid-template-columns:24px 1fr 88px 40px;gap:6px;padding:0 2px;margin-bottom:4px}
+.stretch-header span{font-size:10px;color:var(--muted);text-align:center}
+.stretch-row{display:grid;grid-template-columns:24px 1fr 88px 40px;gap:6px;align-items:center;margin-bottom:6px}
+.stretch-row input{padding:10px 4px;text-align:center;border-radius:8px;font-weight:600;font-size:15px;min-height:44px}
+.stretch-mmss{font-size:13px;font-weight:700;color:var(--accent);text-align:center;font-variant-numeric:tabular-nums}
+.stretch-chips{display:flex;gap:5px;margin:0 0 10px 30px;flex-wrap:wrap}
+.stretch-chip{background:var(--card2);border:1px solid var(--border);color:var(--muted);border-radius:7px;
+  padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer;font-variant-numeric:tabular-nums;
+  -webkit-tap-highlight-color:transparent;touch-action:manipulation}
+.stretch-chip:active{opacity:.7}
+.stretch-chip.on{background:var(--accent-dim);border-color:var(--accent);color:var(--accent)}
 .set-qbtn{font-size:10px;font-weight:700;background:none;border:1px solid var(--border);
   border-radius:4px;padding:1px 6px;cursor:pointer;color:var(--muted);line-height:1.5;
   -webkit-tap-highlight-color:transparent;touch-action:manipulation}
@@ -701,7 +713,7 @@ const KG_TO_LBS = 2.20462;
 
 const SESSION_PRESETS = [
   'Push','Pull','Legs','Upper Body','Lower Body','Full Body',
-  'Chest','Back','Shoulders','Arms','Abs / Core','Cardio'
+  'Chest','Back','Shoulders','Arms','Abs / Core','Cardio','Stretch & Mobility'
 ];
 
 // Map exercise names → body part (lowercase match)
@@ -714,7 +726,7 @@ const BODY_PART_MAP = {
   'Core':      ['plank','crunch','ab wheel','cable crunch','hanging leg raise','russian twist','sit-up','leg raise','decline crunch'],
 };
 const BODY_PART_EMOJI = {
-  'Chest':'🎽','Back':'🎒','Legs':'🦵','Shoulders':'🏋️','Arms':'💪','Abs':'🔥','Core':'🔥','Cardio':'🏃','Other':'⚡'
+  'Chest':'🎽','Back':'🎒','Legs':'🦵','Shoulders':'🏋️','Arms':'💪','Abs':'🔥','Core':'🔥','Cardio':'🏃','Stretching':'🧘','Other':'⚡'
 };
 
 // Detailed muscle taxonomy — used for exercise tagging and PR grouping
@@ -853,7 +865,11 @@ const DEFAULT_EXERCISES = [
   'Hanging Leg Raise','Leg Raise','Russian Twist','Ab Wheel Rollout','Mountain Climber',
   // Cardio / Other
   'Treadmill','Incline Walk','Running','Cycling','Rowing Machine','Stair Climber',
-  'Elliptical','Jump Rope','Farmer\'s Walk','Kettlebell Swing','Burpee'
+  'Elliptical','Jump Rope','Farmer\'s Walk','Kettlebell Swing','Burpee',
+  // Stretching / mobility — logged as hold time
+  'Stretching','Foam Rolling','Hamstring Stretch','Quad Stretch','Hip Flexor Stretch',
+  'Calf Stretch','Chest Stretch','Shoulder Stretch','Lat Stretch','Glute Stretch',
+  'Cat-Cow','Downward Dog','Couch Stretch','Butterfly Stretch','Thoracic Rotation'
 ];
 
 // Muscle tags for the default exercises (used for body-part grouping).
@@ -1095,6 +1111,26 @@ const I18N = {
     'Starts when a set has weight and reps':'セットに重量とレップを入力すると開始',
     'Sound plus vibration':'サウンドとバイブレーション',
     'Not supported on this device':'この端末では利用できません',
+    'Stretching is now timed — log hold time instead of weight and reps':'ストレッチを時間で記録 — 重量やレップは不要に',
+    'Rest timer can be set to Auto or Manual in Settings':'休憩タイマーを設定で「自動」か「手動」に切り替え可能に',
+    'Stretch & Mobility':'ストレッチ・柔軟',
+    // ── stretching ──
+    'Stretching':'ストレッチ','Time (sec)':'時間（秒）','Total hold':'合計ホールド時間','Holds':'ホールド数',
+    '+ Add Hold':'＋ ホールドを追加','{n} holds':'{n}ホールド','total hold time':'合計ホールド時間',
+    'Per session':'1回あたり','avg':'平均',
+    'Stretching — logs hold time only':'ストレッチ — ホールド時間のみ記録',
+    'Cardio — logs speed, time and distance':'有酸素 — 速度・時間・距離を記録',
+    'Weights — logs weight and reps':'ウェイト — 重量とレップを記録',
+    'Weights':'ウェイト','Cardio':'有酸素',
+    'Weight and reps, with 1RM estimates':'重量とレップ（推定1RMつき）',
+    'Speed, time and distance, with pace':'速度・時間・距離（ペースつき）',
+    'Hold time only — no weight or reps':'ホールド時間のみ — 重量やレップは不要',
+    'Exercise type':'種目タイプ','Now logged as {kind}':'{kind}として記録します',
+    'How {name} is recorded. Past workouts keep whatever you already logged.':'{name} の記録方法です。過去のワークアウトはそのまま残ります。',
+    // ── rest start mode ──
+    'Start rest timer':'休憩タイマーの開始','Auto':'自動','Manual':'手動',
+    'Starts on its own when a set is filled in':'セットを入力すると自動で開始します',
+    'Only starts when you tap the Rest button':'休憩ボタンをタップしたときだけ開始します',
     // ── settings list ──
     'Settings':'設定','General':'一般','Units':'単位','Notifications':'通知','Backup':'バックアップ','About':'このアプリについて',
     'On':'オン','Off':'オフ','Needs setup':'設定が必要','Not connected':'未接続','Connected':'接続済み','In-app only':'アプリ内のみ',
@@ -1279,6 +1315,7 @@ const I18N_PATTERNS = [
   [/^\+ Add "(.+)"$/,             m => '「' + m[1] + '」を追加'],
   // ── cardio composed strings ──
   [/^(\d+)\s*intervals?$/,        m => m[1] + 'インターバル'],
+  [/^(\d+)\s*holds?$/,            m => m[1] + 'ホールド'],
   [/^Pace\s*$/,                    () => 'ペース'],
   [/^\/km$/,                       () => '/km'],
   [/^(\d+)\s*sessions?$/,         m => m[1] + 'セッション'],
@@ -1305,6 +1342,11 @@ const EX_TOKENS = {
   'Kettlebell':'ケトルベル','Swing':'スイング','Swings':'スイング','Burpee':'バーピー','Burpees':'バーピー','Back':'バック','Supported':'サポート','Neutral':'ニュートラル','Vertical':'バーティカル','Horizontal':'ホリゾンタル','Underhand':'アンダーハンド','Overhand':'オーバーハンド',
   'Single':'シングル','Single-arm':'シングルアーム','One-arm':'ワンアーム','One':'ワン','Assisted':'アシステッド','Banded':'バンド','Band':'バンド','Inverted':'インバーテッド','Floor':'フロア','Landmine':'ランドマイン','Spider':'スパイダー','Drag':'ドラッグ','Resistance':'レジスタンス',
   'Extensions':'エクステンション','Wide-grip':'ワイドグリップ','Close-grip':'クローズグリップ','Cossack':'コサック','Pistol':'ピストル','Box':'ボックス','Sissy':'シシー','Nordic':'ノルディック','Jefferson':'ジェファーソン','Zercher':'ゼルチャー',
+  'Stretch':'ストレッチ','Stretching':'ストレッチ','Stretches':'ストレッチ','Hamstring':'ハムストリング','Hamstrings':'ハムストリング',
+  'Quad':'大腿四頭筋','Quads':'大腿四頭筋','Flexor':'屈筋','Foam':'フォーム','Rolling':'ローリング','Roller':'ローラー',
+  'Mobility':'モビリティ','Warm-up':'ウォームアップ','Cool':'クール','Down':'ダウン','Pose':'ポーズ','Pigeon':'ピジョン',
+  'Cat-Cow':'キャットカウ','Downward':'ダウンドッグ','Dog':'ドッグ','Couch':'カウチ','Butterfly':'バタフライ',
+  'Thoracic':'胸椎','Rotation':'ローテーション','Opener':'オープナー','Ankle':'アンクル','Dislocates':'ディスロケート',
   'Bent':'ベント','Bent-over':'ベントオーバー','Bentover':'ベントオーバー','Chest-supported':'チェストサポート','Cross':'クロス','Body':'ボディ','Weight':'ウェイト','Bodyweight':'自重','Hammer-strength':'ハンマーストレングス','Pec-deck':'ペックデック',
   'Straight-bar':'ストレートバー','V-bar':'Vバー','Reverse-grip':'リバースグリップ','Hip-thrust':'ヒップスラスト','Belt':'ベルト','Sled':'スレッド','Push-down':'プッシュダウン','Kickback':'キックバック','Kickbacks':'キックバック','Pushup':'腕立て伏せ','Pushups':'腕立て伏せ','Pullup':'懸垂','Pullups':'懸垂','Chinup':'チンアップ',
   'Trap':'トラップ','Traps':'トラップ','Rotator':'ローテーター','Cuff':'カフ','External':'エクスターナル','Internal':'インターナル','Rotation':'ローテーション','Wood':'ウッド','Chop':'チョップ','Woodchop':'ウッドチョップ','Cable-crossover':'ケーブルクロスオーバー',
@@ -1662,10 +1704,14 @@ function allExerciseNames() {
 // phone silently. This surfaces it: a home-screen badge, a local notification
 // and a "what's new" banner, so an update is never invisible.
 // ═══════════════════════════════════════════════════════
-const APP_VERSION = 74;
+const APP_VERSION = 75;
 
 // Release notes, newest first. Keys are version numbers.
 const WHATS_NEW = {
+  75: [
+    'Stretching is now timed — log hold time instead of weight and reps',
+    'Rest timer can be set to Auto or Manual in Settings'
+  ],
   74: [
     'Settings rebuilt as one clean list — every switch in the same place'
   ],
@@ -2112,18 +2158,51 @@ const DEFAULT_CARDIO = new Set([
   'StairMaster','Elliptical','Cross Trainer','Ski Erg','Swimming','Hiking','Sprints','Sprint'
 ]);
 
-// Per-exercise override: { 'Treadmill':'cardio', 'Burpee':'strength' }
+// Stretching / mobility work is timed, not counted — a hold has a duration and
+// nothing else. Logging it as weight x reps never made sense.
+const DEFAULT_STRETCH = new Set([
+  'Stretching','Stretch','Static Stretching','Dynamic Stretching','Warm-up','Warm Up','Cool Down',
+  'Foam Rolling','Foam Roller','Mobility','Hamstring Stretch','Quad Stretch','Hip Flexor Stretch',
+  'Calf Stretch','Chest Stretch','Shoulder Stretch','Lat Stretch','Triceps Stretch','Glute Stretch',
+  'Pigeon Pose','Child\u2019s Pose','Cat-Cow','Downward Dog','Couch Stretch','Butterfly Stretch',
+  'Neck Stretch','Wrist Stretch','Thoracic Rotation','Hip Opener','Ankle Mobility','Shoulder Dislocates'
+]);
+
+// Per-exercise override: { 'Treadmill':'cardio', 'Hamstring Stretch':'stretch' }
 function exKinds()      { try { return JSON.parse(localStorage.getItem('ll_ex_kind') || '{}'); } catch (e) { return {}; } }
 function saveExKinds(m) { localStorage.setItem('ll_ex_kind', JSON.stringify(m)); }
-function isCardio(name) {
+
+// The one source of truth: 'strength' | 'cardio' | 'stretch'.
+function exKind(name) {
   const k = exKinds()[name];
-  if (k) return k === 'cardio';
-  return DEFAULT_CARDIO.has(name);
+  if (k === 'cardio' || k === 'strength' || k === 'stretch') return k;
+  if (DEFAULT_CARDIO.has(name))  return 'cardio';
+  if (DEFAULT_STRETCH.has(name)) return 'stretch';
+  // Anything whose name reads like a stretch, so custom names work out of the box.
+  if (/\b(stretch|mobility|foam roll|warm.?up|cool.?down|pose)\b/i.test(name)) return 'stretch';
+  return 'strength';
 }
+function isCardio(name)  { return exKind(name) === 'cardio'; }
+function isStretch(name) { return exKind(name) === 'stretch'; }
+
 function setExKind(name, kind) {
   const m = exKinds();
-  if (kind === 'cardio' || kind === 'strength') m[name] = kind; else delete m[name];
+  if (kind === 'cardio' || kind === 'strength' || kind === 'stretch') m[name] = kind;
+  else delete m[name];
   saveExKinds(m);
+}
+// A blank set of the right shape for this exercise.
+function blankSetFor(name) {
+  const k = exKind(name);
+  if (k === 'cardio')  return { speed:'', mins:'', km:'' };
+  if (k === 'stretch') return { secs:'' };
+  return { weight:'', reps:'' };
+}
+// Total hold time (seconds) logged for a stretch exercise entry.
+function stretchTotal(ex) {
+  let sec = 0;
+  for (const st of (ex.sets || [])) sec += num(st.secs) || 0;
+  return Math.round(sec);
 }
 // True when a stored set holds cardio data (used for rendering old workouts safely).
 function isCardioSet(st) {
@@ -2206,6 +2285,23 @@ function getCardioStats(name) {
     avgPace: paceSecPerKm(km, mins), lastDate: last,
     avgSpeed: mins > 0 ? r2(km / (mins / 60)) : null
   };
+}
+
+// Lifetime totals for a stretch exercise.
+function getStretchStats(name) {
+  let sec = 0, holds = 0, last = '';
+  const days = new Set();
+  for (const w of DB.workouts) {
+    for (const ex of w.exercises) {
+      if (ex.name !== name) continue;
+      const t = stretchTotal(ex);
+      if (!t) continue;
+      sec += t; holds += ex.sets.length; days.add(w.date);
+      if (w.date > last) last = w.date;
+    }
+  }
+  return { secs: sec, holds, sessions: days.size, lastDate: last,
+           avg: days.size ? Math.round(sec / days.size) : 0 };
 }
 
 // Per-session series for the cardio progress chart.
@@ -3392,7 +3488,8 @@ function lastSessionNamed(name) {
 // Last sets for an exercise across all workouts → placeholder values in display unit
 function lastSetsFor(exName) {
   const sorted = [...DB.workouts].sort((a,b) => b.date.localeCompare(a.date));
-  const cardio = isCardio(exName);
+  const cardio  = isCardio(exName);
+  const stretch = isStretch(exName);
   for (const w of sorted) {
     const ex = w.exercises.find(e => e.name === exName);
     if (ex && ex.sets.length) {
@@ -3401,6 +3498,7 @@ function lastSetsFor(exName) {
           phSpeed: s.speed ?? '', phMins: s.mins ?? '', phKm: s.km ?? ''
         }));
       }
+      if (stretch) return ex.sets.map(s => ({ phSecs: s.secs ?? '' }));
       const du = wUnit(w);
       return ex.sets.map(s => ({
         phW: s.weight ? Math.round(dispW(+s.weight, du) * 10) / 10 : '',
@@ -3414,6 +3512,12 @@ function lastSetsFor(exName) {
 function exerciseWithPlaceholders(name) {
   const cardio = isCardio(name);
   const last   = lastSetsFor(name);
+  if (isStretch(name)) {
+    const sets = last
+      ? last.map(p => ({ secs:'', phSecs: p.phSecs }))
+      : [{ secs:'' }];
+    return { name, sets };
+  }
   if (cardio) {
     const sets = last
       ? last.map(p => ({ speed:'', mins:'', km:'', phSpeed:p.phSpeed, phMins:p.phMins, phKm:p.phKm }))
@@ -3605,6 +3709,7 @@ function startRest(sec, exName) {
 function autoStartRest(exName) {
   if (!restAutoOn()) return;
   if (editingWorkout) return;              // only while actively logging
+  if (isStretch(exName)) return;           // you don't rest after a stretch
   startRest(restFor(exName), exName);
 }
 
@@ -3763,10 +3868,15 @@ function openRestSettingsModal(exName) {
   ${exName ? `<div style="font-size:11px;color:var(--muted);margin:-4px 0 12px">Only applies to this exercise. Everything else uses the default.</div>` : `
   <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 0;border-top:1px solid var(--border)">
     <div style="min-width:0">
-      <div style="font-size:13px;font-weight:700">Auto-start rest timer</div>
-      <div style="font-size:11px;color:var(--muted)">Starts counting the moment a set has weight and reps.</div>
+      <div style="font-size:13px;font-weight:700">${t('Start rest timer')}</div>
+      <div style="font-size:11px;color:var(--muted)">${restAutoOn()
+        ? t('Starts on its own when a set is filled in')
+        : t('Only starts when you tap the Rest button')}</div>
     </div>
-    <button class="dash-toggle${restAutoOn()?' on':''}" role="switch" aria-checked="${restAutoOn()}" onclick="setRestAuto(!restAutoOn());openRestSettingsModal()"><span></span></button>
+    ${stSeg([
+      { label:t('Auto'),   on: restAutoOn(),  onclick:'setRestAuto(true);openRestSettingsModal()' },
+      { label:t('Manual'), on: !restAutoOn(), onclick:'setRestAuto(false);openRestSettingsModal()' }
+    ])}
   </div>
   <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 0;border-top:1px solid var(--border)">
     <div style="min-width:0">
@@ -3801,13 +3911,19 @@ function saveRestLen(exName) {
 function renderExercisesHTML() {
   const unit = DB.unit;
   return currentLog.exercises.map((ex, ei) => {
-    const cardio = isCardio(ex.name);
+    const kind    = exKind(ex.name);
+    const cardio  = kind === 'cardio';
+    const stretch = kind === 'stretch';
     const muscle = getMuscleForExercise(ex.name);
     const isOpen = openEx.has(ei);
     const nSets  = ex.sets.length;
     // Collapsed summary: muscle · sets · best entered set (or km · time for cardio)
     const bits = [];
-    if (cardio) {
+    if (stretch) {
+      const tot = stretchTotal(ex);
+      bits.push(`${nSets} hold${nSets!==1?'s':''}`);
+      if (tot) bits.push(fmtDuration(tot));
+    } else if (cardio) {
       let km = 0, mn = 0;
       for (const st of ex.sets) { km += num(st.km) || 0; mn += num(st.mins) || 0; }
       bits.push(`${nSets} interval${nSets!==1?'s':''}`);
@@ -3831,7 +3947,7 @@ function renderExercisesHTML() {
         <span class="ex-acc-chevron">▾</span>
         <div style="min-width:0">
           <div style="font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${ex.name}</div>
-          <div style="font-size:11px;color:${(muscle||cardio)?'var(--accent)':'var(--muted)'};margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${summary}</div>
+          <div style="font-size:11px;color:${(muscle||cardio||stretch)?'var(--accent)':'var(--muted)'};margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${summary}</div>
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:3px;flex-shrink:0" onclick="event.stopPropagation()">
@@ -3845,7 +3961,7 @@ function renderExercisesHTML() {
       </div>
     </div>
     <div class="ex-acc-body">
-    ${cardio ? cardioSetsHTML(ex, ei, false) : `
+    ${stretch ? stretchSetsHTML(ex, ei, false) : cardio ? cardioSetsHTML(ex, ei, false) : `
     <div class="sets-header">
       <span>Set</span><span>Wt (${unit})</span><span>Reps</span><span>~1RM</span><span></span>
     </div>
@@ -3879,13 +3995,13 @@ function renderExercisesHTML() {
     </div>`;
     }).join('')}`}
     <div style="display:flex;gap:8px;margin-top:8px">
-      <button class="btn btn-secondary btn-sm" style="flex:1" onclick="addSet(${ei})">${cardio ? '+ Add Interval' : '+ Add Set'}</button>
-      <button class="btn btn-secondary btn-sm rest-btn"
+      <button class="btn btn-secondary btn-sm" style="flex:1" onclick="addSet(${ei})">${stretch ? '+ Add Hold' : cardio ? '+ Add Interval' : '+ Add Set'}</button>
+      ${stretch ? '' : `<button class="btn btn-secondary btn-sm rest-btn"
         onpointerdown="restBtnDown('${esc(ex.name)}')" onpointerup="restBtnUp('${esc(ex.name)}')"
         onpointerleave="restBtnCancel()" onpointercancel="restBtnCancel()"
         oncontextmenu="event.preventDefault()"
         title="Tap to start · hold to change length">⏱ Rest
-        <span class="rest-len" data-rest-for="${esc(ex.name)}">${fmtDuration(restFor(ex.name))}</span></button>
+        <span class="rest-len" data-rest-for="${esc(ex.name)}">${fmtDuration(restFor(ex.name))}</span></button>`}
     </div>
     <input type="text" class="ex-note-input" placeholder="Note for this exercise… (grip, tempo, how it felt)"
       value="${(ex.note||'').replace(/"/g,'&quot;')}"
@@ -3909,6 +4025,78 @@ function cardioTotalsHTML(ex) {
       <div class="cs"><div class="cs-v">${fmtPace(paceSecPerKm(km, mins))}</div><div class="cs-l">Avg pace /km</div></div>
       ${kcal ? `<div class="cs"><div class="cs-v">${Math.round(kcal)}</div><div class="cs-l">kcal</div></div>` : ''}
     </div>`;
+}
+
+// Stretch rows — one row per hold, and the only thing to record is how long.
+function stretchSetsHTML(ex, ei, edit) {
+  const p   = edit ? 'e' : '';
+  const up  = edit ? 'stretchEditUpdate' : 'stretchUpdate';
+  const del = edit ? 'editRemoveSet'     : 'removeSet';
+  const PRESETS = [20, 30, 45, 60];
+
+  const rows = ex.sets.map((set, si) => {
+    const sec = num(set.secs);
+    return `
+    <div class="stretch-row">
+      <div class="set-num">${si+1}</div>
+      <input type="number" inputmode="numeric" min="0" step="5" value="${set.secs ?? ''}" placeholder="${set.phSecs ?? '0'}"
+        id="${p}sx-${ei}-${si}" oninput="${up}(${ei},${si},this.value)">
+      <div class="stretch-mmss" id="${p}sm-${ei}-${si}">${sec ? fmtDuration(sec) : '—'}</div>
+      <button class="del-btn" onclick="${del}(${ei},${si})">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+    <div class="stretch-chips">
+      ${PRESETS.map(v => `<button class="stretch-chip${sec===v?' on':''}" onclick="${up}(${ei},${si},${v},true)">${v}s</button>`).join('')}
+    </div>`;
+  }).join('');
+
+  const tot = stretchTotal(ex);
+  const totals = tot ? `
+    <div class="cardio-sum">
+      <div class="cs"><div class="cs-v">${fmtDuration(tot)}</div><div class="cs-l">Total hold</div></div>
+      <div class="cs"><div class="cs-v">${ex.sets.length}</div><div class="cs-l">Holds</div></div>
+    </div>` : '';
+
+  return `
+    <div class="stretch-header">
+      <span>#</span><span>Time (sec)</span><span></span><span></span>
+    </div>
+    ${rows}
+    <div id="${p}stot-${ei}">${totals}</div>`;
+}
+
+function stretchUpdate(ei, si, val, rerender) {
+  currentLog.exercises[ei].sets[si].secs = val === '' ? '' : val;
+  saveDraft();
+  if (rerender) { refreshExSection(); return; }   // a preset chip was tapped
+  syncStretchRow(ei, si, false);
+}
+function stretchEditUpdate(ei, si, val, rerender) {
+  editingWorkout.exercises[ei].sets[si].secs = val === '' ? '' : val;
+  if (rerender) { editRefreshExSection(); return; }
+  syncStretchRow(ei, si, true);
+}
+// Update the m:ss readout and the running total without re-rendering, so the
+// input keeps focus while typing.
+function syncStretchRow(ei, si, edit) {
+  const pre = edit ? 'e' : '';
+  const ex  = (edit ? editingWorkout : currentLog).exercises[ei];
+  const sec = num(ex.sets[si].secs);
+  const el  = document.getElementById(`${pre}sm-${ei}-${si}`);
+  if (el) el.textContent = sec ? fmtDuration(sec) : '—';
+  const tot = stretchTotal(ex);
+  const box = document.getElementById(`${pre}stot-${ei}`);
+  if (box) {
+    box.innerHTML = tot ? `
+    <div class="cardio-sum">
+      <div class="cs"><div class="cs-v">${fmtDuration(tot)}</div><div class="cs-l">Total hold</div></div>
+      <div class="cs"><div class="cs-v">${ex.sets.length}</div><div class="cs-l">Holds</div></div>
+    </div>` : '';
+  }
+  if (typeof applyLangSafe === 'function') applyLangSafe();
 }
 
 // Cardio interval rows — shared by the Log screen and the Edit-workout modal.
@@ -4070,6 +4258,12 @@ function addSet(ei) {
     setTimeout(()=>document.getElementById(`cm-${ei}-${ex.sets.length-1}`)?.focus(),50);
     return;
   }
+  if (isStretch(ex.name)) {
+    ex.sets.push({ secs: last?.secs || '' });     // same hold length again by default
+    refreshExSection();
+    setTimeout(()=>document.getElementById(`sx-${ei}-${ex.sets.length-1}`)?.focus(),50);
+    return;
+  }
   ex.sets.push({weight:last?.weight||'', reps:''});
   refreshExSection();
   setTimeout(()=>document.getElementById(`w-${ei}-${ex.sets.length-1}`)?.focus(),50);
@@ -4077,7 +4271,7 @@ function addSet(ei) {
 function removeSet(ei, si) {
   const ex = currentLog.exercises[ei];
   ex.sets.splice(si,1);
-  if(!ex.sets.length) ex.sets.push(isCardio(ex.name) ? {speed:'',mins:'',km:''} : {weight:'',reps:''});
+  if(!ex.sets.length) ex.sets.push(blankSetFor(ex.name));
   refreshExSection();
 }
 function removeExercise(ei) {
@@ -4275,9 +4469,10 @@ function saveWorkout() {
     dataUnit: DB.unit,                        // ← tag with current unit
     exercises: currentLog.exercises.map(ex=>({
       ...ex,
-      // A cardio interval counts when it has time OR distance OR speed.
-      sets: ex.sets.filter(s => s.weight || s.reps || s.km || s.mins || s.speed)
-                   .map(({phW, phR, phSpeed, phMins, phKm, __restFired, ...s}) => s)
+      // A cardio interval counts when it has time OR distance OR speed;
+      // a stretch counts when it has a hold time.
+      sets: ex.sets.filter(s => s.weight || s.reps || s.km || s.mins || s.speed || s.secs)
+                   .map(({phW, phR, phSpeed, phMins, phKm, phSecs, __restFired, ...s}) => s)
     })).filter(ex=>ex.sets.length)
   };
 
@@ -4569,6 +4764,25 @@ function showWorkoutDetail(id) {
   }
 
   for(const ex of w.exercises) {
+    if (isStretch(ex.name)) {
+      const tot = stretchTotal(ex);
+      html += `
+      <div style="margin-bottom:16px">
+        <div style="font-size:15px;font-weight:700;margin-bottom:${ex.note?'2px':'8px'};color:var(--accent)">${ex.name}</div>
+        ${ex.note?`<div style="font-size:12px;color:var(--muted);font-style:italic;margin-bottom:8px">💬 ${ex.note}</div>`:''}
+        <div class="stretch-header"><span>#</span><span>Time (sec)</span><span></span><span></span></div>
+        ${ex.sets.map((st,i)=>`
+          <div class="stretch-row" style="pointer-events:none">
+            <div class="set-num">${i+1}</div>
+            <div style="text-align:center;font-size:14px;font-weight:700">${st.secs ?? '—'}</div>
+            <div class="stretch-mmss">${num(st.secs) ? fmtDuration(num(st.secs)) : '—'}</div>
+            <div></div>
+          </div>`).join('')}
+        ${tot ? `<div style="text-align:right;font-size:12px;color:var(--accent);font-weight:700;margin-top:4px">
+          ${tf('{n} holds', {n:ex.sets.length})} · ${fmtDuration(tot)}</div>` : ''}
+      </div>`;
+      continue;
+    }
     if (isCardio(ex.name)) {
       let km = 0, mn = 0, kc = 0;
       for (const st of ex.sets) { km += num(st.km) || 0; mn += num(st.mins) || 0; kc += num(st.kcal) || 0; }
@@ -4726,12 +4940,15 @@ function renderEditExercisesHTML() {
   const unit = DB.unit;
   const du   = wUnit(editingWorkout);
   return editingWorkout.exercises.map((ex, ei) => {
-    const cardio  = isCardio(ex.name);
+    const kind    = exKind(ex.name);
+    const cardio  = kind === 'cardio';
+    const stretch = kind === 'stretch';
     const muscle  = getMuscleForExercise(ex.name);
     const isOpen  = editOpenEx.has(ei);
     const nSets   = ex.sets.length;
-    const summary = cardio ? `${nSets} interval${nSets!==1?'s':''}`
-                           : (muscle ? muscle : `${nSets} set${nSets!==1?'s':''}`);
+    const summary = stretch ? `${nSets} hold${nSets!==1?'s':''} · ${fmtDuration(stretchTotal(ex))}`
+                  : cardio  ? `${nSets} interval${nSets!==1?'s':''}`
+                            : (muscle ? muscle : `${nSets} set${nSets!==1?'s':''}`);
     return `
   <div class="card-sm ex-acc${isOpen?' open':''}" id="edit-ex-${ei}" data-drag-item style="margin-bottom:10px;padding:0;overflow:hidden">
     <div class="ex-acc-header" onclick="toggleEditEx(${ei})">
@@ -4754,7 +4971,7 @@ function renderEditExercisesHTML() {
       </div>
     </div>
     <div class="ex-acc-body">
-    ${cardio ? cardioSetsHTML(ex, ei, true) : `
+    ${stretch ? stretchSetsHTML(ex, ei, true) : cardio ? cardioSetsHTML(ex, ei, true) : `
     <div class="sets-header">
       <span>Set</span><span>Wt (${unit})</span><span>Reps</span><span>~1RM</span><span></span>
     </div>
@@ -4786,7 +5003,7 @@ function renderEditExercisesHTML() {
       </button>
     </div>`;
     }).join('')}`}
-    <button class="btn btn-secondary btn-sm" style="margin-top:8px" onclick="editAddSet(${ei})">${cardio ? '+ Add Interval' : '+ Add Set'}</button>
+    <button class="btn btn-secondary btn-sm" style="margin-top:8px" onclick="editAddSet(${ei})">${stretch ? '+ Add Hold' : cardio ? '+ Add Interval' : '+ Add Set'}</button>
     <input type="text" class="ex-note-input" placeholder="Note for this exercise…"
       value="${(ex.note||'').replace(/"/g,'&quot;')}"
       oninput="editingWorkout.exercises[${ei}].note=this.value"
@@ -4843,6 +5060,12 @@ function editAddSet(ei) {
     setTimeout(()=>document.getElementById(`ecm-${ei}-${ex.sets.length-1}`)?.focus(),50);
     return;
   }
+  if (isStretch(ex.name)) {
+    ex.sets.push({ secs: last?.secs || '' });
+    editRefreshExSection();
+    setTimeout(()=>document.getElementById(`esx-${ei}-${ex.sets.length-1}`)?.focus(),50);
+    return;
+  }
   ex.sets.push({weight:last?.weight||'', reps:''});
   editRefreshExSection();
   setTimeout(()=>document.getElementById(`ew-${ei}-${ex.sets.length-1}`)?.focus(),50);
@@ -4850,7 +5073,7 @@ function editAddSet(ei) {
 function editRemoveSet(ei, si) {
   const ex = editingWorkout.exercises[ei];
   ex.sets.splice(si,1);
-  if(!ex.sets.length) ex.sets.push(isCardio(ex.name) ? {speed:'',mins:'',km:''} : {weight:'',reps:''});
+  if(!ex.sets.length) ex.sets.push(blankSetFor(ex.name));
   editRefreshExSection();
 }
 function editRemoveExercise(ei) {
@@ -4884,7 +5107,7 @@ function saveEditedWorkout() {
     name: editingWorkout.name || 'Workout',
     exercises: editingWorkout.exercises.map(ex=>({
       ...ex,
-      sets: ex.sets.filter(s => s.weight || s.reps || s.km || s.mins || s.speed)
+      sets: ex.sets.filter(s => s.weight || s.reps || s.km || s.mins || s.speed || s.secs)
     })).filter(ex => ex.sets.length)
   };
 
@@ -4942,7 +5165,8 @@ function renderPRs() {
     if(!groups[bp][sub].includes(name)) groups[bp][sub].push(name);
   };
   for(const name of names) {
-    if (isCardio(name)) { addTo('Cardio', 'General', name); continue; }
+    if (isCardio(name))  { addTo('Cardio', 'General', name); continue; }
+    if (isStretch(name)) { addTo('Stretching', 'General', name); continue; }
     const muscles = getMusclesForExercise(name);
     if (muscles.length) {
       for (const m of muscles) addTo(getBodyPartForMuscle(m) || 'Other', m, name);
@@ -4952,7 +5176,7 @@ function renderPRs() {
   }
 
   // Order body parts: known ones first, then Cardio, then Other
-  const ORDER = ['Chest','Back','Legs','Glutes','Shoulders','Arms','Abs','Core','Cardio','Other'];
+  const ORDER = ['Chest','Back','Legs','Glutes','Shoulders','Arms','Abs','Core','Cardio','Stretching','Other'];
   const sortedBPs = [
     ...ORDER.filter(bp => groups[bp]),
     ...Object.keys(groups).filter(bp => !ORDER.includes(bp))
@@ -4968,7 +5192,18 @@ function renderPRs() {
     const allExInBP = Object.values(subGroups).flat();
     const totalCount = allExInBP.length;
 
-    const isCardioGroup = bp === 'Cardio';
+    const isCardioGroup  = bp === 'Cardio';
+    const isStretchGroup = bp === 'Stretching';
+    let stretchTot = null;
+    if (isStretchGroup) {
+      let sec = 0; const days = new Set();
+      for (const n of allExInBP) {
+        const st = getStretchStats(n);
+        sec += st.secs;
+        if (st.sessions) days.add(n);
+      }
+      stretchTot = { secs: sec };
+    }
     // Best exercise (highest 1RM among those with data)
     let bestName = null, bestRM = 0;
     for(const n of allExInBP) {
@@ -4987,7 +5222,8 @@ function renderPRs() {
 
     // Check if selected exercise is in this group
     const selInGroup = selectedPREx && allExInBP.includes(selectedPREx);
-    const selIsCardio = selInGroup && isCardio(selectedPREx);
+    const selIsCardio  = selInGroup && isCardio(selectedPREx);
+    const selIsStretch = selInGroup && isStretch(selectedPREx);
 
     // Build the sub-group body
     // Order sub-groups: MUSCLE_GROUPS defined order first, then General/Others
@@ -5031,6 +5267,27 @@ function renderPRs() {
           </div>`;
           continue;
         }
+        if (isStretch(name)) {
+          const ss = getStretchStats(name);
+          bodyHtml += `
+          <div class="bp-ex-row" onclick="selectPRExercise('${esc(name)}')"
+            style="${sel?'background:var(--accent-dim);border-left:3px solid var(--accent);':''}">
+            <div style="min-width:0;flex:1">
+              <div class="bp-ex-name" style="${sel?'color:var(--accent)':''}">${name}</div>
+              <div class="bp-ex-date">${ss.lastDate ? fmtDate(ss.lastDate) : 'No data yet'}${ss.sessions ? ` · ${tf('{n} sessions', {n:ss.sessions})}` : ''}</div>
+            </div>
+            ${ss.secs ? `
+            <div class="bp-ex-pr">
+              <div class="bp-ex-weight" style="font-size:16px">${fmtDuration(ss.secs)}</div>
+              <div class="bp-ex-reps">${tf('{n} holds', {n:ss.holds})}</div>
+              <div class="bp-ex-1rm">${t('avg')} ${fmtDuration(ss.avg)}</div>
+            </div>`
+            : `<div class="bp-ex-pr"><div style="font-size:12px;color:var(--muted)">—</div><div class="bp-ex-reps" style="color:var(--accent)">Log to set</div></div>`}
+            <button class="ex-more-btn" title="Edit or delete"
+              onclick="event.stopPropagation();openExerciseOptions('${esc(name)}')">⋯</button>
+          </div>`;
+          continue;
+        }
         const pr      = prs[name];
         const hasData = !!pr?.bestSet;
         bodyHtml += `
@@ -5056,7 +5313,16 @@ function renderPRs() {
     // Chart area if an exercise in this group is selected
     if (selInGroup) {
       let strip = '';
-      if (selIsCardio) {
+      if (selIsStretch) {
+        const ss = getStretchStats(selectedPREx);
+        strip = `
+        <div class="cardio-sum" style="margin:10px 0 4px">
+          <div class="cs"><div class="cs-v">${ss.secs ? fmtDuration(ss.secs) : '—'}</div><div class="cs-l">${t('Total hold')}</div></div>
+          <div class="cs"><div class="cs-v">${ss.holds}</div><div class="cs-l">${t('Holds')}</div></div>
+          <div class="cs"><div class="cs-v">${ss.sessions}</div><div class="cs-l">${t('Sessions')}</div></div>
+          <div class="cs"><div class="cs-v">${ss.avg ? fmtDuration(ss.avg) : '—'}</div><div class="cs-l">${t('Per session')}</div></div>
+        </div>`;
+      } else if (selIsCardio) {
         const cs = getCardioStats(selectedPREx);
         strip = `
         <div class="cardio-sum" style="margin:10px 0 4px">
@@ -5076,9 +5342,9 @@ function renderPRs() {
       <div style="padding:0 16px 16px">
         <div class="label" style="margin-top:12px">${t('Progress')} — ${exDisp(selectedPREx)}</div>
         ${strip}
-        <div id="pr-chart-area" style="min-height:50px;text-align:center;color:var(--muted);font-size:13px;padding:16px 0">
+        ${selIsStretch ? '' : `<div id="pr-chart-area" style="min-height:50px;text-align:center;color:var(--muted);font-size:13px;padding:16px 0">
           Loading chart…
-        </div>
+        </div>`}
       </div>`;
     }
 
@@ -5093,7 +5359,10 @@ function renderPRs() {
         </div>
         <div style="display:flex;align-items:center;gap:10px">
           <div style="text-align:right">
-            ${cardioTot && (cardioTot.km || cardioTot.mins) ? `
+            ${stretchTot ? `
+            <div style="font-size:17px;font-weight:800;color:${stretchTot.secs?'var(--accent)':'var(--muted)'}">${stretchTot.secs ? fmtDuration(stretchTot.secs) : '—'}</div>
+            <div style="font-size:10px;color:var(--muted)">${t('total hold time')}</div>`
+            : cardioTot && (cardioTot.km || cardioTot.mins) ? `
             <div style="font-size:17px;font-weight:800;color:var(--accent)">${cardioTot.km}<span style="font-size:11px;font-weight:500;color:var(--muted)">km</span></div>
             <div style="font-size:10px;color:var(--muted)">${fmtPace(cardioTot.pace)} /km · ${fmtMins(cardioTot.mins)}</div>`
             : `
@@ -5122,7 +5391,9 @@ function renderPRs() {
   document.getElementById('main').innerHTML = html;
 
   // Render chart if a PR is selected and its group is open
-  if (selectedPREx && isCardio(selectedPREx)) {
+  if (selectedPREx && isStretch(selectedPREx)) {
+    /* stretch shows a totals strip instead of a chart — nothing to draw */
+  } else if (selectedPREx && isCardio(selectedPREx)) {
     if (openBPGroups.has('Cardio')) setTimeout(()=>renderCardioInline(selectedPREx), 80);
   } else if(selectedPREx && prs[selectedPREx]) {
     const bp = getBodyPartForExercise(selectedPREx);
@@ -5145,7 +5416,7 @@ function toggleBPGroup(bp) {
 function selectPRExercise(name) {
   selectedPREx = name;
   // Auto-open the group containing this exercise
-  const bp = isCardio(name) ? 'Cardio' : getBodyPartForExercise(name);
+  const bp = isCardio(name) ? 'Cardio' : isStretch(name) ? 'Stretching' : getBodyPartForExercise(name);
   openBPGroups.add(bp);
   renderPRs();
   setTimeout(()=>{
@@ -5346,12 +5617,18 @@ function openExerciseOptions(name) {
   const ms    = getMusclesForExercise(name);
   const hist  = exHistoryCount(name);
   const def   = exDefaultFor(name);
-  const cardio = isCardio(name);
+  const kind   = exKind(name);
+  const cardio = kind === 'cardio';
+  const stretch = kind === 'stretch';
   const cs    = cardio ? getCardioStats(name) : null;
+  const ss    = stretch ? getStretchStats(name) : null;
   const prLine = pr?.bestSet
     ? `${pr.displayWeight}${unit} × ${pr.bestSet.reps} · ${fmtDate(pr.date)}`
     : t('No data yet');
-  const subtitle = cardio
+  const subtitle = stretch
+    ? (ss.secs ? `🧘 ${t('Stretching')} · ${fmtDuration(ss.secs)} · ${tf('{n} holds', {n:ss.holds})}`
+               : `🧘 ${t('Stretching')} · ${t('No data yet')}`)
+    : cardio
     ? (cs.km || cs.mins
         ? `🏃 ${t('Cardio')} · ${cs.km}km · ${fmtMins(cs.mins)} · ${fmtPace(cs.avgPace)}/km`
         : `🏃 ${t('Cardio')} · ${t('No data yet')}`)
@@ -5365,14 +5642,15 @@ function openExerciseOptions(name) {
     <span style="min-width:0"><span>Rename exercise</span><div class="opt-sub">Updates every past workout too</div></span>
   </button>
 
-  <button class="opt-row" onclick="toggleExerciseKind('${esc(name)}')">
-    <span class="opt-ico">${cardio ? '🏃' : '🏋️'}</span>
-    <span style="min-width:0"><span>Exercise type</span><div class="opt-sub">${cardio
-      ? t('Cardio — logs speed, time and distance. Tap to switch to weights.')
-      : t('Weights — logs weight and reps. Tap to switch to cardio.')}</div></span>
+  <button class="opt-row" onclick="openExerciseKindPicker('${esc(name)}')">
+    <span class="opt-ico">${stretch ? '🧘' : cardio ? '🏃' : '🏋️'}</span>
+    <span style="min-width:0"><span>Exercise type</span><div class="opt-sub">${
+      stretch ? t('Stretching — logs hold time only')
+      : cardio ? t('Cardio — logs speed, time and distance')
+               : t('Weights — logs weight and reps')}</div></span>
   </button>
 
-  ${cardio ? '' : `
+  ${(cardio || stretch) ? '' : `
   <button class="opt-row" onclick="openRetagExercise('${esc(name)}')">
     <span class="opt-ico">🎯</span>
     <span style="min-width:0"><span>Target muscles</span><div class="opt-sub">${ms.length ? ms.map(m=>tx(m)).join(' · ') : t('Not tagged yet')}</div></span>
@@ -5402,14 +5680,37 @@ function openExerciseOptions(name) {
   openModal();
 }
 
-// Flip an exercise between weights and cardio. Past sets keep their own shape,
-// so an exercise switched by mistake can be switched straight back.
-function toggleExerciseKind(name) {
-  const next = isCardio(name) ? 'strength' : 'cardio';
-  setExKind(name, next);
+// Choose how an exercise is logged. Past sets keep their own shape, so a wrong
+// choice can be changed straight back without losing anything.
+const EX_KIND_INFO = [
+  { key:'strength', icon:'🏋️', label:'Weights',    sub:'Weight and reps, with 1RM estimates' },
+  { key:'cardio',   icon:'🏃', label:'Cardio',     sub:'Speed, time and distance, with pace' },
+  { key:'stretch',  icon:'🧘', label:'Stretching', sub:'Hold time only — no weight or reps' }
+];
+function openExerciseKindPicker(name) {
+  const cur = exKind(name);
+  document.getElementById('modal-content').innerHTML = `
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+    <button class="btn btn-secondary btn-sm" onclick="openExerciseOptions('${esc(name)}')" style="padding:8px 10px">← Back</button>
+    <div style="font-size:18px;font-weight:700">${t('Exercise type')}</div>
+  </div>
+  <div style="font-size:12px;color:var(--muted);margin-bottom:16px">
+    ${tf('How {name} is recorded. Past workouts keep whatever you already logged.', {name: exDisp(name)})}
+  </div>
+  ${EX_KIND_INFO.map(k => `
+  <button class="opt-row" onclick="setExerciseKind('${esc(name)}','${k.key}')"
+    style="${cur===k.key?'border-color:var(--accent);background:var(--accent-dim)':''}">
+    <span class="opt-ico">${k.icon}</span>
+    <span style="min-width:0"><span>${t(k.label)}${cur===k.key?' ✓':''}</span><div class="opt-sub">${t(k.sub)}</div></span>
+  </button>`).join('')}`;
+  openModal();
+}
+function setExerciseKind(name, kind) {
+  setExKind(name, kind);
+  const info = EX_KIND_INFO.find(k => k.key === kind);
   openExerciseOptions(name);
   renderPRs();
-  showToast(next === 'cardio' ? t('Now logged as cardio 🏃') : t('Now logged as weights 🏋️'));
+  showToast(tf('Now logged as {kind}', { kind: t(info.label) }));
 }
 
 // ── Rename (propagates through history, templates, goals, settings) ──
@@ -6695,8 +6996,13 @@ function openDataModal() {
 
   // ── Rest timer ──
   const rest = stGroup(t('Rest timer'), [
-    stToggle(t('Auto-start rest timer'), t('Starts when a set has weight and reps'),
-      restAutoOn(), 'setRestAuto(!restAutoOn());openDataModal()', '▶️'),
+    stRow({ icon:'▶️', label:t('Start rest timer'),
+      sub: restAutoOn() ? t('Starts on its own when a set is filled in')
+                        : t('Only starts when you tap the Rest button'),
+      right: stSeg([
+        { label:t('Auto'),   on: restAutoOn(),  onclick:'setRestAuto(true);openDataModal()' },
+        { label:t('Manual'), on: !restAutoOn(), onclick:'setRestAuto(false);openDataModal()' }
+      ])}),
     stToggle(t('Beep when rest ends'), t('Sound plus vibration'),
       restSoundOn(), 'setRestSound(!restSoundOn());openDataModal()', '🔊'),
     stRow({ icon:'⏱', label:t('Default length'), value: fmtDuration(restDefault()),
