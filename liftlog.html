@@ -536,6 +536,24 @@ input:focus,textarea:focus,select:focus{border-color:var(--accent)}
   padding:10px 14px;box-shadow:0 6px 24px rgba(0,0,0,.5);animation:fadeIn .2s ease;
 }
 #rest-bar.show{display:block}
+/* Finished state — stays put and pulses until dismissed, because a timer that
+   silently vanishes reads as "nothing happened". */
+#rest-bar.done{border-color:var(--accent);border-width:2px;
+  /* Layer the tint OVER the solid card colour — using `background` alone made
+     the bar translucent and the page showed through the text. */
+  background-color:var(--card);
+  background-image:linear-gradient(135deg,rgba(249,115,22,.30),rgba(251,191,36,.16));
+  animation:restPulse 1.1s ease-in-out infinite}
+@keyframes restPulse{
+  0%,100%{box-shadow:0 6px 24px rgba(0,0,0,.5),0 0 0 0 rgba(249,115,22,.55)}
+  50%    {box-shadow:0 6px 24px rgba(0,0,0,.5),0 0 0 12px rgba(249,115,22,0)}
+}
+#rest-bar .rb-done-title{font-size:20px;font-weight:800;color:var(--accent);line-height:1.15}
+#rest-bar .rb-done-sub{font-size:12px;color:var(--text);opacity:.85;margin-top:3px}
+#rest-bar .rb-dismiss{background:var(--accent);border:none;color:#fff;border-radius:10px;
+  padding:11px 18px;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit;min-height:44px;
+  -webkit-tap-highlight-color:transparent;touch-action:manipulation}
+#rest-bar .rb-dismiss:active{opacity:.8}
 #rest-bar .rb-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
 #rest-bar .rb-label{font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)}
 #rest-bar .rb-time{font-size:24px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-.5px;color:var(--accent);line-height:1}
@@ -1127,6 +1145,15 @@ const I18N = {
     'Hold time only — no weight or reps':'ホールド時間のみ — 重量やレップは不要',
     'Exercise type':'種目タイプ','Now logged as {kind}':'{kind}として記録します',
     'How {name} is recorded. Past workouts keep whatever you already logged.':'{name} の記録方法です。過去のワークアウトはそのまま残ります。',
+    'Rest timer now alerts properly — it stays on screen and keeps ringing until you tap OK':'休憩タイマーが確実に知らせるように — OKを押すまで画面に残って鳴り続けます',
+    'A notification when rest ends, plus a warning beep at 10 seconds':'休憩終了時に通知、残り10秒でも予告音',
+    // ── rest end alert ──
+    'Rest is over':'休憩終了','Rest is over 💪':'休憩終了 💪','Got it':'OK',
+    'Next set: {name}':'次のセット: {name}','Time for your next set':'次のセットの時間です',
+    'Alarm when rest ends':'休憩終了時にアラーム','Repeats until you tap Got it':'OKをタップするまで繰り返します',
+    'Warn at 10 seconds left':'残り10秒で知らせる','One quiet beep before the end':'終了前に短く1回鳴らします',
+    'Keep the screen on while resting':'休憩中は画面を消さない','Stops your phone locking mid-rest':'休憩中にロックされるのを防ぎます',
+    'Test the alert':'アラームを試す','This is what the end of a rest looks like':'休憩終了時はこのように表示されます',
     // ── rest start mode ──
     'Start rest timer':'休憩タイマーの開始','Auto':'自動','Manual':'手動',
     'Starts on its own when a set is filled in':'セットを入力すると自動で開始します',
@@ -1704,10 +1731,14 @@ function allExerciseNames() {
 // phone silently. This surfaces it: a home-screen badge, a local notification
 // and a "what's new" banner, so an update is never invisible.
 // ═══════════════════════════════════════════════════════
-const APP_VERSION = 75;
+const APP_VERSION = 76;
 
 // Release notes, newest first. Keys are version numbers.
 const WHATS_NEW = {
+  76: [
+    'Rest timer now alerts properly — it stays on screen and keeps ringing until you tap OK',
+    'A notification when rest ends, plus a warning beep at 10 seconds'
+  ],
   75: [
     'Stretching is now timed — log hold time instead of weight and reps',
     'Rest timer can be set to Auto or Manual in Settings'
@@ -3662,6 +3693,11 @@ let restRemaining = 0;
 let restAudioCtx  = null;
 let restExercise  = '';    // which exercise this rest belongs to (label only)
 let restPaused    = false;
+let restFinished  = false;   // rang, waiting to be acknowledged
+let restAlarmTimer = null;   // repeats the alert until dismissed
+let restAlarmCount = 0;
+let restWarned    = false;   // the 10-seconds-left cue already played
+let restWakeLock  = null;
 
 const REST_PRESETS = [45, 60, 90, 120, 180, 300];
 
@@ -3672,6 +3708,10 @@ function restAutoOn()  { return localStorage.getItem('ll_rest_auto') !== '0'; } 
 function setRestAuto(on) { localStorage.setItem('ll_rest_auto', on ? '1' : '0'); }
 function restSoundOn() { return localStorage.getItem('ll_rest_sound') !== '0'; }  // default ON
 function setRestSound(on) { localStorage.setItem('ll_rest_sound', on ? '1' : '0'); }
+function restWarnOn()  { return localStorage.getItem('ll_rest_warn') !== '0'; }   // default ON
+function setRestWarn(on) { localStorage.setItem('ll_rest_warn', on ? '1' : '0'); }
+function restWakeOn()  { return localStorage.getItem('ll_rest_wake') !== '0'; }   // default ON
+function setRestWake(on) { localStorage.setItem('ll_rest_wake', on ? '1' : '0'); if (!on) releaseRestWakeLock(); }
 
 // Per-exercise rest lengths: { 'Squat': 180, 'Bicep Curl': 60 }
 function restPerEx()      { try { return JSON.parse(localStorage.getItem('ll_rest_per_ex') || '{}'); } catch (e) { return {}; } }
@@ -3681,6 +3721,32 @@ function setRestFor(name, sec) {
   sec = Math.max(10, Math.min(900, sec));
   if (name) { const m = restPerEx(); m[name] = sec; saveRestPerEx(m); }
   else setRestDefault(sec);
+}
+
+// iOS only lets an AudioContext start from a genuine user gesture. Auto-start is
+// triggered by an input event, which does NOT count — so the context stayed
+// suspended and the end-beep was silent. Unlock on the first tap anywhere
+// instead, and top it up whenever the app comes back to the foreground.
+function initAudioUnlock() {
+  const unlock = () => ensureRestAudio();
+  ['pointerdown', 'touchend', 'click'].forEach(ev =>
+    document.addEventListener(ev, unlock, { passive: true }));
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) ensureRestAudio(); });
+}
+
+// Keep the screen on while resting, so the countdown is still there when it ends.
+async function acquireRestWakeLock() {
+  if (!restWakeOn()) return;
+  try {
+    if ('wakeLock' in navigator && !restWakeLock) {
+      restWakeLock = await navigator.wakeLock.request('screen');
+      restWakeLock.addEventListener('release', () => { restWakeLock = null; });
+    }
+  } catch (e) {}
+}
+function releaseRestWakeLock() {
+  try { if (restWakeLock) restWakeLock.release(); } catch (e) {}
+  restWakeLock = null;
 }
 
 // Unlock audio during the user's tap so the end-beep can play later (esp. iOS).
@@ -3700,12 +3766,21 @@ function startRest(sec, exName) {
   restRemaining = sec;
   restEndTs     = Date.now() + sec * 1000;
   restPaused    = false;
+  restFinished  = false;
+  restWarned    = false;
+  stopRestAlarm();
+  acquireRestWakeLock();
   clearInterval(restInterval);
   restInterval = setInterval(tickRest, 250);
   renderRestBar();
 }
 
 // Auto-start after a set is completed — respects the per-exercise length.
+// Any new set entry means the user has moved on — clear a ringing timer.
+function clearFinishedRest() {
+  if (restFinished) { restFinished = false; stopRestAlarm(); renderRestBar(); }
+}
+
 function autoStartRest(exName) {
   if (!restAutoOn()) return;
   if (editingWorkout) return;              // only while actively logging
@@ -3717,6 +3792,12 @@ function tickRest() {
   if (restPaused) return;
   restRemaining = Math.max(0, Math.round((restEndTs - Date.now()) / 1000));
   if (restRemaining <= 0) { finishRest(); return; }
+  // One quiet cue at 10s so you can get into position before it fires. Only
+  // worth it on a rest long enough for the warning to be useful.
+  if (!restWarned && restWarnOn() && restRemaining <= 10 && restTotal >= 20) {
+    restWarned = true;
+    beepTone(660, 0, 0.18, 0.16);
+  }
   paintRest();
 }
 
@@ -3776,38 +3857,84 @@ function toggleRestPause() {
 
 function skipRest() {
   clearInterval(restInterval); restInterval = null;
-  restRemaining = 0; restPaused = false;
+  restRemaining = 0; restPaused = false; restFinished = false;
+  stopRestAlarm();
+  releaseRestWakeLock();
   renderRestBar();
 }
+// Acknowledge the finished timer — the only thing that stops the alarm.
+function dismissRest() { skipRest(); }
 
 function finishRest() {
   clearInterval(restInterval); restInterval = null;
   restRemaining = 0; restPaused = false;
-  restAlert();
+  restFinished = true;              // the bar STAYS, in its finished state
+  releaseRestWakeLock();
   renderRestBar();
+  restNotify();                     // lands on the lock screen / notification centre
+  startRestAlarm();                 // and keeps sounding until acknowledged
+}
+
+// ── The alert itself ──────────────────────────────────
+// Repeats until dismissed. Web Audio on iOS is silenced by the ring/silent
+// switch, so the notification below is the part that reliably gets through.
+function startRestAlarm() {
+  stopRestAlarm();
+  restAlarmCount = 0;
+  restAlert();
+  restAlarmTimer = setInterval(() => {
+    restAlarmCount++;
+    if (restAlarmCount > 12 || !restFinished) { stopRestAlarm(); return; }   // ~36s, then stop nagging
+    restAlert();
+  }, 3000);
+}
+function stopRestAlarm() {
+  if (restAlarmTimer) clearInterval(restAlarmTimer);
+  restAlarmTimer = null;
+  restAlarmCount = 0;
+}
+
+// A single tone. Pulled out so the 10s warning and the end alarm share it.
+function beepTone(freq, when, dur, vol) {
+  if (!restAudioCtx) return;
+  try {
+    const o = restAudioCtx.createOscillator(), g = restAudioCtx.createGain();
+    o.connect(g); g.connect(restAudioCtx.destination);
+    o.type = 'sine'; o.frequency.value = freq;
+    const t0 = restAudioCtx.currentTime + when;
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(vol || 0.3, t0 + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + (dur || 0.45));
+    o.start(t0); o.stop(t0 + (dur || 0.45) + 0.02);
+  } catch (e) {}
+}
+
+// A real notification — the only alert iOS shows when you are not looking at
+// the screen. Unique tag per fire, or iOS replaces the previous one silently.
+async function restNotify() {
+  try {
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    const reg = await navigator.serviceWorker.getRegistration();
+    if (!reg) return;
+    await reg.showNotification(t('Rest is over 💪'), {
+      body: restExercise ? tf('Next set: {name}', { name: exDisp(restExercise) })
+                         : t('Time for your next set'),
+      icon: './icon-192.png', badge: './icon-192.png',
+      tag: 'll-rest-' + Date.now(), renotify: true,
+      data: { view: 'log', kind: 'rest' }
+    });
+  } catch (e) {}
 }
 
 function restAlert() {
-  try { if (navigator.vibrate) navigator.vibrate([180, 90, 180]); } catch (e) {}
-  // Two short rising beeps via Web Audio.
+  // Note: iOS Safari has no Vibration API at all, so this only fires on Android.
+  try { if (navigator.vibrate) navigator.vibrate([200, 90, 200, 90, 320]); } catch (e) {}
   if (restSoundOn()) {
-    try {
-      if (restAudioCtx) {
-        const beep = (freq, when) => {
-          const o = restAudioCtx.createOscillator(), g = restAudioCtx.createGain();
-          o.connect(g); g.connect(restAudioCtx.destination);
-          o.type = 'sine'; o.frequency.value = freq;
-          const t = restAudioCtx.currentTime + when;
-          g.gain.setValueAtTime(0.0001, t);
-          g.gain.exponentialRampToValueAtTime(0.3, t + 0.02);
-          g.gain.exponentialRampToValueAtTime(0.0001, t + 0.45);
-          o.start(t); o.stop(t + 0.45);
-        };
-        beep(880, 0); beep(1175, 0.22); beep(1568, 0.44);
-      }
-    } catch (e) {}
+    ensureRestAudio();
+    beepTone(880, 0, 0.28, 0.35);
+    beepTone(1175, 0.24, 0.28, 0.35);
+    beepTone(1568, 0.48, 0.5, 0.35);
   }
-  showToast(t('Rest done — next set 💪'));
 }
 
 function paintRest() {
@@ -3820,6 +3947,28 @@ function paintRest() {
 function renderRestBar() {
   const bar = document.getElementById('rest-bar');
   if (!bar) return;
+
+  // Finished: stay on screen, loudly, until acknowledged.
+  if (restFinished) {
+    const who = restExercise ? exDisp(restExercise) : '';
+    bar.innerHTML = `
+      <div class="rb-top">
+        <div style="min-width:0">
+          <div class="rb-done-title">${t('Rest is over')} 💪</div>
+          <div class="rb-done-sub">${who ? tf('Next set: {name}', { name: who }) : t('Time for your next set')}</div>
+        </div>
+        <button class="rb-dismiss" onclick="dismissRest()">${t('Got it')}</button>
+      </div>
+      <div class="rb-presets" style="margin-top:10px">
+        ${REST_PRESETS.map(sec =>
+          `<button class="rb-preset" onclick="setRestPreset(${sec})">+${fmtDuration(sec)}</button>`).join('')}
+      </div>`;
+    bar.classList.add('show', 'done');
+    if (typeof applyLangSafe === 'function') applyLangSafe();
+    return;
+  }
+  bar.classList.remove('done');
+
   if (restRemaining <= 0 && !restInterval) { bar.classList.remove('show'); return; }
   const pct = restTotal ? Math.max(0, Math.min(100, restRemaining / restTotal * 100)) : 0;
   const who = restExercise ? exDisp(restExercise) : '';
@@ -3845,8 +3994,11 @@ function renderRestBar() {
 }
 
 // Background tabs throttle setInterval — resync the moment we come back.
+// Background tabs throttle setInterval. On return, tickRest catches up — and if
+// the timer expired while away it fires finishRest, so the alert is still there.
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden && restInterval && !restPaused) tickRest();
+  if (document.hidden) return;
+  if (restInterval && !restPaused) { tickRest(); acquireRestWakeLock(); }
 });
 
 // Rest-length picker (used from Settings and the per-exercise sheet)
@@ -3880,14 +4032,40 @@ function openRestSettingsModal(exName) {
   </div>
   <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 0;border-top:1px solid var(--border)">
     <div style="min-width:0">
-      <div style="font-size:13px;font-weight:700">Beep when rest ends</div>
-      <div style="font-size:11px;color:var(--muted)">Sound plus vibration.</div>
+      <div style="font-size:13px;font-weight:700">${t('Alarm when rest ends')}</div>
+      <div style="font-size:11px;color:var(--muted)">${t('Repeats until you tap Got it')}</div>
     </div>
     <button class="dash-toggle${restSoundOn()?' on':''}" role="switch" aria-checked="${restSoundOn()}" onclick="setRestSound(!restSoundOn());openRestSettingsModal()"><span></span></button>
-  </div>`}
+  </div>
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 0;border-top:1px solid var(--border)">
+    <div style="min-width:0">
+      <div style="font-size:13px;font-weight:700">${t('Warn at 10 seconds left')}</div>
+      <div style="font-size:11px;color:var(--muted)">${t('One quiet beep before the end')}</div>
+    </div>
+    <button class="dash-toggle${restWarnOn()?' on':''}" role="switch" aria-checked="${restWarnOn()}" onclick="setRestWarn(!restWarnOn());openRestSettingsModal()"><span></span></button>
+  </div>
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 0;border-top:1px solid var(--border)">
+    <div style="min-width:0">
+      <div style="font-size:13px;font-weight:700">${t('Keep the screen on while resting')}</div>
+      <div style="font-size:11px;color:var(--muted)">${t('Stops your phone locking mid-rest')}</div>
+    </div>
+    <button class="dash-toggle${restWakeOn()?' on':''}" role="switch" aria-checked="${restWakeOn()}" onclick="setRestWake(!restWakeOn());openRestSettingsModal()"><span></span></button>
+  </div>
+  <button class="btn btn-secondary btn-full btn-sm" style="margin-top:10px" onclick="testRestAlert()">🔔 ${t('Test the alert')}</button>`}
   <button class="btn btn-primary btn-full" style="margin-top:14px" onclick="saveRestLen('${esc(exName)}')">Save</button>`;
   openModal();
 }
+// Try the alert right now — this is also a real user tap, which is what iOS
+// needs to unlock audio in the first place.
+function testRestAlert() {
+  ensureRestAudio();
+  restExercise = '';
+  restFinished = true;
+  renderRestBar();
+  startRestAlarm();
+  showToast(t('This is what the end of a rest looks like'));
+}
+
 function pickRestLen(sec, exName) {
   const inp = document.getElementById('rest-custom');
   if (inp) inp.value = sec;
@@ -4228,6 +4406,7 @@ function initLogExDrag() {
 }
 
 function updateSet(ei, si, field, val) {
+  clearFinishedRest();
   const set = currentLog.exercises[ei].sets[si];
   const wasComplete = !!(set.weight && set.reps);
   set[field] = val;
@@ -4477,6 +4656,7 @@ function saveWorkout() {
   };
 
   DB.addWorkout(cleaned);
+  stopRestAlarm(); restFinished = false; releaseRestWakeLock();
   showToast(t('Workout saved! 💪'));
   timerRunning = false; timerStartTs = null;
   clearInterval(timerInterval); timerInterval = null;
@@ -7003,8 +7183,12 @@ function openDataModal() {
         { label:t('Auto'),   on: restAutoOn(),  onclick:'setRestAuto(true);openDataModal()' },
         { label:t('Manual'), on: !restAutoOn(), onclick:'setRestAuto(false);openDataModal()' }
       ])}),
-    stToggle(t('Beep when rest ends'), t('Sound plus vibration'),
+    stToggle(t('Alarm when rest ends'), t('Repeats until you tap Got it'),
       restSoundOn(), 'setRestSound(!restSoundOn());openDataModal()', '🔊'),
+    stToggle(t('Warn at 10 seconds left'), t('One quiet beep before the end'),
+      restWarnOn(), 'setRestWarn(!restWarnOn());openDataModal()', '⏳'),
+    stToggle(t('Keep the screen on while resting'), t('Stops your phone locking mid-rest'),
+      restWakeOn(), 'setRestWake(!restWakeOn());openDataModal()', '📱'),
     stRow({ icon:'⏱', label:t('Default length'), value: fmtDuration(restDefault()),
       onclick:'openRestSettingsModal()' })
   ]);
@@ -8729,6 +8913,7 @@ if (__draft) {
 }
 
 initEnhancements();
+initAudioUnlock();          // iOS needs a real tap before any sound can play
 // If launched from the "unsaved workout" notification, go straight to the Log screen.
 const __startView = (location.hash === '#log') ? 'log' : 'dashboard';
 if (location.hash) { try { history.replaceState(null, '', location.pathname); } catch (e) {} }
