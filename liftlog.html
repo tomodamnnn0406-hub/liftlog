@@ -462,6 +462,15 @@ input:focus,textarea:focus,select:focus{border-color:var(--accent)}
   -webkit-tap-highlight-color:transparent;touch-action:manipulation}
 .st-seg button.on{background:var(--accent);color:#fff}
 
+/* ── Session-type multi-select chips ── */
+.sess-chips{display:flex;flex-wrap:wrap;gap:7px}
+.sess-chip{background:var(--card2);color:var(--text);border:1px solid var(--border);
+  border-radius:999px;font-size:13px;font-weight:600;padding:8px 13px;cursor:pointer;
+  font-family:inherit;min-height:36px;line-height:1.1;
+  -webkit-tap-highlight-color:transparent;touch-action:manipulation;transition:background .12s,border-color .12s}
+.sess-chip.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.sess-chip.on::before{content:'✓ ';font-weight:800}
+
 /* ── Sticky action bars ── */
 .log-action-bar{position:fixed;left:50%;transform:translateX(-50%);
   bottom:calc(62px + env(safe-area-inset-bottom));
@@ -733,6 +742,40 @@ const SESSION_PRESETS = [
   'Push','Pull','Legs','Upper Body','Lower Body','Full Body',
   'Chest','Back','Shoulders','Arms','Abs / Core','Cardio','Stretch & Mobility'
 ];
+
+// ── Multi-part session types ───────────────────────────
+// A session can cover several body parts in one workout (Chest + Shoulders +
+// Arms). The parts live in `types` (plus an optional free-text `custom`), and
+// `name` is the joined string every downstream feature already understands
+// (history titles, calendar colours, templates, PR grouping).
+const SESSION_SEP = ' + ';
+function splitSession(name) {
+  return String(name || '').split(/\s+\+\s+/).map(x => x.trim()).filter(Boolean);
+}
+// Read the session of a log/workout, tolerating pre-v77 records that only have `name`.
+function parseSession(l) {
+  if (l && Array.isArray(l.types)) {
+    return { types: l.types.filter(Boolean), custom: String(l.custom || '').trim() };
+  }
+  const name = String((l && l.name) || '').trim();
+  if (!name) return { types: [], custom: '' };
+  const parts = splitSession(name);
+  // Only treat it as multi-part when every part is a known preset — a custom
+  // name that happens to contain " + " must survive verbatim.
+  if (parts.length && parts.every(p => SESSION_PRESETS.includes(p))) return { types: parts, custom: '' };
+  return { types: [], custom: name };
+}
+function sessionName(types, custom) {
+  return [...types, String(custom || '').trim()].filter(Boolean).join(SESSION_SEP);
+}
+// Write a session back onto a log, keeping preset order stable so the same
+// combination always produces the same name (and therefore the same colour).
+function applySession(l, s) {
+  l.types  = (s.types || []).slice().sort((a, b) => SESSION_PRESETS.indexOf(a) - SESSION_PRESETS.indexOf(b));
+  l.custom = String(s.custom || '').trim();
+  l.name   = sessionName(l.types, l.custom);
+  return l.name;
+}
 
 // Map exercise names → body part (lowercase match)
 const BODY_PART_MAP = {
@@ -1287,6 +1330,10 @@ const I18N = {
     'Enter an amount':'数値を入力してください','Enter a smaller amount':'もっと小さい数値を入力してください',
     '{n}{u} to lose':'あと{n}{u} 減らす','{n}{u} to gain':'あと{n}{u} 増やす',
     'Reuse this exercise list next {name} day in one tap':'次回の{name}の日にこの種目リストをワンタップで再利用',
+    'Pick several body parts for one session — Chest + Shoulders + Arms in one workout':'1回のセッションで複数の部位を選択できます — 胸＋肩＋腕を1回のワークアウトで',
+    'Their templates load together, with repeated exercises merged into one':'各部位のテンプレートをまとめて読み込み、重複した種目は1つにまとめます',
+    'Switching kg / lbs now converts the weights you already entered':'kg / lbs を切り替えると、入力済みの重量も自動で換算されます',
+    '{name} templates combined':'{name}のテンプレートをまとめて','pick as many as you trained':'鍛えた部位をすべて選択','✏️ Custom':'✏️ カスタム','Converted {n} weights to {u}':'{n}件の重量を{u}に換算しました',
     '{name} template':'{name}テンプレート','Load {n}':'読み込む {n}','Repeat last {name}?':'前回の{name}を繰り返す？','{verb} "{name}" template':'「{name}」テンプレートを{verb}',
     'Loaded your {name} template 📋':'{name}テンプレートを読み込みました 📋','Saved as your {name} template 📋':'{name}テンプレートを保存しました 📋',
     '{name} template saved 📋':'{name}テンプレートを保存しました 📋','Loaded last {name} session ⟳':'前回の{name}セッションを読み込みました ⟳',
@@ -1416,6 +1463,13 @@ function tkey(key){
     let any = false;
     const out = parts.map(p => { const k = p.trim(); const r = tkeyAtom(k); if(r !== null){ any = true; return p.replace(k, r); } return p; });
     if(any) return out.join(' · ');
+  }
+  // " + "-joined multi-part session names ("Chest + Shoulders + Arms")
+  if(key.indexOf(' + ') !== -1){
+    const parts = key.split(' + ');
+    let any = false;
+    const out = parts.map(p => { const k = p.trim(); const r = tkeyAtom(k); if(r !== null){ any = true; return p.replace(k, r); } return p; });
+    if(any) return out.join(' + ');
   }
   return null;
 }
@@ -1560,7 +1614,7 @@ let historyMonth      = null;
 function getActiveLog() { return editingWorkout || currentLog; }
 
 function newLog() {
-  return { id: uid(), date: todayStr(), name: '', notes: '', exercises: [], durationSec: 0 };
+  return { id: uid(), date: todayStr(), name: '', types: [], custom: '', notes: '', exercises: [], durationSec: 0 };
 }
 
 // ── In-progress workout draft ──────────────────────────
@@ -1731,10 +1785,15 @@ function allExerciseNames() {
 // phone silently. This surfaces it: a home-screen badge, a local notification
 // and a "what's new" banner, so an update is never invisible.
 // ═══════════════════════════════════════════════════════
-const APP_VERSION = 76;
+const APP_VERSION = 77;
 
 // Release notes, newest first. Keys are version numbers.
 const WHATS_NEW = {
+  77: [
+    'Pick several body parts for one session — Chest + Shoulders + Arms in one workout',
+    'Their templates load together, with repeated exercises merged into one',
+    'Switching kg / lbs now converts the weights you already entered'
+  ],
   76: [
     'Rest timer now alerts properly — it stays on screen and keeps ringing until you tap OK',
     'A notification when rest ends, plus a warning beep at 10 seconds'
@@ -2722,11 +2781,45 @@ function showView(view) {
   updateWkTimerChip();
 }
 
+// Convert one weight value between display units, to 1 decimal.
+function convertWeight(val, from, to) {
+  const v = parseFloat(val);
+  if (from === to || !isFinite(v) || !v) return val;
+  const kg  = (from === 'lbs') ? v / KG_TO_LBS : v;
+  const out = (to   === 'lbs') ? kg * KG_TO_LBS : kg;
+  return Math.round(out * 10) / 10;
+}
+// Saved workouts carry a `dataUnit` tag and are rendered through dispW(), so
+// they're already unit-safe. The in-progress log is not: its sets hold raw
+// numbers in whatever unit was showing when they were typed. Flipping the
+// toggle mid-workout (lbs-only machine at a new gym) would silently mix units,
+// so convert what's already entered.
+function convertLogUnits(from, to) {
+  if (from === to || !currentLog) return 0;
+  let n = 0;
+  for (const ex of currentLog.exercises || []) {
+    if (isCardio(ex.name) || isStretch(ex.name)) continue;   // km / seconds are unit-free
+    for (const st of ex.sets || []) {
+      if (st.weight) {
+        const c = convertWeight(st.weight, from, to);
+        if (c !== st.weight) { st.weight = c; n++; }
+      }
+      // Placeholders come from history and were baked at the old unit too.
+      if (st.phW) st.phW = convertWeight(st.phW, from, to);
+    }
+  }
+  return n;
+}
+
 function setUnit(u) {
+  const prev = DB.unit;
   DB.saveUnit(u);
   syncUnitToggle();
+  const converted = prev === u ? 0 : convertLogUnits(prev, u);
+  if (converted) saveDraft();
   // Re-render whichever view is open so numbers update
   showView(currentView);
+  if (converted) showToast(tf('Converted {n} weights to {u}', { n: converted, u }));
 }
 function syncUnitToggle() {
   const u=DB.unit;
@@ -3355,11 +3448,9 @@ function renderLog() {
 // logging (a session is set AND at least one exercise added) to free up space
 // during training. Tap the bar to expand and edit.
 function logSetupHTML() {
-  const presetMatch = SESSION_PRESETS.includes(currentLog.name);
-  const showCustom  = currentLog.name && !presetMatch;
-  const selectVal   = presetMatch ? currentLog.name : (showCustom ? '__custom__' : '');
-  const presetsHTML = SESSION_PRESETS.map(p =>
-    `<option value="${p}" ${selectVal===p?'selected':''}>${p}</option>`).join('');
+  const sess       = parseSession(currentLog);
+  const showCustom = !!sess.custom || logCustomOpen;
+  const chipsHTML  = sessionChipsHTML(sess, showCustom, false);
 
   const playIcon  = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>`;
   const pauseIcon = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>`;
@@ -3370,9 +3461,9 @@ function logSetupHTML() {
   const collapsed   = canCollapse && !logSetupExpanded;
 
   if (collapsed) {
-    const sess = currentLog.name ? (presetMatch ? t(currentLog.name) : currentLog.name) : '';
-    const mainLine = sess || fmtDate(currentLog.date);
-    const subLine  = sess ? fmtDate(currentLog.date) : t('Tap to choose session type');
+    const label    = currentLog.name ? tx(currentLog.name) : '';
+    const mainLine = label || fmtDate(currentLog.date);
+    const subLine  = label ? fmtDate(currentLog.date) : t('Tap to choose session type');
     return `
     <div class="card" style="display:flex;align-items:center;gap:12px;padding:10px 14px;margin-bottom:14px;cursor:pointer" onclick="toggleLogSetup()">
       <div style="flex:1;min-width:0">
@@ -3395,19 +3486,13 @@ function logSetupHTML() {
       <input type="date" id="log-date" value="${currentLog.date}" onchange="currentLog.date=this.value;saveDraft()">
     </div>
     <div class="input-group" style="margin-bottom:0">
-      <div class="label">Session Type</div>
-      <div class="select-wrap" style="margin-bottom:${showCustom?'8px':'0'}">
-        <select id="log-name-select" onchange="handleSessionSelect(this.value)">
-          <option value="" ${!selectVal?'selected':''}>Select session type…</option>
-          ${presetsHTML}
-          <option value="__custom__" ${selectVal==='__custom__'?'selected':''}>✏️ Custom…</option>
-        </select>
-      </div>
+      <div class="label">Session Type <span style="color:var(--muted);font-weight:600">(${t('pick as many as you trained')})</span></div>
+      <div class="sess-chips" id="log-sess-chips" style="margin-bottom:${showCustom?'8px':'0'}">${chipsHTML}</div>
       <input type="text" id="log-name-custom"
         placeholder="Type session name…"
-        value="${showCustom ? currentLog.name : ''}"
-        style="${showCustom?'':'display:none'}"
-        oninput="currentLog.name=this.value;saveDraft()"
+        value="${sess.custom}"
+        style="${showCustom?'margin-top:8px':'display:none'}"
+        oninput="setSessionCustom(this.value,false)"
         onchange="if(!currentLog.exercises.length)renderLog()"
         autocapitalize="words" autocorrect="off">
     </div>
@@ -3444,31 +3529,83 @@ function toggleLogSetup() {
   renderLog();
 }
 
-function handleSessionSelect(val) {
-  const customInput = document.getElementById('log-name-custom');
-  if (val === '__custom__') {
-    customInput.style.display = '';
-    currentLog.name = '';
-    setTimeout(() => customInput.focus(), 50);
-  } else {
-    customInput.style.display = 'none';
-    currentLog.name = val;
-    saveDraft();
-    // Re-render so the template / repeat-last suggestion appears
-    if (!currentLog.exercises.length) renderLog();
-  }
+// Whether the free-text "Custom" field is open even though it's still empty.
+let logCustomOpen  = false;
+let editCustomOpen = false;
+
+function sessionChipsHTML(sess, showCustom, isEdit) {
+  const fn = isEdit ? 'true' : 'false';
+  const chips = SESSION_PRESETS.map(p =>
+    `<button type="button" class="sess-chip${sess.types.includes(p) ? ' on' : ''}"
+       onclick="toggleSessionType(${JSON.stringify(p).replace(/"/g, '&quot;')},${fn})">${p}</button>`).join('');
+  return chips + `<button type="button" class="sess-chip${showCustom ? ' on' : ''}"
+       onclick="toggleSessionCustom(${fn})">✏️ Custom</button>`;
+}
+
+function toggleSessionType(part, isEdit) {
+  const l = isEdit ? editingWorkout : currentLog;
+  if (!l) return;
+  const sess = parseSession(l);
+  const i = sess.types.indexOf(part);
+  if (i >= 0) sess.types.splice(i, 1); else sess.types.push(part);
+  applySession(l, sess);
+  if (isEdit) { renderWorkoutEditModal(); return; }
+  saveDraft();
+  renderLog();   // refreshes chips + the template / repeat-last suggestion
+}
+
+function toggleSessionCustom(isEdit) {
+  const l = isEdit ? editingWorkout : currentLog;
+  if (!l) return;
+  const open = isEdit ? editCustomOpen : logCustomOpen;
+  const sess = parseSession(l);
+  const nowOpen = !(open || !!sess.custom);
+  if (isEdit) editCustomOpen = nowOpen; else logCustomOpen = nowOpen;
+  if (!nowOpen) { sess.custom = ''; applySession(l, sess); }
+  if (isEdit) { renderWorkoutEditModal(); }
+  else { saveDraft(); renderLog(); }
+  if (nowOpen) setTimeout(() => document.getElementById(isEdit ? 'edit-log-name-custom' : 'log-name-custom')?.focus(), 60);
+}
+
+function setSessionCustom(val, isEdit) {
+  const l = isEdit ? editingWorkout : currentLog;
+  if (!l) return;
+  const sess = parseSession(l);
+  sess.custom = val;
+  applySession(l, sess);
+  if (!isEdit) saveDraft();
+}
+
+// Every exercise a session's templates suggest. An exact template for the whole
+// combination wins; otherwise the per-part templates are merged in the order
+// the parts were selected, with repeats (e.g. a press in both Chest and
+// Shoulders) folded into one.
+function templateForLog(l) {
+  const tpls = DB.templates;
+  const exact = tpls[l.name];
+  if (exact && exact.length) return { names: exact.slice(), exact: true };
+  const sess = parseSession(l);
+  const keys = [...sess.types, sess.custom].filter(Boolean);
+  if (keys.length < 2) return null;          // single part already checked above
+  const merged = [];
+  for (const k of keys) for (const n of (tpls[k] || [])) if (!merged.includes(n)) merged.push(n);
+  return merged.length ? { names: merged, exact: false } : null;
 }
 
 // Suggestion banner under Session Type: template first, last-session fallback
 function templateSuggestionHTML() {
   const name = currentLog.name;
   if (!name || currentLog.exercises.length) return '';
-  const tpl = DB.templates[name];
-  if (tpl && tpl.length) {
+  const found = templateForLog(currentLog);
+  if (found) {
+    const tpl = found.names;
+    const head = found.exact
+      ? tf('{name} template', {name: tx(name)})
+      : tf('{name} templates combined', {name: tx(name)});
     return `
     <div class="card" style="border-color:var(--green);background:rgba(34,197,94,.06);padding:9px 11px;margin-bottom:10px;display:flex;align-items:center;gap:10px">
       <div style="flex:1;min-width:0">
-        <div style="font-size:12px;font-weight:700;color:var(--green)">📋 ${tf('{name} template', {name:t(name)})}</div>
+        <div style="font-size:12px;font-weight:700;color:var(--green)">📋 ${head}</div>
         <div style="font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${tpl.join(' · ')}</div>
       </div>
       <button class="btn btn-primary" style="background:var(--green);padding:8px 13px;white-space:nowrap;flex-shrink:0" onclick="applyTemplateToLog()">${tf('Load {n}', {n:tpl.length})}</button>
@@ -3479,7 +3616,7 @@ function templateSuggestionHTML() {
     return `
     <div class="card" style="border-color:var(--accent);background:var(--accent-dim);padding:9px 11px;margin-bottom:10px;display:flex;align-items:center;gap:10px">
       <div style="flex:1;min-width:0">
-        <div style="font-size:12px;font-weight:700;color:var(--accent)">⟳ ${tf('Repeat last {name}?', {name:t(name)})} · ${fmtDate(last.date)}</div>
+        <div style="font-size:12px;font-weight:700;color:var(--accent)">⟳ ${tf('Repeat last {name}?', {name:tx(name)})} · ${fmtDate(last.date)}</div>
         <div style="font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${last.exercises.map(e=>e.name).join(' · ')}</div>
       </div>
       <button class="btn btn-primary" style="padding:8px 13px;white-space:nowrap;flex-shrink:0" onclick="applyLastSessionToLog()">${tf('Load {n}', {n:last.exercises.length})}</button>
@@ -3492,19 +3629,20 @@ function saveTemplateOfferHTML() {
   const name = currentLog.name;
   if (!name || !currentLog.exercises.length) return '';
   const cur = currentLog.exercises.map(e => e.name);
-  const tpl = DB.templates[name] || [];
+  const found = templateForLog(currentLog);
+  const tpl = found ? found.names : [];
   if (tpl.length === cur.length && tpl.every((n,i) => n === cur[i])) return '';
-  const verb = tpl.length ? 'Update' : 'Save';
+  const verb = (DB.templates[name] || []).length ? 'Update' : 'Save';
   return `
   <button class="btn btn-accent-outline btn-full" style="margin-bottom:6px;font-weight:700" onclick="saveCurrentAsTemplate()">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
       <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
       <polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>
     </svg>
-    ${tf('{verb} "{name}" template', {verb:t(verb), name:t(name)})}
+    ${tf('{verb} "{name}" template', {verb:t(verb), name:tx(name)})}
   </button>
   <div style="text-align:center;font-size:11px;color:var(--muted);margin-bottom:12px">
-    ${tpl.length ? t('Save these changes to reuse next time') : tf('Reuse this exercise list next {name} day in one tap', {name:t(name)})}
+    ${tpl.length ? t('Save these changes to reuse next time') : tf('Reuse this exercise list next {name} day in one tap', {name:tx(name)})}
   </div>`;
 }
 
@@ -3512,9 +3650,13 @@ function saveTemplateOfferHTML() {
 // Most recent workout with this session name (exact match)
 function lastSessionNamed(name) {
   if (!name) return null;
-  const sorted = [...DB.workouts].filter(w => w.name === name)
-    .sort((a,b) => b.date.localeCompare(a.date));
-  return sorted[0] || null;
+  const sorted = [...DB.workouts].sort((a,b) => b.date.localeCompare(a.date));
+  const exact = sorted.find(w => w.name === name);
+  if (exact) return exact;
+  // "Shoulders + Chest" should still find a past "Chest + Shoulders".
+  const key = w => splitSession(w).map(x => x.toLowerCase()).sort().join('|');
+  const want = key(name);
+  return sorted.find(w => key(w.name) === want) || null;
 }
 // Last sets for an exercise across all workouts → placeholder values in display unit
 function lastSetsFor(exName) {
@@ -3567,12 +3709,13 @@ function exerciseWithPlaceholders(name) {
   return { name, sets };
 }
 function applyTemplateToLog() {
-  const tpl = DB.templates[currentLog.name];
-  if (!tpl || !tpl.length) return;
-  currentLog.exercises = tpl.map(exerciseWithPlaceholders);
+  const found = templateForLog(currentLog);
+  if (!found || !found.names.length) return;
+  currentLog.exercises = found.names.map(exerciseWithPlaceholders);
   openEx = new Set(currentLog.exercises.length ? [0] : []);   // open the first, rest collapsed
+  saveDraft();
   renderLog();
-  showToast(tf('Loaded your {name} template 📋', {name:t(currentLog.name)}));
+  showToast(tf('Loaded your {name} template 📋', {name:tx(currentLog.name)}));
 }
 function applyLastSessionToLog() {
   const last = lastSessionNamed(currentLog.name);
@@ -3587,7 +3730,7 @@ function applyLastSessionToLog() {
   });
   openEx = new Set(currentLog.exercises.length ? [0] : []);   // open the first, rest collapsed
   renderLog();
-  showToast(tf('Loaded last {name} session ⟳', {name:t(currentLog.name)}));
+  showToast(tf('Loaded last {name} session ⟳', {name:tx(currentLog.name)}));
 }
 // Tap an empty input → accept the placeholder value, selected for easy bump
 function phFill(el, ei, si, field) {
@@ -3605,7 +3748,7 @@ function saveCurrentAsTemplate() {
   const tpls = DB.templates;                 // NOTE: never name this `t` — it shadows the translator
   tpls[name] = exNames;
   DB.saveTemplates(tpls);
-  showToast(tf('Saved as your {name} template 📋', {name:t(name)}));
+  showToast(tf('Saved as your {name} template 📋', {name:tx(name)}));
   renderLog();
 }
 function deleteTemplate(name) {
@@ -4630,12 +4773,12 @@ function addExercise(name, muscle) {
 
 function saveWorkout() {
   const dateEl  = document.getElementById('log-date');
-  const nameEl  = document.getElementById('log-name-select');
   const custEl  = document.getElementById('log-name-custom');
   const notesEl = document.getElementById('log-notes');
   if(dateEl)  currentLog.date  = dateEl.value;
-  if(nameEl && nameEl.value !== '__custom__') currentLog.name = nameEl.value;
-  if(custEl && custEl.style.display !== 'none') currentLog.name = custEl.value;
+  // Session parts are written by the chips; only the free-text field can still
+  // hold an uncommitted value here.
+  if(custEl && custEl.style.display !== 'none') setSessionCustom(custEl.value, false);
   if(notesEl) currentLog.notes = notesEl.value;
   stopTimerAndBank();                          // freeze the stopwatch into durationSec
 
@@ -4661,6 +4804,7 @@ function saveWorkout() {
   timerRunning = false; timerStartTs = null;
   clearInterval(timerInterval); timerInterval = null;
   currentLog = newLog();
+  logCustomOpen = false;
   clearDraft();
   skipRest();
   showView('dashboard');
@@ -4673,6 +4817,7 @@ function clearLog() {
   timerRunning = false; timerStartTs = null;
   clearInterval(timerInterval); timerInterval = null;
   currentLog = newLog();
+  logCustomOpen = false;
   clearDraft();
   renderLog();
 }
@@ -5033,6 +5178,7 @@ function deleteWorkout(id) {
 function openEditWorkoutModal(id) {
   const w = DB.workouts.find(x=>x.id===id); if(!w) return;
   editingWorkout = JSON.parse(JSON.stringify(w));
+  editCustomOpen = false;
   editOpenEx = new Set();   // start with all exercises collapsed
   renderWorkoutEditModal();
 }
@@ -5040,11 +5186,9 @@ function openEditWorkoutModal(id) {
 function renderWorkoutEditModal() {
   const w         = editingWorkout;
   const unit      = DB.unit;
-  const presetMatch  = SESSION_PRESETS.includes(w.name);
-  const showCustom   = w.name && !presetMatch;
-  const selectVal    = presetMatch ? w.name : (showCustom ? '__custom__' : '');
-  const presetsHTML  = SESSION_PRESETS.map(p=>
-    `<option value="${p}" ${selectVal===p?'selected':''}>${p}</option>`).join('');
+  const sess       = parseSession(w);
+  const showCustom = !!sess.custom || editCustomOpen;
+  const chipsHTML  = sessionChipsHTML(sess, showCustom, true);
 
   let html = `
   <div style="font-size:18px;font-weight:700;margin-bottom:16px">Edit Workout</div>
@@ -5055,19 +5199,13 @@ function renderWorkoutEditModal() {
       <input type="date" id="edit-log-date" value="${w.date}" onchange="editingWorkout.date=this.value">
     </div>
     <div class="input-group" style="margin-bottom:0">
-      <div class="label">Session Type</div>
-      <div class="select-wrap" style="margin-bottom:${showCustom?'8px':'0'}">
-        <select id="edit-log-name-select" onchange="handleEditSessionSelect(this.value)">
-          <option value="" ${!selectVal?'selected':''}>Select session type…</option>
-          ${presetsHTML}
-          <option value="__custom__" ${selectVal==='__custom__'?'selected':''}>✏️ Custom…</option>
-        </select>
-      </div>
+      <div class="label">Session Type <span style="color:var(--muted);font-weight:600">(${t('pick as many as you trained')})</span></div>
+      <div class="sess-chips" id="edit-sess-chips">${chipsHTML}</div>
       <input type="text" id="edit-log-name-custom"
         placeholder="Type session name…"
-        value="${showCustom ? w.name : ''}"
-        style="${showCustom?'':'display:none'}"
-        oninput="editingWorkout.name=this.value"
+        value="${sess.custom}"
+        style="${showCustom?'margin-top:8px':'display:none'}"
+        oninput="setSessionCustom(this.value,true)"
         autocapitalize="words" autocorrect="off">
     </div>
   </div>
@@ -5102,18 +5240,6 @@ function renderWorkoutEditModal() {
   document.getElementById('modal-content').innerHTML = html;
   openModal();
   initEditExDrag();
-}
-
-function handleEditSessionSelect(val) {
-  const customInput = document.getElementById('edit-log-name-custom');
-  if (val === '__custom__') {
-    customInput.style.display = '';
-    editingWorkout.name = '';
-    setTimeout(() => customInput.focus(), 50);
-  } else {
-    customInput.style.display = 'none';
-    editingWorkout.name = val;
-  }
 }
 
 function renderEditExercisesHTML() {
@@ -5271,13 +5397,11 @@ function editOpenAddExModal() {
 }
 
 function saveEditedWorkout() {
-  const nameEl  = document.getElementById('edit-log-name-select');
   const custEl  = document.getElementById('edit-log-name-custom');
   const dateEl  = document.getElementById('edit-log-date');
   const notesEl = document.getElementById('edit-log-notes');
   if (dateEl)  editingWorkout.date  = dateEl.value;
-  if (nameEl && nameEl.value !== '__custom__') editingWorkout.name = nameEl.value;
-  if (custEl && custEl.style.display !== 'none') editingWorkout.name = custEl.value;
+  if (custEl && custEl.style.display !== 'none') setSessionCustom(custEl.value, true);
   if (notesEl) editingWorkout.notes = notesEl.value;
 
   if (!editingWorkout.exercises.length) { showToast(t('Add at least one exercise!'), false); return; }
