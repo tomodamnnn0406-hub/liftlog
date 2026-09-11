@@ -97,6 +97,19 @@ input,textarea,select{
 }
 input:focus,textarea:focus,select:focus{border-color:var(--accent)}
 .input-group{display:flex;flex-direction:column;gap:4px;margin-bottom:10px}
+/* Per-exercise notes (v77): several auto-growing, multi-line notes per exercise */
+.ex-notes{margin-top:10px;display:flex;flex-direction:column;gap:6px}
+.ex-note-row{position:relative}
+.ex-note-row .ex-note-input{display:block;font-size:13px;line-height:1.45;padding:9px 34px 9px 12px;min-height:38px;
+  resize:none;overflow:hidden;field-sizing:content;white-space:pre-wrap;word-break:break-word}
+.ex-note-del{position:absolute;top:4px;right:4px;width:28px;height:28px;min-height:0;padding:0;border:none;
+  background:transparent;color:var(--muted);font-size:17px;line-height:28px;text-align:center;border-radius:8px;cursor:pointer}
+.ex-note-del:active{background:var(--card2)}
+.ex-note-add{align-self:flex-start;background:transparent;border:none;color:var(--accent);font-size:13px;font-weight:600;
+  padding:4px 2px;min-height:0;width:auto;cursor:pointer}
+.ex-note-view{font-size:12px;color:var(--muted);font-style:italic;margin-bottom:8px;display:flex;flex-direction:column;gap:3px}
+.ex-note-view>div{display:flex;gap:5px;align-items:flex-start}
+.ex-note-view>div>span:last-child{white-space:pre-wrap;word-break:break-word;min-width:0}
 
 /* ── Select arrow ── */
 .select-wrap{position:relative}
@@ -1317,6 +1330,10 @@ const I18N = {
     'Unsaved workout in progress':'未保存のワークアウトがあります','Tap to open the Log screen and finish saving it.':'タップして記録画面を開き、保存を完了しましょう。',
     'Unsaved workout':'未保存のワークアウト','{n} exercises so far':'これまで{n}種目','{summary} — tap to edit & save it on the Log screen':'{summary} — タップして記録画面で編集・保存',
     'Note for this exercise… (grip, tempo, how it felt)':'この種目のメモ…（グリップ、テンポ、感想など）',
+    'Another note… (a specific set, form cue, etc.)':'別のメモ…（特定のセット、フォームの気づきなど）',
+    '+ Add note':'+ メモを追加','Delete this note?':'このメモを削除しますか？','Delete note':'メモを削除',
+    'Exercise notes can now be multi-line, and you can add as many as you like':'種目メモが複数行に対応し、いくつでも追加できるように',
+    'Tap “+ Add note” to keep separate notes per set or topic':'「+ メモを追加」でセットごと・テーマごとにメモを分けられます',
     'Tap to set your height & body weight':'タップして身長と体重を設定','Log your first workout →':'最初のワークアウトを記録 →',
     'Every workout you finish appears on a calendar.':'完了したワークアウトはカレンダーに表示されます。','Tap a day to review or edit it later.':'日付をタップすると後から確認・編集できます。',
     "Every exercise shows the best weight you've lifted":'各種目で挙げた最高重量を表示します','and a progress chart over time.':'そして時系列の進捗グラフも表示します。',
@@ -1485,7 +1502,8 @@ function applyLang(){
       const p = node.parentNode;
       if(!p) return NodeFilter.FILTER_REJECT;
       const tag = p.nodeName;
-      if(tag === 'SCRIPT' || tag === 'STYLE') return NodeFilter.FILTER_REJECT;
+      if(tag === 'SCRIPT' || tag === 'STYLE' || tag === 'TEXTAREA') return NodeFilter.FILTER_REJECT;
+      if(p.closest && p.closest('[data-noi18n]')) return NodeFilter.FILTER_REJECT;
       if(p.closest && p.closest('svg')) return NodeFilter.FILTER_REJECT;
       return node.nodeValue.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
     }
@@ -1513,7 +1531,7 @@ function applyLang(){
 let __langObserver = null, __langScheduled = false;
 function applyLangSafe(){
   if(__langObserver) __langObserver.disconnect();
-  try { applyLang(); } finally {
+  try { applyLang(); growNotes(); } finally {
     if(__langObserver) __langObserver.observe(document.body, { childList:true, subtree:true, characterData:true });
   }
 }
@@ -1785,10 +1803,14 @@ function allExerciseNames() {
 // phone silently. This surfaces it: a home-screen badge, a local notification
 // and a "what's new" banner, so an update is never invisible.
 // ═══════════════════════════════════════════════════════
-const APP_VERSION = 77;
+const APP_VERSION = 78;
 
 // Release notes, newest first. Keys are version numbers.
 const WHATS_NEW = {
+  78: [
+    'Exercise notes can now be multi-line, and you can add as many as you like',
+    'Tap “+ Add note” to keep separate notes per set or topic'
+  ],
   77: [
     'Pick several body parts for one session — Chest + Shoulders + Arms in one workout',
     'Their templates load together, with repeated exercises merged into one',
@@ -4229,6 +4251,115 @@ function saveRestLen(exName) {
   showToast(t('Rest length saved ⏱'));
 }
 
+// ── Per-exercise notes (v77) ─────────────────────────────────────────────
+// Stored as ex.noteList (array of multi-line strings). ex.note is kept as a
+// newline-joined mirror so older data, older builds and exports still read it.
+function exNotes(ex) {
+  if (!ex) return [];
+  if (Array.isArray(ex.noteList)) return ex.noteList;
+  return ex.note ? [String(ex.note)] : [];
+}
+function setExNotes(ex, list) {
+  ex.noteList = list;
+  ex.note = list.map(x => String(x).trim()).filter(Boolean).join('\n');
+}
+// Drop empty notes when a workout is saved.
+function cleanExNotes(ex) {
+  const noteList = exNotes(ex).map(x => String(x).replace(/\s+$/, '')).filter(x => x.trim());
+  return { noteList, note: noteList.join('\n') };
+}
+function escHtml(v) {
+  return String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function exNoteEx(scope, ei) {
+  const w = scope === 'edit' ? editingWorkout : currentLog;
+  return w && w.exercises[ei];
+}
+function exNotesHTML(scope, ei) {
+  const ex = exNoteEx(scope, ei);
+  const list = exNotes(ex);
+  const shown = list.length ? list : [''];
+  const canDel = shown.length > 1 || !!(shown[0] && shown[0].trim());
+  return `<div class="ex-notes" id="exnotes-${scope}-${ei}">
+    ${shown.map((txt, ni) => `<div class="ex-note-row">
+      <textarea class="ex-note-input" rows="${Math.max(1, String(txt).split('\n').length)}" data-noi18n
+        placeholder="${ni === 0 ? 'Note for this exercise… (grip, tempo, how it felt)' : 'Another note… (a specific set, form cue, etc.)'}"
+        oninput="setExNote('${scope}',${ei},${ni},this.value);growNote(this)">${escHtml(txt)}</textarea>
+      ${canDel ? `<button class="ex-note-del" aria-label="Delete note" title="Delete note" onclick="removeExNote('${scope}',${ei},${ni})">×</button>` : ''}
+    </div>`).join('')}
+    <button class="ex-note-add" onclick="addExNote('${scope}',${ei})">+ Add note</button>
+  </div>`;
+}
+function exNotesViewHTML(ex) {
+  const list = exNotes(ex).filter(x => String(x).trim());
+  if (!list.length) return '';
+  return `<div class="ex-note-view" data-noi18n>${list.map(x => `<div><span>💬</span><span>${escHtml(String(x).trim())}</span></div>`).join('')}</div>`;
+}
+function growNote(el) {
+  if (!el || !el.offsetParent) return;            // hidden (collapsed card) — size it when shown
+  el.style.height = 'auto';
+  el.style.height = el.scrollHeight + 2 + 'px';
+  el.__sizedFor = el.value;
+}
+// Runs after every re-render (via applyLangSafe), so it only touches notes
+// that haven't been sized for their current text yet — no per-tick reflow.
+function growNotes(root) {
+  (root || document).querySelectorAll('textarea.ex-note-input').forEach(el => {
+    if (el.__sizedFor !== el.value) growNote(el);
+  });
+}
+function persistNotes(scope) { if (scope !== 'edit') saveDraft(); }
+function setExNote(scope, ei, ni, val) {
+  const ex = exNoteEx(scope, ei); if (!ex) return;
+  const list = exNotes(ex).slice();
+  while (list.length <= ni) list.push('');
+  list[ni] = val;
+  setExNotes(ex, list);
+  // The × appears as soon as the only note has text — patch it in without
+  // re-rendering, which would steal focus mid-typing.
+  const box = document.getElementById(`exnotes-${scope}-${ei}`);
+  if (box && list.length === 1) {
+    const row = box.querySelector('.ex-note-row');
+    const del = row && row.querySelector('.ex-note-del');
+    if (val.trim() && !del && row) row.insertAdjacentHTML('beforeend',
+      `<button class="ex-note-del" aria-label="${t('Delete note')}" title="${t('Delete note')}" onclick="removeExNote('${scope}',${ei},0)">×</button>`);
+  }
+  persistNotes(scope);
+}
+function rerenderExNotes(scope, ei, focusIdx) {
+  const box = document.getElementById(`exnotes-${scope}-${ei}`);
+  if (!box) return;
+  box.outerHTML = exNotesHTML(scope, ei);
+  const nb = document.getElementById(`exnotes-${scope}-${ei}`);
+  if (typeof applyLangSafe === 'function') applyLangSafe();
+  growNotes(nb);
+  if (focusIdx != null) {
+    const ta = nb.querySelectorAll('textarea.ex-note-input')[focusIdx];
+    if (ta) { ta.focus(); try { ta.setSelectionRange(ta.value.length, ta.value.length); } catch(e) {} }
+  }
+}
+function addExNote(scope, ei) {
+  const ex = exNoteEx(scope, ei); if (!ex) return;
+  const list = exNotes(ex).slice();
+  if (!list.length) list.push('');
+  // An empty note is already waiting — just jump into it.
+  const emptyIdx = list.findIndex(x => !String(x).trim());
+  if (emptyIdx >= 0) { setExNotes(ex, list); rerenderExNotes(scope, ei, emptyIdx); return; }
+  list.push('');
+  setExNotes(ex, list);
+  persistNotes(scope);
+  rerenderExNotes(scope, ei, list.length - 1);
+}
+function removeExNote(scope, ei, ni) {
+  const ex = exNoteEx(scope, ei); if (!ex) return;
+  const list = exNotes(ex).slice();
+  if (String(list[ni] || '').trim() && !confirm(t('Delete this note?'))) return;
+  list.splice(ni, 1);
+  setExNotes(ex, list);
+  persistNotes(scope);
+  rerenderExNotes(scope, ei, null);
+}
+
 function renderExercisesHTML() {
   const unit = DB.unit;
   return currentLog.exercises.map((ex, ei) => {
@@ -4324,10 +4455,7 @@ function renderExercisesHTML() {
         title="Tap to start · hold to change length">⏱ Rest
         <span class="rest-len" data-rest-for="${esc(ex.name)}">${fmtDuration(restFor(ex.name))}</span></button>`}
     </div>
-    <input type="text" class="ex-note-input" placeholder="Note for this exercise… (grip, tempo, how it felt)"
-      value="${(ex.note||'').replace(/"/g,'&quot;')}"
-      oninput="currentLog.exercises[${ei}].note=this.value;saveDraft()"
-      style="margin-top:10px;font-size:13px;padding:9px 12px;min-height:38px">
+    ${exNotesHTML('log', ei)}
     </div>
   </div>`;
   }).join('');
@@ -4791,6 +4919,7 @@ function saveWorkout() {
     dataUnit: DB.unit,                        // ← tag with current unit
     exercises: currentLog.exercises.map(ex=>({
       ...ex,
+      ...cleanExNotes(ex),
       // A cardio interval counts when it has time OR distance OR speed;
       // a stretch counts when it has a hold time.
       sets: ex.sets.filter(s => s.weight || s.reps || s.km || s.mins || s.speed || s.secs)
@@ -5093,8 +5222,8 @@ function showWorkoutDetail(id) {
       const tot = stretchTotal(ex);
       html += `
       <div style="margin-bottom:16px">
-        <div style="font-size:15px;font-weight:700;margin-bottom:${ex.note?'2px':'8px'};color:var(--accent)">${ex.name}</div>
-        ${ex.note?`<div style="font-size:12px;color:var(--muted);font-style:italic;margin-bottom:8px">💬 ${ex.note}</div>`:''}
+        <div style="font-size:15px;font-weight:700;margin-bottom:${exNotesViewHTML(ex)?'2px':'8px'};color:var(--accent)">${ex.name}</div>
+        ${exNotesViewHTML(ex)}
         <div class="stretch-header"><span>#</span><span>Time (sec)</span><span></span><span></span></div>
         ${ex.sets.map((st,i)=>`
           <div class="stretch-row" style="pointer-events:none">
@@ -5113,8 +5242,8 @@ function showWorkoutDetail(id) {
       for (const st of ex.sets) { km += num(st.km) || 0; mn += num(st.mins) || 0; kc += num(st.kcal) || 0; }
       html += `
       <div style="margin-bottom:16px">
-        <div style="font-size:15px;font-weight:700;margin-bottom:${ex.note?'2px':'8px'};color:var(--accent)">${ex.name}</div>
-        ${ex.note?`<div style="font-size:12px;color:var(--muted);font-style:italic;margin-bottom:8px">💬 ${ex.note}</div>`:''}
+        <div style="font-size:15px;font-weight:700;margin-bottom:${exNotesViewHTML(ex)?'2px':'8px'};color:var(--accent)">${ex.name}</div>
+        ${exNotesViewHTML(ex)}
         <div class="cardio-header">
           <span>#</span><span>Speed (km/h)</span><span>Time (min)</span><span>Distance (km)</span><span>Pace</span>
         </div>
@@ -5139,8 +5268,8 @@ function showWorkoutDetail(id) {
     }
     html += `
     <div style="margin-bottom:16px">
-      <div style="font-size:15px;font-weight:700;margin-bottom:${ex.note?'2px':'8px'};color:var(--accent)">${ex.name}</div>
-      ${ex.note?`<div style="font-size:12px;color:var(--muted);font-style:italic;margin-bottom:8px">💬 ${ex.note}</div>`:''}
+      <div style="font-size:15px;font-weight:700;margin-bottom:${exNotesViewHTML(ex)?'2px':'8px'};color:var(--accent)">${ex.name}</div>
+      ${exNotesViewHTML(ex)}
       <div class="sets-header">
         <span>Set</span><span>Wt (${unit})</span><span>Reps</span><span>~1RM</span><span></span>
       </div>
@@ -5310,10 +5439,7 @@ function renderEditExercisesHTML() {
     </div>`;
     }).join('')}`}
     <button class="btn btn-secondary btn-sm" style="margin-top:8px" onclick="editAddSet(${ei})">${stretch ? '+ Add Hold' : cardio ? '+ Add Interval' : '+ Add Set'}</button>
-    <input type="text" class="ex-note-input" placeholder="Note for this exercise…"
-      value="${(ex.note||'').replace(/"/g,'&quot;')}"
-      oninput="editingWorkout.exercises[${ei}].note=this.value"
-      style="margin-top:10px;font-size:13px;padding:9px 12px;min-height:38px">
+    ${exNotesHTML('edit', ei)}
     </div>
   </div>`;
   }).join('');
@@ -5411,6 +5537,7 @@ function saveEditedWorkout() {
     name: editingWorkout.name || 'Workout',
     exercises: editingWorkout.exercises.map(ex=>({
       ...ex,
+      ...cleanExNotes(ex),
       sets: ex.sets.filter(s => s.weight || s.reps || s.km || s.mins || s.speed || s.secs)
     })).filter(ex => ex.sets.length)
   };
