@@ -226,6 +226,18 @@ input:focus,textarea:focus,select:focus{border-color:var(--accent)}
   background:var(--green);color:#04210f;font-weight:800;
   font-size:11px;letter-spacing:.3px;padding:4px 10px;border-radius:20px;white-space:nowrap;
 }
+.ach-head{
+  display:flex;align-items:center;gap:8px;width:100%;margin:20px 0 0;padding:10px 2px;
+  background:transparent;border:none;color:var(--text);font-size:13px;font-weight:700;
+  text-align:left;cursor:pointer;min-height:44px;
+}
+.ach-chev{
+  display:inline-block;color:var(--muted);font-size:10px;line-height:1;
+  transition:transform .18s ease;flex-shrink:0;
+}
+.ach-chev.open{transform:rotate(90deg)}
+.ach-count{color:var(--muted);font-weight:600}
+.ach-body{display:flex;flex-direction:column;gap:8px;padding-top:2px}
 .goal-celebrate{
   display:flex;align-items:center;gap:8px;margin-top:10px;
   font-size:15px;font-weight:800;color:var(--green);
@@ -1082,6 +1094,7 @@ const I18N = {
     'Nice work hitting your past targets — set a new one to keep progressing.':'これまでの目標達成、お見事です。新しい目標を設定して前進を続けましょう。',
     'Goals turn workouts into progress':'目標がワークアウトを成長に変えます','Your exercise library lives here':'あなたの種目ライブラリはここにあります',
     'Your workout history lives here':'あなたのワークアウト履歴はここにあります',
+    '🏆 View past records':'🏆 過去の記録を見る','View past records':'過去の記録を見る',
     'No achievements recorded yet. Reach a goal — or tap “+ Add past” to log one you already hit.':'達成記録はまだありません。目標を達成するか、「＋ 過去の記録を追加」で達成済みの記録を登録しましょう。',
     'Loading chart…':'グラフを読み込み中…','Last 5 weeks':'直近5週間','No data last week':'先週のデータなし',
     'No data in this time range for':'この期間のデータがありません：','No actual 1-rep sets logged yet for':'まだ実際の1レップセットが記録されていません：','No sets logged yet for':'まだセットが記録されていません：',
@@ -1333,6 +1346,7 @@ const I18N = {
     'Another note… (a specific set, form cue, etc.)':'別のメモ…（特定のセット、フォームの気づきなど）',
     '+ Add note':'+ メモを追加','Delete this note?':'このメモを削除しますか？','Delete note':'メモを削除',
     'Exercise notes can now be multi-line, and you can add as many as you like':'種目メモが複数行に対応し、いくつでも追加できるように',
+    'Past records are folded away under “View past records” — open it when you want to look back':'過去の記録は「過去の記録を見る」に折りたたみ — 振り返りたいときに開けます',
     'A weight × reps goal now counts as reached only when a set hits both — 90kg × 3 no longer completes a 90kg × 5 goal':'重量×レップの目標は、その両方を満たしたときだけ達成に — 90kg×3では90kg×5の目標は達成になりません',
     'Goal cards show what is still missing: the weight left, or the reps left at that weight':'目標カードに残りが表示されます — 残りの重量、またはその重量での残りレップ数',
     'Achievements that were recorded by mistake are cleared from the Achieved list':'誤って記録された達成は「達成済み」から自動で削除されます',
@@ -1627,6 +1641,7 @@ let dashChartMode     = 'e1rm';  // chart always shows estimated 1RM (from every
 let dashChartExercise = null;
 let dashChartRange    = 'all';   // 'all' | '6m' | '3m' | '1m'
 let bwChartRange      = 'all';   // time range for the body-weight goal chart (Goals tab)
+let achievedOpen      = false;   // past records stay folded away until asked for
 let muscleRange       = 'week';  // 'week' | 'month' — window for the muscle-balance set counts
 let dashWeightChart   = null;    // dashboard body-weight trajectory chart
 
@@ -1808,10 +1823,13 @@ function allExerciseNames() {
 // phone silently. This surfaces it: a home-screen badge, a local notification
 // and a "what's new" banner, so an update is never invisible.
 // ═══════════════════════════════════════════════════════
-const APP_VERSION = 79;
+const APP_VERSION = 80;
 
 // Release notes, newest first. Keys are version numbers.
 const WHATS_NEW = {
+  80: [
+    'Past records are folded away under “View past records” — open it when you want to look back'
+  ],
   79: [
     'A weight × reps goal now counts as reached only when a set hits both — 90kg × 3 no longer completes a 90kg × 5 goal',
     'Goal cards show what is still missing: the weight left, or the reps left at that weight',
@@ -8694,11 +8712,12 @@ function achievedSectionHTML(list) {
   const unit  = DB.unit;
   const items = [...list].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   return `
-  <div style="display:flex;align-items:center;justify-content:space-between;margin:20px 0 8px">
-    <div class="label" style="margin:0">🏆 Achieved (${items.length})</div>
-    <button class="btn btn-ghost btn-sm" onclick="openAddAchievementModal()"
-      style="font-size:12px;color:var(--accent);padding:4px 8px;font-weight:600">+ Add past</button>
-  </div>
+  <button class="ach-head" onclick="toggleAchieved()" aria-expanded="${achievedOpen ? 'true' : 'false'}">
+    <span class="ach-chev${achievedOpen ? ' open' : ''}">▶</span>
+    <span>🏆 View past records</span>
+    <span class="ach-count">(${items.length})</span>
+  </button>
+  ${!achievedOpen ? '' : `<div class="ach-body">
   ${items.length ? items.map(a => {
     const w = Math.round(dispW(a.targetWeightKg || 0, 'kg') * 10) / 10;
     const isBw = a.type === 'bodyweight';
@@ -8718,7 +8737,18 @@ function achievedSectionHTML(list) {
         </button>
       </div>
     </div>`;
-  }).join('') : `<div style="font-size:12px;color:var(--muted);padding:4px 2px 2px">No achievements recorded yet. Reach a goal — or tap “+ Add past” to log one you already hit.</div>`}`;
+  }).join('') : `<div style="font-size:12px;color:var(--muted);padding:4px 2px 2px">No achievements recorded yet. Reach a goal — or tap “+ Add past” to log one you already hit.</div>`}
+  <button class="btn btn-secondary btn-sm" onclick="openAddAchievementModal()"
+    style="align-self:flex-start;font-size:12px;color:var(--accent);font-weight:600">+ Add past</button>
+  </div>`}`;
+}
+
+// Fold / unfold the past-records list, keeping the page where it is.
+function toggleAchieved() {
+  achievedOpen = !achievedOpen;
+  const y = window.scrollY;
+  renderGoals();
+  (window.requestAnimationFrame || setTimeout)(() => window.scrollTo(0, y));
 }
 
 function removeAchievement(key) {
