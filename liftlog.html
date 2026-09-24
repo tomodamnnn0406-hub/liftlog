@@ -1095,6 +1095,8 @@ const I18N = {
     'Goals turn workouts into progress':'目標がワークアウトを成長に変えます','Your exercise library lives here':'あなたの種目ライブラリはここにあります',
     'Your workout history lives here':'あなたのワークアウト履歴はここにあります',
     '🏆 View past records':'🏆 過去の記録を見る','View past records':'過去の記録を見る',
+    '🎉 Goal reached! Moved to your past records':'🎉 目標達成！「過去の記録を見る」に移動しました',
+    'Hidden from the list — the record is kept':'一覧から非表示にしました（記録は残っています）',
     'No achievements recorded yet. Reach a goal — or tap “+ Add past” to log one you already hit.':'達成記録はまだありません。目標を達成するか、「＋ 過去の記録を追加」で達成済みの記録を登録しましょう。',
     'Loading chart…':'グラフを読み込み中…','Last 5 weeks':'直近5週間','No data last week':'先週のデータなし',
     'No data in this time range for':'この期間のデータがありません：','No actual 1-rep sets logged yet for':'まだ実際の1レップセットが記録されていません：','No sets logged yet for':'まだセットが記録されていません：',
@@ -1346,6 +1348,8 @@ const I18N = {
     'Another note… (a specific set, form cue, etc.)':'別のメモ…（特定のセット、フォームの気づきなど）',
     '+ Add note':'+ メモを追加','Delete this note?':'このメモを削除しますか？','Delete note':'メモを削除',
     'Exercise notes can now be multi-line, and you can add as many as you like':'種目メモが複数行に対応し、いくつでも追加できるように',
+    'A goal you reach now moves into “View past records” by itself — no more logging it by hand':'達成した目標は自動で「過去の記録を見る」に移動 — 手動で記録する必要はありません',
+    'Deleting a past record only hides it; the record itself is kept and can be restored':'過去の記録の削除は非表示にするだけ — 記録自体は残り、戻すこともできます',
     'Past records are folded away under “View past records” — open it when you want to look back':'過去の記録は「過去の記録を見る」に折りたたみ — 振り返りたいときに開けます',
     'A weight × reps goal now counts as reached only when a set hits both — 90kg × 3 no longer completes a 90kg × 5 goal':'重量×レップの目標は、その両方を満たしたときだけ達成に — 90kg×3では90kg×5の目標は達成になりません',
     'Goal cards show what is still missing: the weight left, or the reps left at that weight':'目標カードに残りが表示されます — 残りの重量、またはその重量での残りレップ数',
@@ -1422,6 +1426,7 @@ const I18N_PATTERNS = [
   [/^est\.\s*1RM\s+(.+)$/,       m => '推定1RM ' + m[1]],
   [/^Your last backup was (\d+) days ago\. Save a fresh copy so you don't lose your progress\.$/, m => '前回のバックアップは' + m[1] + '日前です。進捗を失わないよう、新しいコピーを保存しましょう。'],
   [/^Achieved\s*\((\d+)\)$/,     m => '達成済み（' + m[1] + '）'],
+  [/^↩ Restore hidden records \((\d+)\)$/, m => '↩ 非表示の記録を戻す（' + m[1] + '）'],
   [/^\+ Add "(.+)"$/,             m => '「' + m[1] + '」を追加'],
   // ── cardio composed strings ──
   [/^(\d+)\s*intervals?$/,        m => m[1] + 'インターバル'],
@@ -1642,6 +1647,7 @@ let dashChartExercise = null;
 let dashChartRange    = 'all';   // 'all' | '6m' | '3m' | '1m'
 let bwChartRange      = 'all';   // time range for the body-weight goal chart (Goals tab)
 let achievedOpen      = false;   // past records stay folded away until asked for
+let goalCelebrationPending = false;   // set when a goal was just moved to past records
 let muscleRange       = 'week';  // 'week' | 'month' — window for the muscle-balance set counts
 let dashWeightChart   = null;    // dashboard body-weight trajectory chart
 
@@ -1823,10 +1829,14 @@ function allExerciseNames() {
 // phone silently. This surfaces it: a home-screen badge, a local notification
 // and a "what's new" banner, so an update is never invisible.
 // ═══════════════════════════════════════════════════════
-const APP_VERSION = 80;
+const APP_VERSION = 81;
 
 // Release notes, newest first. Keys are version numbers.
 const WHATS_NEW = {
+  81: [
+    'A goal you reach now moves into “View past records” by itself — no more logging it by hand',
+    'Deleting a past record only hides it; the record itself is kept and can be restored'
+  ],
   80: [
     'Past records are folded away under “View past records” — open it when you want to look back'
   ],
@@ -2939,6 +2949,7 @@ function syncUnitToggle() {
 // DASHBOARD
 // ═══════════════════════════════════════════════════════
 function renderDashboard() {
+  syncGoalArchive();                 // a reached goal moves to past records first
   if (dashChart) { dashChart.destroy(); dashChart = null; }
   if (volTrendChart) { volTrendChart.destroy(); volTrendChart = null; }
   if (dashWeightChart) { dashWeightChart.destroy(); dashWeightChart = null; }
@@ -6639,10 +6650,12 @@ function drawProgressChart(progress, unit) {
 // GOALS VIEW
 // ═══════════════════════════════════════════════════════
 function renderGoals() {
+  // Must run BEFORE DB.goals is read: it moves reached goals into the past
+  // records, and a stale snapshot would still draw the card for one render.
+  syncGoalArchive();
   const goals = DB.goals;
   const unit  = DB.unit;
   const prs   = getPRs();
-  syncGoalArchive();                 // capture any newly-reached goals
   const achieved = achievedGoals();
 
   let html = `
@@ -6666,6 +6679,7 @@ function renderGoals() {
          </div>`;
     html += achievedSectionHTML(achieved);
     document.getElementById('main').innerHTML = html;
+    checkGoalCelebrations();   // the goal that just moved here still deserves its 🎉
     return;
   }
 
@@ -8692,25 +8706,73 @@ function archiveGoalIfNew(goal, manual) {
 // Remove auto-recorded achievements the set history does not back up — e.g. a
 // goal of 90kg × 5 that an older build filed as reached on a 90kg × 3 set.
 // Hand-entered achievements ("+ Add past", "Mark done") are always kept.
+// Records the set history does not back up are flagged (and hidden), never
+// deleted — nothing in here is ever thrown away. The flag lifts by itself if
+// the lift is later actually done.
 function pruneUnearnedAchievements() {
-  const arr  = achievedGoals();
-  const kept = arr.filter(a => {
-    if (a.manual || String(a.key || '').startsWith('m')) return true;   // hand-entered
-    if (a.type === 'bodyweight' || !a.exercise) return true;
-    const st = goalStrengthStats({ exercise: a.exercise,
-      targetWeightKg: a.targetWeightKg, targetReps: a.targetReps || 1 });
-    return st.done;
-  });
-  if (kept.length !== arr.length) saveAchievedGoals(kept);
+  const arr = achievedGoals();
+  let dirty = false;
+  for (const a of arr) {
+    if (a.manual || String(a.key || '').startsWith('m')) continue;   // hand-entered
+    if (a.type === 'bodyweight' || !a.exercise) continue;
+    const earned = goalStrengthStats({ exercise: a.exercise,
+      targetWeightKg: a.targetWeightKg, targetReps: a.targetReps || 1 }).done;
+    if (!earned && !a.unearned)     { a.unearned = true;   dirty = true; }
+    else if (earned && a.unearned)  { delete a.unearned;   dirty = true; }
+  }
+  if (dirty) saveAchievedGoals(arr);
 }
+
+// A goal that has been reached leaves the active list on its own and lives on
+// in the past records, so the user never has to file it by hand.
+function moveReachedGoalsToRecords() {
+  const goals = DB.goals;
+  const done  = goals.filter(g => getGoalProgress(g).done);
+  if (!done.length) return 0;
+  let celebrated;
+  try { celebrated = JSON.parse(localStorage.getItem('ll_celebrated') || '[]'); }
+  catch (e) { celebrated = []; }
+  for (const g of done) {
+    archiveGoalIfNew(g);
+    if (!celebrated.includes(g.id)) goalCelebrationPending = true;
+  }
+  const doneIds = done.map(g => g.id);
+  DB.saveGoals(goals.filter(g => !doneIds.includes(g.id)));
+  // The goals are gone, so no id can trigger a second celebration.
+  localStorage.setItem('ll_celebrated', '[]');
+  return done.length;
+}
+
 function syncGoalArchive() {
   pruneUnearnedAchievements();
-  for (const goal of DB.goals) if (getGoalProgress(goal).done) archiveGoalIfNew(goal);
+  moveReachedGoalsToRecords();
+}
+
+// One row per achievement: hidden and unbacked rows drop out, and when a goal
+// record and a hand-entered one describe the same lift, the earlier date wins.
+function achSig(a) {
+  const bw = a.type === 'bodyweight';
+  return (bw ? 'bw' : String(a.exercise || '').trim().toLowerCase())
+    + '|' + Math.round((a.targetWeightKg || 0) * 10)
+    + '|' + (bw ? '' : (a.targetReps || 1));
+}
+function visibleAchievements(list) {
+  const seen = new Map();
+  for (const a of list) {
+    if (a.hidden || a.unearned) continue;
+    const sig = achSig(a), prev = seen.get(sig);
+    if (!prev || (a.date || '') < (prev.date || '')) seen.set(sig, a);
+  }
+  return [...seen.values()].sort((x, y) => (y.date || '').localeCompare(x.date || ''));
+}
+function hiddenAchievementCount() {
+  return achievedGoals().filter(a => a.hidden && !a.unearned).length;
 }
 // Render the "Achieved" list for the Goals tab.
 function achievedSectionHTML(list) {
   const unit  = DB.unit;
-  const items = [...list].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  const items = visibleAchievements(list);
+  const nHidden = hiddenAchievementCount();
   return `
   <button class="ach-head" onclick="toggleAchieved()" aria-expanded="${achievedOpen ? 'true' : 'false'}">
     <span class="ach-chev${achievedOpen ? ' open' : ''}">▶</span>
@@ -8738,8 +8800,12 @@ function achievedSectionHTML(list) {
       </div>
     </div>`;
   }).join('') : `<div style="font-size:12px;color:var(--muted);padding:4px 2px 2px">No achievements recorded yet. Reach a goal — or tap “+ Add past” to log one you already hit.</div>`}
-  <button class="btn btn-secondary btn-sm" onclick="openAddAchievementModal()"
-    style="align-self:flex-start;font-size:12px;color:var(--accent);font-weight:600">+ Add past</button>
+  <div style="display:flex;flex-wrap:wrap;gap:8px">
+    <button class="btn btn-secondary btn-sm" onclick="openAddAchievementModal()"
+      style="font-size:12px;color:var(--accent);font-weight:600">+ Add past</button>
+    ${nHidden ? `<button class="btn btn-secondary btn-sm" onclick="restoreHiddenAchievements()"
+      style="font-size:12px;color:var(--muted);font-weight:600">↩ Restore hidden records (${nHidden})</button>` : ''}
+  </div>
   </div>`}`;
 }
 
@@ -8751,8 +8817,20 @@ function toggleAchieved() {
   (window.requestAnimationFrame || setTimeout)(() => window.scrollTo(0, y));
 }
 
+// "Delete" only hides the row — the record itself is kept, so it can come back.
 function removeAchievement(key) {
-  saveAchievedGoals(achievedGoals().filter(a => a.key !== key));
+  const arr = achievedGoals();
+  const row = arr.find(a => a.key === key); if (!row) return;
+  const sig = achSig(row);
+  for (const a of arr) if (achSig(a) === sig) a.hidden = true;
+  saveAchievedGoals(arr);
+  showToast(t('Hidden from the list — the record is kept'));
+  renderGoals();
+}
+function restoreHiddenAchievements() {
+  const arr = achievedGoals();
+  for (const a of arr) delete a.hidden;
+  saveAchievedGoals(arr);
   renderGoals();
 }
 
@@ -8804,25 +8882,11 @@ function saveManualAchievement() {
 
 // Fire confetti once when a goal is newly reached. Re-arms if the target is raised.
 function checkGoalCelebrations() {
-  let celebrated;
-  try { celebrated = JSON.parse(localStorage.getItem('ll_celebrated') || '[]'); }
-  catch (e) { celebrated = []; }
-  const nowDone = [];
-  let fresh = false;
-  for (const goal of DB.goals) {
-    if (getGoalProgress(goal).done) {
-      nowDone.push(goal.id);
-      archiveGoalIfNew(goal);
-      if (!celebrated.includes(goal.id)) fresh = true;
-    }
-  }
-  // Keep only still-completed ids, so raising a target lets it celebrate again later
-  localStorage.setItem('ll_celebrated', JSON.stringify(nowDone));
-  if (fresh) {
-    fireConfetti();
-    showToast(t('🎉 Goal reached! Set a new target to keep going'));
-    setTimeout(askFeedbackAfterCelebration, 3200);
-  }
+  if (!goalCelebrationPending) return;
+  goalCelebrationPending = false;
+  fireConfetti();
+  showToast(t('🎉 Goal reached! Moved to your past records'));
+  setTimeout(askFeedbackAfterCelebration, 3200);
 }
 
 // CTA from a reached goal → open its editor so the user can raise the target
