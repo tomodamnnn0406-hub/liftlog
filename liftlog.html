@@ -1333,6 +1333,9 @@ const I18N = {
     'Another note… (a specific set, form cue, etc.)':'別のメモ…（特定のセット、フォームの気づきなど）',
     '+ Add note':'+ メモを追加','Delete this note?':'このメモを削除しますか？','Delete note':'メモを削除',
     'Exercise notes can now be multi-line, and you can add as many as you like':'種目メモが複数行に対応し、いくつでも追加できるように',
+    'A weight × reps goal now counts as reached only when a set hits both — 90kg × 3 no longer completes a 90kg × 5 goal':'重量×レップの目標は、その両方を満たしたときだけ達成に — 90kg×3では90kg×5の目標は達成になりません',
+    'Goal cards show what is still missing: the weight left, or the reps left at that weight':'目標カードに残りが表示されます — 残りの重量、またはその重量での残りレップ数',
+    'Achievements that were recorded by mistake are cleared from the Achieved list':'誤って記録された達成は「達成済み」から自動で削除されます',
     'Tap “+ Add note” to keep separate notes per set or topic':'「+ メモを追加」でセットごと・テーマごとにメモを分けられます',
     'Tap to set your height & body weight':'タップして身長と体重を設定','Log your first workout →':'最初のワークアウトを記録 →',
     'Every workout you finish appears on a calendar.':'完了したワークアウトはカレンダーに表示されます。','Tap a day to review or edit it later.':'日付をタップすると後から確認・編集できます。',
@@ -1389,6 +1392,8 @@ const I18N_PATTERNS = [
   [/^Est\.\s+(.+?)\s+away$/,      m => '達成まで' + txTime(m[1])],
   [/^~(\d+)w\s+away$/,            m => 'あと約' + m[1] + '週'],
   [/^([\d.]+(?:kg|lbs))\s+to go$/, m => 'あと' + m[1]],
+  [/^(\d+)\s+more reps at\s+([\d.]+(?:kg|lbs))$/, m => m[2] + 'であと' + m[1] + 'レップ'],
+  [/^(.+?)\s*·\s*~(\d+)w\s+away$/, m => tx(m[1].trim()) + ' · あと約' + m[2] + '週'],
   [/^(.+?)\s*\(PR:\s*(.+)\)$/,    m => tx(m[1].trim()) + '（自己ベスト: ' + m[2] + '）'],
   [/^(\d+)\s*days? left$/,        m => '残り' + m[1] + '日'],
   [/^(\d+)\s*days? overdue$/,     m => m[1] + '日超過'],
@@ -1803,10 +1808,15 @@ function allExerciseNames() {
 // phone silently. This surfaces it: a home-screen badge, a local notification
 // and a "what's new" banner, so an update is never invisible.
 // ═══════════════════════════════════════════════════════
-const APP_VERSION = 78;
+const APP_VERSION = 79;
 
 // Release notes, newest first. Keys are version numbers.
 const WHATS_NEW = {
+  79: [
+    'A weight × reps goal now counts as reached only when a set hits both — 90kg × 3 no longer completes a 90kg × 5 goal',
+    'Goal cards show what is still missing: the weight left, or the reps left at that weight',
+    'Achievements that were recorded by mistake are cleared from the Achieved list'
+  ],
   78: [
     'Exercise notes can now be multi-line, and you can add as many as you like',
     'Tap “+ Add note” to keep separate notes per set or topic'
@@ -2661,6 +2671,39 @@ function currentBodyWeightKg() {
 
 function isBodyWeightGoal(goal) { return goal && goal.type === 'bodyweight'; }
 
+// Scan the real set history for a strength goal.
+// A goal of 90kg × 5 is reached only by a set that is BOTH at least 90kg AND at
+// least 5 reps — 90kg × 3 is not a reach, however heavy it is. `bestRepsAtTarget`
+// is the most reps ever done at (or above) the target weight, so the card can say
+// how many reps are still missing.
+const GOAL_EPS = 0.01;          // kg tolerance for lbs→kg rounding
+function goalStrengthStats(goal) {
+  const targetKg   = goal.targetWeightKg || goalTarget1RM_kg(goal);
+  const targetReps = Math.max(1, +goal.targetReps || 1);
+  let bestWeightKg = 0, bestE1RM_kg = 0, bestRepsAtTarget = 0, hitDate = '';
+  const sorted = [...DB.workouts].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+  for (const w of sorted) {
+    const du = wUnit(w);
+    for (const ex of w.exercises) {
+      if (ex.name !== goal.exercise) continue;
+      for (const st of ex.sets) {
+        if (!st.weight || !st.reps || st.failed) continue;
+        const wKg = toKg(+st.weight, du), reps = +st.reps;
+        if (wKg > bestWeightKg) bestWeightKg = wKg;
+        const e1 = toKg(calc1RM(+st.weight, reps), du);
+        if (e1 > bestE1RM_kg) bestE1RM_kg = e1;
+        if (targetKg > 0 && wKg >= targetKg - GOAL_EPS) {
+          if (reps > bestRepsAtTarget) bestRepsAtTarget = reps;
+          if (reps >= targetReps && !hitDate) hitDate = w.date;   // earliest qualifying day
+        }
+      }
+    }
+  }
+  const targetE1RM_kg = goalTarget1RM_kg(goal);
+  return { targetKg, targetReps, bestWeightKg, bestE1RM_kg, targetE1RM_kg,
+    bestRepsAtTarget, hitDate, done: targetKg > 0 && !!hitDate };
+}
+
 function getGoalProgress(goal) {
   // ── Body-weight goal: progress from a start weight toward a target weight ──
   if (isBodyWeightGoal(goal)) {
@@ -2677,15 +2720,40 @@ function getGoalProgress(goal) {
       losing, done, pct, remainingKg, target1RM:target, remaining1RM_kg:remainingKg };
   }
   // ── Strength goal (default) ──
-  const prs   = getPRs();
-  const pr    = prs[goal.exercise];
-  // Progress is measured by the heaviest weight actually lifted vs the target weight.
-  const currentKg  = pr?.bestWeightKg || 0;
-  const targetKg   = goal.targetWeightKg || goalTarget1RM_kg(goal);
-  const done       = currentKg >= targetKg && targetKg > 0;
-  const remaining1RM_kg = Math.max(0, targetKg - currentKg);
+  const st = goalStrengthStats(goal);
+  const remaining1RM_kg = Math.max(0, st.targetKg - st.bestWeightKg);
+  // Reps still missing at the target weight (only meaningful once the weight is there).
+  const remainingReps = st.done ? 0
+    : (st.bestWeightKg >= st.targetKg - GOAL_EPS ? Math.max(0, st.targetReps - st.bestRepsAtTarget) : 0);
+  // Progress rides on estimated 1RM (a smooth measure of real strength), but it
+  // never reads 100% until the goal is actually reached.
+  let pct = st.targetE1RM_kg > 0
+    ? Math.round(Math.min(1, st.bestE1RM_kg / st.targetE1RM_kg) * 100) : 0;
+  if (!st.done) pct = Math.min(pct, 99);
   // target1RM key kept for backward compatibility with callers; holds target weight.
-  return { currentKg, target1RM: targetKg, done, remaining1RM_kg };
+  return { currentKg: st.bestWeightKg, target1RM: st.targetKg, done: st.done, remaining1RM_kg,
+    pct, targetReps: st.targetReps, bestRepsAtTarget: st.bestRepsAtTarget,
+    remainingReps, currentE1RM_kg: st.bestE1RM_kg, targetE1RM_kg: st.targetE1RM_kg,
+    hitDate: st.hitDate };
+}
+
+// What is still missing, in the goal's own terms: weight first, then reps.
+function goalGapText(gp, unit) {
+  if (!gp || gp.done) return '';
+  if (gp.remaining1RM_kg > 0) {
+    return Math.round(dispW(gp.remaining1RM_kg, 'kg') * 10) / 10 + unit + ' to go';
+  }
+  if (gp.remainingReps > 0) {
+    const w = Math.round(dispW(gp.target1RM, 'kg') * 10) / 10;
+    return gp.remainingReps + ' more reps at ' + w + unit;
+  }
+  return '';
+}
+// Weeks estimate, honest about a goal whose weight is there but whose reps are not.
+function goalWeeksLeft(goal, gp) {
+  if (gp.done) return 0;
+  const w = estimateWeeks(goal.exercise, gp.targetE1RM_kg || gp.target1RM);
+  return w === 0 ? null : w;   // 0 weeks while not reached would be a lie
 }
 
 // ═══════════════════════════════════════════════════════
@@ -3065,21 +3133,20 @@ function renderDashboard() {
       if (isBodyWeightGoal(goal)) continue;   // body-weight goals live in the Goals tab (no exercise chart)
       const pr   = prs[goal.exercise];
       const gp   = getGoalProgress(goal);
-      const barPct = gp.target1RM > 0
-        ? Math.min(100, Math.round((gp.currentKg / gp.target1RM) * 100)) : 0;
+      const barPct = gp.pct || 0;
 
       // Format target display
       const tWDisp = goal.targetWeightKg
         ? Math.round(dispW(goal.targetWeightKg, 'kg') * 10) / 10 : '—';
       const tReps  = goal.targetReps || '—';
 
-      // Remaining 1RM gap
-      const remDisp = Math.round(dispW(gp.remaining1RM_kg, 'kg'));
+      // What is still missing (weight, or reps at that weight)
+      const gapStr = goalGapText(gp, unit);
 
       // Est. time
-      const weeks  = gp.done ? 0 : estimateWeeks(goal.exercise, gp.target1RM);
+      const weeks  = goalWeeksLeft(goal, gp);
       const timeStr = gp.done ? null
-        : weeks === null ? (remDisp > 0 ? `${remDisp}${unit} to go` : null)
+        : weeks === null ? (gapStr || null)
         : weeks <= 4     ? `~${weeks}w`
         : weeks <= 52    ? `~${Math.round(weeks/4)}mo`
         : `${Math.round(weeks/52)}+ yr`;
@@ -6601,20 +6668,17 @@ function renderGoals() {
       : '—';
     const tgtReps        = goal.targetReps || '—';
 
-    // Progress bar % based on est. 1RM progress
-    const pct = gp.target1RM > 0
-      ? Math.min(100, Math.round((gp.currentKg / gp.target1RM) * 100))
-      : 0;
+    // Progress bar % based on est. 1RM progress (never 100% until truly reached)
+    const pct = gp.pct || 0;
 
-    // Estimated weeks
-    const weeksLeft = done ? 0 : estimateWeeks(goal.exercise, gp.target1RM);
+    // Estimated weeks + the concrete gap that is left
+    const weeksLeft = goalWeeksLeft(goal, gp);
+    const gapStr    = goalGapText(gp, unit);
     const etaText   = done
       ? `<span style="color:var(--green);font-weight:700">Goal reached! 🎉</span>`
       : weeksLeft === null
-        ? `<span style="color:var(--muted)">Log more sets to estimate</span>`
-        : weeksLeft === 0
-          ? `<span style="color:var(--green);font-weight:700">Goal reached! 🎉</span>`
-          : `<span style="color:var(--muted)">~${weeksLeft}w away</span>`;
+        ? `<span style="color:var(--muted)">${gapStr || 'Log more sets to estimate'}</span>`
+        : `<span style="color:var(--muted)">${gapStr ? gapStr + ' · ' : ''}~${weeksLeft}w away</span>`;
 
     html += `
     <div class="goal-card${done?' goal-reached':''}" style="cursor:pointer" onclick="openEditGoalModal('${goal.id}')">
@@ -8425,7 +8489,7 @@ function dashCardGoalRing() {
   for (const g of goals) {
     const gp = getGoalProgress(g);
     if (gp.type === 'bodyweight') { sum += gp.pct; n++; }
-    else if (gp.target1RM > 0) { sum += Math.min(100, (gp.currentKg / gp.target1RM) * 100); n++; }
+    else if (gp.target1RM > 0) { sum += gp.pct || 0; n++; }
   }
   if (!n) return '';
   const pct = Math.round(sum / n);
@@ -8587,37 +8651,42 @@ function goalAchievedDate(goal) {
     }
     return todayStr();
   }
-  const targetKg = goal.targetWeightKg || goalTarget1RM_kg(goal);
-  if (!(targetKg > 0)) return todayStr();
-  const sorted = [...DB.workouts].sort((a, b) => a.date.localeCompare(b.date));
-  for (const w of sorted) {
-    const du = wUnit(w);
-    const ex = w.exercises.find(e => e.name === goal.exercise);
-    if (!ex) continue;
-    for (const s of ex.sets) {
-      if (s.weight && s.reps && !s.failed && toKg(+s.weight, du) >= targetKg) return w.date;
-    }
-  }
-  return todayStr();
+  // The day a set first met BOTH the target weight and the target reps.
+  return goalStrengthStats(goal).hitDate || todayStr();
 }
 // Record a reached goal once (re-records if the target was later raised & hit again).
-function archiveGoalIfNew(goal) {
+function archiveGoalIfNew(goal, manual) {
   const tgtKg = goal.targetWeightKg || goalTarget1RM_kg(goal);
   const arr   = achievedGoals();
   if (isBodyWeightGoal(goal)) {
     const key = goal.id + ':bw' + tgtKg;
     if (arr.some(a => a.key === key)) return;
-    arr.push({ key, type: 'bodyweight', targetWeightKg: tgtKg, date: goalAchievedDate(goal) });
+    arr.push({ key, type: 'bodyweight', targetWeightKg: tgtKg, date: goalAchievedDate(goal), manual: !!manual });
     saveAchievedGoals(arr);
     return;
   }
   const key = goal.id + ':' + tgtKg + 'x' + (goal.targetReps || '');
   if (arr.some(a => a.key === key)) return;
   arr.push({ key, exercise: goal.exercise, targetWeightKg: tgtKg,
-    targetReps: goal.targetReps || 1, date: goalAchievedDate(goal) });
+    targetReps: goal.targetReps || 1, date: goalAchievedDate(goal), manual: !!manual });
   saveAchievedGoals(arr);
 }
+// Remove auto-recorded achievements the set history does not back up — e.g. a
+// goal of 90kg × 5 that an older build filed as reached on a 90kg × 3 set.
+// Hand-entered achievements ("+ Add past", "Mark done") are always kept.
+function pruneUnearnedAchievements() {
+  const arr  = achievedGoals();
+  const kept = arr.filter(a => {
+    if (a.manual || String(a.key || '').startsWith('m')) return true;   // hand-entered
+    if (a.type === 'bodyweight' || !a.exercise) return true;
+    const st = goalStrengthStats({ exercise: a.exercise,
+      targetWeightKg: a.targetWeightKg, targetReps: a.targetReps || 1 });
+    return st.done;
+  });
+  if (kept.length !== arr.length) saveAchievedGoals(kept);
+}
 function syncGoalArchive() {
+  pruneUnearnedAchievements();
   for (const goal of DB.goals) if (getGoalProgress(goal).done) archiveGoalIfNew(goal);
 }
 // Render the "Achieved" list for the Goals tab.
@@ -8841,7 +8910,7 @@ function applyGoalAdjust(id) {
 function goalMarkDone(id) {
   const goal = DB.goals.find(g => g.id === id); if (!goal) return;
   if (!confirm('Log this goal as achieved?')) return;
-  archiveGoalIfNew(goal);
+  archiveGoalIfNew(goal, true);
   DB.saveGoals(DB.goals.filter(g => g.id !== id));
   fireConfetti(); showToast('Logged to Achieved 🏆'); renderGoals();
 }
