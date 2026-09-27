@@ -226,6 +226,13 @@ input:focus,textarea:focus,select:focus{border-color:var(--accent)}
   background:var(--green);color:#04210f;font-weight:800;
   font-size:11px;letter-spacing:.3px;padding:4px 10px;border-radius:20px;white-space:nowrap;
 }
+.tpl-item{border:1px solid var(--border);border-radius:12px;padding:10px 10px 8px;margin-bottom:8px;background:var(--card2)}
+.tpl-item-head{display:flex;align-items:center;gap:8px}
+.tpl-fields{display:grid;gap:8px;margin-top:8px}
+.tpl-fields.strength{grid-template-columns:1fr 1.2fr 1fr}
+.tpl-fields.simple{grid-template-columns:1fr}
+.tpl-fields .label{font-size:10px;margin-bottom:3px;text-transform:none;letter-spacing:0}
+.tpl-fields input{min-height:38px;padding:8px 10px;font-size:15px;text-align:center}
 .ach-head{
   display:flex;align-items:center;gap:8px;width:100%;margin:20px 0 0;padding:10px 2px;
   background:transparent;border:none;color:var(--text);font-size:13px;font-weight:700;
@@ -1183,9 +1190,10 @@ const I18N = {
     'Est':'推定','1M':'1ヶ月','3M':'3ヶ月','6M':'6ヶ月','All':'全期間','Period':'期間',
     'Create Template':'テンプレートを作成','Save Template':'テンプレートを保存',
     'Edit Template':'テンプレートを編集','Update Template':'テンプレートを更新',
-    'Template name':'テンプレート名','e.g. Push A':'例：プッシュA','Fill from a session type':'セッションの種類から入力',
+    'Template name':'テンプレート名','Sets':'セット','How to do it… (tempo, drop set, superset)':'やり方のメモ…（テンポ、ドロップセット、スーパーセットなど）','e.g. Push A':'例：プッシュA','Fill from a session type':'セッションの種類から入力',
     'Name your template, then tick the exercises in your menu.':'テンプレート名を付けて、メニューの種目にチェックを入れましょう。',
     'Name this template':'テンプレート名を入力してください',
+    'Weight (kg)':'重量 (kg)','Weight (lbs)':'重量 (lbs)',
     'Body Weight (kg)':'体重 (kg)','Body Weight (lbs)':'体重 (lbs)','Target Weight (kg)':'目標重量 (kg)','Target Weight (lbs)':'目標重量 (lbs)',
     "You haven't backed up yet. Your data lives only on this device — save a copy so you don't lose it.":'まだバックアップしていません。データはこの端末にのみ保存されています — 失わないようにコピーを保存しましょう。',
     'No data yet for this exercise':'この種目のデータはまだありません',
@@ -1352,6 +1360,9 @@ const I18N = {
     'Another note… (a specific set, form cue, etc.)':'別のメモ…（特定のセット、フォームの気づきなど）',
     '+ Add note':'+ メモを追加','Delete this note?':'このメモを削除しますか？','Delete note':'メモを削除',
     'Exercise notes can now be multi-line, and you can add as many as you like':'種目メモが複数行に対応し、いくつでも追加できるように',
+    'Templates now hold a plan per exercise — how many sets, at what weight × reps':'テンプレートに種目ごとの予定を保存できます（セット数・目標重量×レップ）',
+    'Each exercise in a template takes as many notes as you need, for drop sets, supersets and tempo':'各種目にメモをいくつでも追加できます（ドロップセット、スーパーセット、テンポなど）',
+    'Loading a template lays out the planned sets with the numbers shown as light placeholders':'テンプレートを読み込むと予定セット数が並び、数値は薄い例示として入ります',
     'Delete a template straight from the list — the button sits next to Edit':'テンプレートを一覧からそのまま削除できます（「編集」の隣にボタン）',
     'Templates can be renamed freely, so one session type can hold Push A and Push B':'テンプレート名を自由に変更できます（プッシュA・プッシュBのような使い分けも可能）',
     'A goal you reach now moves into “View past records” by itself — no more logging it by hand':'達成した目標は自動で「過去の記録を見る」に移動 — 手動で記録する必要はありません',
@@ -1837,10 +1848,15 @@ function allExerciseNames() {
 // phone silently. This surfaces it: a home-screen badge, a local notification
 // and a "what's new" banner, so an update is never invisible.
 // ═══════════════════════════════════════════════════════
-const APP_VERSION = 82;
+const APP_VERSION = 83;
 
 // Release notes, newest first. Keys are version numbers.
 const WHATS_NEW = {
+  83: [
+    'Templates now hold a plan per exercise — how many sets, at what weight × reps',
+    'Each exercise in a template takes as many notes as you need, for drop sets, supersets and tempo',
+    'Loading a template lays out the planned sets with the numbers shown as light placeholders'
+  ],
   82: [
     'Delete a template straight from the list — the button sits next to Edit',
     'Templates can be renamed freely, so one session type can hold Push A and Push B'
@@ -3713,13 +3729,16 @@ function setSessionCustom(val, isEdit) {
 function templateForLog(l) {
   const tpls = DB.templates;
   const exact = tpls[l.name];
-  if (exact && exact.length) return { names: exact.slice(), exact: true };
+  if (exact && exact.length) return { items: exact.map(tplItem), names: tplNames(exact), exact: true };
   const sess = parseSession(l);
   const keys = [...sess.types, sess.custom].filter(Boolean);
   if (keys.length < 2) return null;          // single part already checked above
   const merged = [];
-  for (const k of keys) for (const n of (tpls[k] || [])) if (!merged.includes(n)) merged.push(n);
-  return merged.length ? { names: merged, exact: false } : null;
+  for (const k of keys) for (const x of (tpls[k] || [])) {
+    const it = tplItem(x);
+    if (!merged.some(m => m.name === it.name)) merged.push(it);
+  }
+  return merged.length ? { items: merged, names: tplNames(merged), exact: false } : null;
 }
 
 // Suggestion banner under Session Type: template first, last-session fallback
@@ -3728,7 +3747,7 @@ function templateSuggestionHTML() {
   if (!name || currentLog.exercises.length) return '';
   const found = templateForLog(currentLog);
   if (found) {
-    const tpl = found.names;
+    const tpl = found.items.map(x => tplItemLabel(x));
     const head = found.exact
       ? tf('{name} template', {name: tx(name)})
       : tf('{name} templates combined', {name: tx(name)});
@@ -3838,10 +3857,31 @@ function exerciseWithPlaceholders(name) {
     : [{ weight:'', reps:'' }];
   return { name, sets };
 }
+// Build one log entry from a planned template item: the planned number of set
+// rows, the planned weight × reps as PLACEHOLDERS (so an untouched set is still
+// dropped on save), and the planned notes copied in as the exercise's notes.
+function exerciseFromTemplateItem(x) {
+  const it = tplItem(x);
+  const ex = exerciseWithPlaceholders(it.name);
+  if (exKind(it.name) === 'strength' && (it.weightKg || it.reps)) {
+    const w = it.weightKg ? Math.round(dispW(+it.weightKg, 'kg') * 10) / 10 : '';
+    ex.sets = ex.sets.map(st => ({ ...st, phW: w || st.phW || '', phR: it.reps || st.phR || '' }));
+  }
+  const n = Math.max(0, Math.min(30, parseInt(it.sets, 10) || 0));
+  if (n) {
+    const proto = ex.sets[0] || blankSetFor(it.name);
+    const rows = [];
+    for (let i = 0; i < n; i++) rows.push({ ...(ex.sets[i] || proto) });
+    ex.sets = rows;
+  }
+  const notes = (it.notes || []).map(x => String(x)).filter(x => x.trim());
+  if (notes.length) { ex.noteList = notes.slice(); ex.note = notes.join('\n'); }
+  return ex;
+}
 function applyTemplateToLog() {
   const found = templateForLog(currentLog);
-  if (!found || !found.names.length) return;
-  currentLog.exercises = found.names.map(exerciseWithPlaceholders);
+  if (!found || !found.items.length) return;
+  currentLog.exercises = found.items.map(exerciseFromTemplateItem);
   openEx = new Set(currentLog.exercises.length ? [0] : []);   // open the first, rest collapsed
   saveDraft();
   renderLog();
@@ -3876,7 +3916,22 @@ function saveCurrentAsTemplate() {
   const exNames = currentLog.exercises.map(e => e.name);
   if (!name || !exNames.length) return;
   const tpls = DB.templates;                 // NOTE: never name this `t` — it shadows the translator
-  tpls[name] = exNames;
+  const prev = (tpls[name] || []).map(tplItem);
+  tpls[name] = currentLog.exercises.map(ex => {
+    const item = { name: ex.name };
+    const filled = (ex.sets || []).filter(st => st.weight || st.reps || st.km || st.mins || st.speed || st.secs);
+    if (filled.length) item.sets = filled.length;
+    if (exKind(ex.name) === 'strength') {
+      // Heaviest logged set becomes the plan for next time.
+      let best = null;
+      for (const st of filled) if (+st.weight && (!best || +st.weight > +best.weight)) best = st;
+      if (best) { item.weightKg = toKg(+best.weight, DB.unit); item.reps = +best.reps || ''; }
+    }
+    // Keep whatever plan note the template already had — today's notes are not it.
+    const old = prev.find(o => o.name === ex.name);
+    if (old && old.notes && old.notes.length) item.notes = old.notes.slice();
+    return item;
+  });
   DB.saveTemplates(tpls);
   showToast(tf('Saved as your {name} template 📋', {name:tx(name)}));
   renderLog();
@@ -6022,7 +6077,7 @@ function templatesSectionHTML() {
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">
       <div style="min-width:0;flex:1;cursor:pointer" onclick="openTemplateBuilder('${esc(k)}')">
         <div style="font-size:14px;font-weight:700">${k}</div>
-        <div style="font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${tpls[k].map(exDisp).join(' · ')}</div>
+        <div style="font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${tpls[k].map(x => tplItemLabel(x)).join(' · ')}</div>
       </div>
       <button class="btn btn-secondary btn-sm" style="flex-shrink:0;padding:6px 10px;font-size:11px" onclick="openTemplateBuilder('${esc(k)}')">Edit</button>
       <button class="del-btn" style="flex-shrink:0;width:34px;height:34px" aria-label="Delete template"
@@ -6044,13 +6099,35 @@ function templatesSectionHTML() {
   </div>`;
 }
 
+// ── Template items ─────────────────────────────────────────────────────────
+// A template entry is either a bare exercise name (older data) or a planned
+// item: { name, sets, weightKg, reps, notes[] }. Everything that reads a
+// template goes through these two helpers, so both shapes keep working.
+function tplItem(x) {
+  if (typeof x === 'string') return { name: x };
+  if (x && typeof x === 'object' && x.name) return x;
+  return { name: String(x || '') };
+}
+function tplItems(key) { return (DB.templates[key] || []).map(tplItem); }
+function tplNames(list) { return (list || []).map(x => tplItem(x).name); }
+// "Bench Press 4×60kg" for the one-line summaries.
+function tplItemLabel(x, unit) {
+  const it = tplItem(x), u = unit || DB.unit;
+  const bits = [];
+  if (it.sets) bits.push(it.sets + '×');
+  if (it.weightKg) bits.push(Math.round(dispW(+it.weightKg, 'kg') * 10) / 10 + u);
+  else if (it.reps) bits.push(it.reps + 'r');
+  else if (bits.length) bits[0] = it.sets + (it.reps ? '×' + it.reps : '');
+  return exDisp(it.name) + (bits.length ? ' ' + bits.join('') : '');
+}
+
 // Template builder modal — pick a session type, search & tick exercises
 let tplBuilder = { name:'', orig:'', picked:[], query:'' };
 function openTemplateBuilder(name) {
   tplBuilder = {
     name: name || '',
     orig: (name && DB.templates[name]) ? name : '',   // the key to replace when renamed
-    picked: name && DB.templates[name] ? [...DB.templates[name]] : [],
+    picked: name && DB.templates[name] ? DB.templates[name].map(x => ({ ...tplItem(x) })) : [],
     query: ''
   };
   renderTemplateBuilder();
@@ -6084,9 +6161,7 @@ function renderTemplateBuilder() {
   </div>
 
   <div class="label" style="margin-bottom:6px">Exercises (<span id="tpl-count">${tplBuilder.picked.length}</span> selected)</div>
-  <div id="tpl-picked" style="margin-bottom:8px">
-    ${tplBuilder.picked.map(n=>`<span class="ex-chip" style="background:var(--accent);color:#fff;border-color:var(--accent)" onclick="tplToggle('${esc(n)}')">✓ ${exDisp(n)}</span>`).join('')}
-  </div>
+  <div id="tpl-picked" style="margin-bottom:8px">${tplPickedHTML()}</div>
 
   <input type="text" id="tpl-search" placeholder="Search exercises…" value="${tplBuilder.query.replace(/"/g,'&quot;')}"
     oninput="tplBuilder.query=this.value;tplRefreshList()"
@@ -6102,9 +6177,103 @@ function renderTemplateBuilder() {
   </div>`;
   openModal();
 }
+// Each picked exercise gets its plan: how many sets, at what weight × reps,
+// plus as many free notes as the technique needs (drop sets, supersets…).
+function tplPickedHTML() {
+  const unit = DB.unit;
+  return tplBuilder.picked.map((it, i) => {
+    const strength = exKind(it.name) === 'strength';
+    const w = it.weightKg ? Math.round(dispW(+it.weightKg, 'kg') * 10) / 10 : '';
+    return `
+    <div class="tpl-item">
+      <div class="tpl-item-head">
+        <div style="flex:1;min-width:0;font-size:14px;font-weight:700">${exDisp(it.name)}</div>
+        <button class="del-btn" style="width:30px;height:30px;flex-shrink:0" aria-label="Remove" onclick="tplToggle('${esc(it.name)}')">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="tpl-fields ${strength ? 'strength' : 'simple'}">
+        <div>
+          <div class="label">Sets</div>
+          <input type="number" inputmode="numeric" min="1" max="30" step="1" placeholder="—"
+            value="${it.sets || ''}" oninput="tplSetField(${i},'sets',this.value)">
+        </div>
+        ${strength ? `
+        <div>
+          <div class="label">Weight (${unit})</div>
+          <input type="number" inputmode="decimal" min="0" step="0.5" placeholder="—"
+            value="${w}" oninput="tplSetField(${i},'weight',this.value)">
+        </div>
+        <div>
+          <div class="label">Reps</div>
+          <input type="number" inputmode="numeric" min="1" max="100" step="1" placeholder="—"
+            value="${it.reps || ''}" oninput="tplSetField(${i},'reps',this.value)">
+        </div>` : ''}
+      </div>
+      ${tplNotesHTML(i)}
+    </div>`;
+  }).join('');
+}
+function tplNotesHTML(i) {
+  const it = tplBuilder.picked[i]; if (!it) return '';
+  const list = (it.notes && it.notes.length) ? it.notes : [''];
+  const canDel = list.length > 1 || !!String(list[0] || '').trim();
+  return `<div class="ex-notes" id="tplnotes-${i}">
+    ${list.map((txt, ni) => `<div class="ex-note-row">
+      <textarea class="ex-note-input" rows="${Math.max(1, String(txt).split('\n').length)}" data-noi18n
+        placeholder="${ni === 0 ? 'How to do it… (tempo, drop set, superset)' : 'Another note… (a specific set, form cue, etc.)'}"
+        oninput="tplSetNote(${i},${ni},this.value);growNote(this)">${escHtml(txt)}</textarea>
+      ${canDel ? `<button class="ex-note-del" aria-label="Delete note" onclick="tplRemoveNote(${i},${ni})">×</button>` : ''}
+    </div>`).join('')}
+    <button class="ex-note-add" onclick="tplAddNote(${i})">+ Add note</button>
+  </div>`;
+}
+function tplSetField(i, field, val) {
+  const it = tplBuilder.picked[i]; if (!it) return;
+  if (field === 'weight') it.weightKg = val === '' ? '' : toKg(+val, DB.unit);
+  else if (field === 'sets') it.sets = val === '' ? '' : Math.max(1, Math.min(30, parseInt(val, 10) || 1));
+  else it.reps = val === '' ? '' : Math.max(1, Math.min(100, parseInt(val, 10) || 1));
+}
+function tplSetNote(i, ni, val) {
+  const it = tplBuilder.picked[i]; if (!it) return;
+  if (!Array.isArray(it.notes)) it.notes = [];
+  while (it.notes.length <= ni) it.notes.push('');
+  it.notes[ni] = val;
+  // Reveal the × as soon as the only note has text, without a re-render.
+  const box = document.getElementById(`tplnotes-${i}`);
+  if (box && it.notes.length === 1 && val.trim()) {
+    const row = box.querySelector('.ex-note-row');
+    if (row && !row.querySelector('.ex-note-del')) row.insertAdjacentHTML('beforeend',
+      `<button class="ex-note-del" aria-label="${t('Delete note')}" onclick="tplRemoveNote(${i},0)">×</button>`);
+  }
+}
+function tplRefreshNotes(i, focusIdx) {
+  const box = document.getElementById(`tplnotes-${i}`); if (!box) return;
+  box.outerHTML = tplNotesHTML(i);
+  const nb = document.getElementById(`tplnotes-${i}`);
+  if (typeof applyLangSafe === 'function') applyLangSafe();
+  growNotes(nb);
+  if (focusIdx != null) { const ta = nb.querySelectorAll('textarea')[focusIdx]; if (ta) ta.focus(); }
+}
+function tplAddNote(i) {
+  const it = tplBuilder.picked[i]; if (!it) return;
+  if (!Array.isArray(it.notes) || !it.notes.length) it.notes = [''];
+  const empty = it.notes.findIndex(x => !String(x).trim());
+  if (empty >= 0) { tplRefreshNotes(i, empty); return; }
+  it.notes.push('');
+  tplRefreshNotes(i, it.notes.length - 1);
+}
+function tplRemoveNote(i, ni) {
+  const it = tplBuilder.picked[i]; if (!it) return;
+  if (!Array.isArray(it.notes)) return;
+  if (String(it.notes[ni] || '').trim() && !confirm(t('Delete this note?'))) return;
+  it.notes.splice(ni, 1);
+  tplRefreshNotes(i, null);
+}
 function tplListHTML() {
   const q = (tplBuilder.query || '').trim();
-  const avail = exSortDisplay(allExerciseNames().filter(n => !tplBuilder.picked.includes(n))
+  const picked = tplBuilder.picked.map(x => x.name);
+  const avail = exSortDisplay(allExerciseNames().filter(n => !picked.includes(n))
     .filter(n => exMatch(n, q)));
   if (!avail.length) {
     return q
@@ -6118,14 +6287,16 @@ function tplRefreshList() {
   if (el) el.innerHTML = tplListHTML();
 }
 function tplToggle(n) {
-  const i = tplBuilder.picked.indexOf(n);
-  if (i >= 0) tplBuilder.picked.splice(i, 1); else tplBuilder.picked.push(n);
-  // Update picked chips, count, and list in place (keeps search focus & keyboard)
+  const i = tplBuilder.picked.findIndex(x => x.name === n);
+  if (i >= 0) tplBuilder.picked.splice(i, 1); else tplBuilder.picked.push({ name: n });
+  // Update picked rows, count, and list in place (keeps search focus & keyboard)
   const picked = document.getElementById('tpl-picked');
-  if (picked) picked.innerHTML = tplBuilder.picked.map(x=>`<span class="ex-chip" style="background:var(--accent);color:#fff;border-color:var(--accent)" onclick="tplToggle('${esc(x)}')">✓ ${exDisp(x)}</span>`).join('');
+  if (picked) picked.innerHTML = tplPickedHTML();
   const count = document.getElementById('tpl-count');
   if (count) count.textContent = tplBuilder.picked.length;
   tplRefreshList();
+  if (typeof applyLangSafe === 'function') applyLangSafe();
+  growNotes(picked);
 }
 function saveTemplateFromBuilder() {
   const name = (tplBuilder.name || '').trim();
@@ -6136,7 +6307,15 @@ function saveTemplateFromBuilder() {
   // A rename must not silently swallow a different template of the same name.
   if (name !== orig && tpls[name] &&
       !confirm(tf('A template called "{name}" already exists. Replace it?', {name:t(name)}))) return;
-  tpls[name] = [...tplBuilder.picked];
+  tpls[name] = tplBuilder.picked.map(it => {
+    const out = { name: it.name };
+    if (it.sets) out.sets = it.sets;
+    if (it.weightKg) out.weightKg = it.weightKg;
+    if (it.reps) out.reps = it.reps;
+    const notes = (it.notes || []).map(x => String(x).replace(/\s+$/, '')).filter(x => x.trim());
+    if (notes.length) out.notes = notes;
+    return out;
+  });
   if (orig && orig !== name) delete tpls[orig];
   DB.saveTemplates(tpls);
   closeModal();
@@ -6307,8 +6486,12 @@ function saveRenameExercise(oldName) {
   // 4. templates
   const tpls = DB.templates; let tplDirty = false;
   for (const k of Object.keys(tpls)) {
-    const idx = tpls[k].indexOf(oldName);
-    if (idx >= 0) { tpls[k][idx] = newName; tplDirty = true; }
+    tpls[k] = tpls[k].map(x => {
+      const it = tplItem(x);
+      if (it.name !== oldName) return x;
+      tplDirty = true;
+      return typeof x === 'string' ? newName : { ...it, name: newName };
+    });
   }
   if (tplDirty) DB.saveTemplates(tpls);
   // 5. goals + achievements
@@ -6518,7 +6701,7 @@ function doDeleteExercise(name, wipeHistory) {
   // Remove from every template
   const tpls = DB.templates; let tplDirty = false;
   for (const k of Object.keys(tpls)) {
-    const next = tpls[k].filter(n => n !== name);
+    const next = tpls[k].filter(x => tplItem(x).name !== name);
     if (next.length !== tpls[k].length) { tpls[k] = next; tplDirty = true; }
     if (!next.length) { delete tpls[k]; tplDirty = true; }
   }
@@ -7582,7 +7765,7 @@ function openDataModal() {
   const templates = stGroup(t('Workout templates'),
     keys.length ? keys.map(k => stRow({
       label: t(k),
-      sub: tpls[k].map(exDisp).join(' · '),
+      sub: tpls[k].map(x => tplItemLabel(x)).join(' · '),
       right: `<button class="del-btn" style="flex-shrink:0;width:34px;height:34px" onclick="event.stopPropagation();deleteTemplate('${esc(k)}')">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg></button>`
