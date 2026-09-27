@@ -1182,6 +1182,10 @@ const I18N = {
     'General':'一般','Hidden':'非表示','Shown':'表示中','vs last week':'先週比','Rest':'休憩','Start':'開始','Resume':'再開','Pause':'一時停止',
     'Est':'推定','1M':'1ヶ月','3M':'3ヶ月','6M':'6ヶ月','All':'全期間','Period':'期間',
     'Create Template':'テンプレートを作成','Save Template':'テンプレートを保存',
+    'Edit Template':'テンプレートを編集','Update Template':'テンプレートを更新',
+    'Template name':'テンプレート名','e.g. Push A':'例：プッシュA','Fill from a session type':'セッションの種類から入力',
+    'Name your template, then tick the exercises in your menu.':'テンプレート名を付けて、メニューの種目にチェックを入れましょう。',
+    'Name this template':'テンプレート名を入力してください',
     'Body Weight (kg)':'体重 (kg)','Body Weight (lbs)':'体重 (lbs)','Target Weight (kg)':'目標重量 (kg)','Target Weight (lbs)':'目標重量 (lbs)',
     "You haven't backed up yet. Your data lives only on this device — save a copy so you don't lose it.":'まだバックアップしていません。データはこの端末にのみ保存されています — 失わないようにコピーを保存しましょう。',
     'No data yet for this exercise':'この種目のデータはまだありません',
@@ -1348,6 +1352,8 @@ const I18N = {
     'Another note… (a specific set, form cue, etc.)':'別のメモ…（特定のセット、フォームの気づきなど）',
     '+ Add note':'+ メモを追加','Delete this note?':'このメモを削除しますか？','Delete note':'メモを削除',
     'Exercise notes can now be multi-line, and you can add as many as you like':'種目メモが複数行に対応し、いくつでも追加できるように',
+    'Delete a template straight from the list — the button sits next to Edit':'テンプレートを一覧からそのまま削除できます（「編集」の隣にボタン）',
+    'Templates can be renamed freely, so one session type can hold Push A and Push B':'テンプレート名を自由に変更できます（プッシュA・プッシュBのような使い分けも可能）',
     'A goal you reach now moves into “View past records” by itself — no more logging it by hand':'達成した目標は自動で「過去の記録を見る」に移動 — 手動で記録する必要はありません',
     'Deleting a past record only hides it; the record itself is kept and can be restored':'過去の記録の削除は非表示にするだけ — 記録自体は残り、戻すこともできます',
     'Past records are folded away under “View past records” — open it when you want to look back':'過去の記録は「過去の記録を見る」に折りたたみ — 振り返りたいときに開けます',
@@ -1375,7 +1381,9 @@ const I18N = {
     '{name} template':'{name}テンプレート','Load {n}':'読み込む {n}','Repeat last {name}?':'前回の{name}を繰り返す？','{verb} "{name}" template':'「{name}」テンプレートを{verb}',
     'Loaded your {name} template 📋':'{name}テンプレートを読み込みました 📋','Saved as your {name} template 📋':'{name}テンプレートを保存しました 📋',
     '{name} template saved 📋':'{name}テンプレートを保存しました 📋','Loaded last {name} session ⟳':'前回の{name}セッションを読み込みました ⟳',
-    'Delete the "{name}" template?':'「{name}」テンプレートを削除しますか？','Reuse this exercise list next {name}':'次回の{name}でこの種目リストを再利用',
+    'Delete the "{name}" template?':'「{name}」テンプレートを削除しますか？',
+    'A template called "{name}" already exists. Replace it?':'「{name}」というテンプレートは既にあります。置き換えますか？',
+    'Renamed to "{name}" 📋':'「{name}」に名前を変更しました 📋','Reuse this exercise list next {name}':'次回の{name}でこの種目リストを再利用',
     'This backup has {n} workout(s) ({range}).\nIt will REPLACE your current {cur} workout(s).\n\nContinue?':'このバックアップには{n}件のワークアウトが含まれます（{range}）。\n現在の{cur}件のワークアウトを上書きします。\n\n続行しますか？',
     'Found a backup in Google Drive with {n} workout(s) (this device has {local}).\n\nRestore the Drive copy?':'Googleドライブに{n}件のワークアウトのバックアップが見つかりました（この端末には{local}件）。\n\nドライブのコピーを復元しますか？'
   }
@@ -1829,10 +1837,14 @@ function allExerciseNames() {
 // phone silently. This surfaces it: a home-screen badge, a local notification
 // and a "what's new" banner, so an update is never invisible.
 // ═══════════════════════════════════════════════════════
-const APP_VERSION = 81;
+const APP_VERSION = 82;
 
 // Release notes, newest first. Keys are version numbers.
 const WHATS_NEW = {
+  82: [
+    'Delete a template straight from the list — the button sits next to Edit',
+    'Templates can be renamed freely, so one session type can hold Push A and Push B'
+  ],
   81: [
     'A goal you reach now moves into “View past records” by itself — no more logging it by hand',
     'Deleting a past record only hides it; the record itself is kept and can be restored'
@@ -3869,12 +3881,16 @@ function saveCurrentAsTemplate() {
   showToast(tf('Saved as your {name} template 📋', {name:tx(name)}));
   renderLog();
 }
-function deleteTemplate(name) {
+// from: 'prs' (the Exercises tab list), 'modal' (the template editor),
+// anything else = the Settings list.
+function deleteTemplate(name, from) {
   if (!confirm(tf('Delete the "{name}" template?', {name:t(name)}))) return;
   const tpls = DB.templates;
   delete tpls[name];
   DB.saveTemplates(tpls);
-  openDataModal();
+  if (from === 'modal') { closeModal(); renderPRs(); }
+  else if (from === 'prs') renderPRs();
+  else openDataModal();
   showToast(t('Template deleted'));
 }
 
@@ -6009,6 +6025,13 @@ function templatesSectionHTML() {
         <div style="font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${tpls[k].map(exDisp).join(' · ')}</div>
       </div>
       <button class="btn btn-secondary btn-sm" style="flex-shrink:0;padding:6px 10px;font-size:11px" onclick="openTemplateBuilder('${esc(k)}')">Edit</button>
+      <button class="del-btn" style="flex-shrink:0;width:34px;height:34px" aria-label="Delete template"
+        onclick="event.stopPropagation();deleteTemplate('${esc(k)}','prs')">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
+          <path d="M10 11v6"/><path d="M14 11v6"/>
+        </svg>
+      </button>
     </div>`;
   }
   return `
@@ -6022,10 +6045,11 @@ function templatesSectionHTML() {
 }
 
 // Template builder modal — pick a session type, search & tick exercises
-let tplBuilder = { name:'', picked:[], query:'' };
+let tplBuilder = { name:'', orig:'', picked:[], query:'' };
 function openTemplateBuilder(name) {
   tplBuilder = {
     name: name || '',
+    orig: (name && DB.templates[name]) ? name : '',   // the key to replace when renamed
     picked: name && DB.templates[name] ? [...DB.templates[name]] : [],
     query: ''
   };
@@ -6033,7 +6057,7 @@ function openTemplateBuilder(name) {
   setTimeout(()=>document.getElementById('tpl-search')?.focus(), 150);
 }
 function renderTemplateBuilder() {
-  const isEdit  = !!(tplBuilder.name && DB.templates[tplBuilder.name]);
+  const isEdit  = !!tplBuilder.orig;
   const presets = SESSION_PRESETS.map(p =>
     `<option value="${p}" ${tplBuilder.name===p?'selected':''}>${p}</option>`).join('');
   const showCustom = tplBuilder.name && !SESSION_PRESETS.includes(tplBuilder.name);
@@ -6041,10 +6065,15 @@ function renderTemplateBuilder() {
   document.getElementById('modal-content').innerHTML = `
   <div style="min-height:80vh;display:flex;flex-direction:column">
   <div style="font-size:18px;font-weight:700;margin-bottom:4px">${isEdit?'Edit':'Create'} Template</div>
-  <div style="font-size:12px;color:var(--muted);margin-bottom:14px">Pick a session type, then tick the exercises in your menu.</div>
+  <div style="font-size:12px;color:var(--muted);margin-bottom:14px">Name your template, then tick the exercises in your menu.</div>
 
   <div class="input-group">
-    <div class="label">Session Type</div>
+    <div class="label">Template name</div>
+    <input type="text" id="tpl-name" value="${escHtml(tplBuilder.name)}" placeholder="e.g. Push A"
+      oninput="tplBuilder.name=this.value" autocapitalize="words" autocorrect="off">
+  </div>
+  <div class="input-group">
+    <div class="label">Fill from a session type</div>
     <div class="select-wrap">
       <select onchange="tplBuilder.name=this.value==='__custom__'?'':this.value;renderTemplateBuilder()">
         <option value="" ${!tplBuilder.name?'selected':''}>Select session type…</option>
@@ -6053,8 +6082,6 @@ function renderTemplateBuilder() {
       </select>
     </div>
   </div>
-  ${showCustom?`<input type="text" placeholder="Type session name…" value="${tplBuilder.name}"
-    oninput="tplBuilder.name=this.value" style="margin:-4px 0 12px" autocapitalize="words">`:''}
 
   <div class="label" style="margin-bottom:6px">Exercises (<span id="tpl-count">${tplBuilder.picked.length}</span> selected)</div>
   <div id="tpl-picked" style="margin-bottom:8px">
@@ -6102,24 +6129,23 @@ function tplToggle(n) {
 }
 function saveTemplateFromBuilder() {
   const name = (tplBuilder.name || '').trim();
-  if (!name) { showToast(t('Pick a session type'), false); return; }
+  const orig = tplBuilder.orig;
+  if (!name) { showToast(t('Name this template'), false); return; }
   if (!tplBuilder.picked.length) { showToast(t('Select at least one exercise'), false); return; }
   const tpls = DB.templates;                 // NOTE: never name this `t` — it shadows the translator
+  // A rename must not silently swallow a different template of the same name.
+  if (name !== orig && tpls[name] &&
+      !confirm(tf('A template called "{name}" already exists. Replace it?', {name:t(name)}))) return;
   tpls[name] = [...tplBuilder.picked];
+  if (orig && orig !== name) delete tpls[orig];
   DB.saveTemplates(tpls);
   closeModal();
-  showToast(tf('{name} template saved 📋', {name:t(name)}));
+  showToast(orig && orig !== name
+    ? tf('Renamed to "{name}" 📋', {name:t(name)})
+    : tf('{name} template saved 📋', {name:t(name)}));
   if (currentView === 'prs') renderPRs(); else showView('prs');
 }
-function deleteTemplateFromBuilder(name) {
-  if (!confirm(tf('Delete the "{name}" template?', {name:t(name)}))) return;
-  const tpls = DB.templates;
-  delete tpls[name];
-  DB.saveTemplates(tpls);
-  closeModal();
-  renderPRs();
-  showToast(t('Template deleted'));
-}
+function deleteTemplateFromBuilder(name) { deleteTemplate(name, 'modal'); }
 
 // ═══════════════════════════════════════════════════════
 // EXERCISE OPTIONS — rename / re-tag / correct PR / defaults / delete
