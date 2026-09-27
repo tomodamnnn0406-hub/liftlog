@@ -781,6 +781,20 @@ const SESSION_PRESETS = [
 // `name` is the joined string every downstream feature already understands
 // (history titles, calendar colours, templates, PR grouping).
 const SESSION_SEP = ' + ';
+// A session is built from saved templates (v84). Older records used the built-in
+// presets, so those still count as known parts — they are just no longer offered.
+function knownSessionParts() {
+  try { return Object.keys(DB.templates); } catch (e) { return []; }
+}
+function isKnownSessionPart(p) {
+  return knownSessionParts().includes(p) || SESSION_PRESETS.includes(p);
+}
+function sessionPartRank(p) {
+  const i = knownSessionParts().indexOf(p);
+  if (i >= 0) return i;
+  const j = SESSION_PRESETS.indexOf(p);
+  return 1000 + (j < 0 ? 999 : j);
+}
 function splitSession(name) {
   return String(name || '').split(/\s+\+\s+/).map(x => x.trim()).filter(Boolean);
 }
@@ -794,7 +808,7 @@ function parseSession(l) {
   const parts = splitSession(name);
   // Only treat it as multi-part when every part is a known preset — a custom
   // name that happens to contain " + " must survive verbatim.
-  if (parts.length && parts.every(p => SESSION_PRESETS.includes(p))) return { types: parts, custom: '' };
+  if (parts.length && parts.every(isKnownSessionPart)) return { types: parts, custom: '' };
   return { types: [], custom: name };
 }
 function sessionName(types, custom) {
@@ -803,7 +817,7 @@ function sessionName(types, custom) {
 // Write a session back onto a log, keeping preset order stable so the same
 // combination always produces the same name (and therefore the same colour).
 function applySession(l, s) {
-  l.types  = (s.types || []).slice().sort((a, b) => SESSION_PRESETS.indexOf(a) - SESSION_PRESETS.indexOf(b));
+  l.types  = (s.types || []).slice().sort((a, b) => sessionPartRank(a) - sessionPartRank(b));
   l.custom = String(s.custom || '').trim();
   l.name   = sessionName(l.types, l.custom);
   return l.name;
@@ -1190,7 +1204,11 @@ const I18N = {
     'Est':'推定','1M':'1ヶ月','3M':'3ヶ月','6M':'6ヶ月','All':'全期間','Period':'期間',
     'Create Template':'テンプレートを作成','Save Template':'テンプレートを保存',
     'Edit Template':'テンプレートを編集','Update Template':'テンプレートを更新',
-    'Template name':'テンプレート名','Sets':'セット','How to do it… (tempo, drop set, superset)':'やり方のメモ…（テンポ、ドロップセット、スーパーセットなど）','e.g. Push A':'例：プッシュA','Fill from a session type':'セッションの種類から入力',
+    'Template name':'テンプレート名','Sets':'セット','Template':'テンプレート','pick one or more':'1つ以上選択',
+    'Fill from a preset name':'プリセット名から入力',
+    'Tap to choose a template':'タップしてテンプレートを選択','Recent exercises':'最近使った種目',
+    'No sets planned':'セットの予定なし','No sets planned — the exercise loads with one empty set.':'セットの予定なし — 読み込み時は空のセットが1つ入ります。',
+    'No templates yet — create one in the Exercises tab, or name this session yourself.':'テンプレートがありません — 種目タブで作成するか、カスタムで名前を付けてください。','How to do it… (tempo, drop set, superset)':'やり方のメモ…（テンポ、ドロップセット、スーパーセットなど）','e.g. Push A':'例：プッシュA','Fill from a session type':'セッションの種類から入力',
     'Name your template, then tick the exercises in your menu.':'テンプレート名を付けて、メニューの種目にチェックを入れましょう。',
     'Name this template':'テンプレート名を入力してください',
     'Weight (kg)':'重量 (kg)','Weight (lbs)':'重量 (lbs)',
@@ -1360,6 +1378,9 @@ const I18N = {
     'Another note… (a specific set, form cue, etc.)':'別のメモ…（特定のセット、フォームの気づきなど）',
     '+ Add note':'+ メモを追加','Delete this note?':'このメモを削除しますか？','Delete note':'メモを削除',
     'Exercise notes can now be multi-line, and you can add as many as you like':'種目メモが複数行に対応し、いくつでも追加できるように',
+    'Template exercises are edited exactly like the log — a set table you can add to, row by row':'テンプレートの種目編集が記録画面と同じレイアウトに — セットを1行ずつ追加できます',
+    'The session picker now lists your templates; pick one or several for the day':'セッション選択がテンプレート一覧に — その日のテンプレートを1つ以上選べます',
+    'Exercise search shows recent exercises first, then whatever you type':'種目検索は最近使った種目を先に表示し、入力すると絞り込みます',
     'Templates now hold a plan per exercise — how many sets, at what weight × reps':'テンプレートに種目ごとの予定を保存できます（セット数・目標重量×レップ）',
     'Each exercise in a template takes as many notes as you need, for drop sets, supersets and tempo':'各種目にメモをいくつでも追加できます（ドロップセット、スーパーセット、テンポなど）',
     'Loading a template lays out the planned sets with the numbers shown as light placeholders':'テンプレートを読み込むと予定セット数が並び、数値は薄い例示として入ります',
@@ -1848,10 +1869,15 @@ function allExerciseNames() {
 // phone silently. This surfaces it: a home-screen badge, a local notification
 // and a "what's new" banner, so an update is never invisible.
 // ═══════════════════════════════════════════════════════
-const APP_VERSION = 83;
+const APP_VERSION = 84;
 
 // Release notes, newest first. Keys are version numbers.
 const WHATS_NEW = {
+  84: [
+    'Template exercises are edited exactly like the log — a set table you can add to, row by row',
+    'The session picker now lists your templates; pick one or several for the day',
+    'Exercise search shows recent exercises first, then whatever you type'
+  ],
   83: [
     'Templates now hold a plan per exercise — how many sets, at what weight × reps',
     'Each exercise in a template takes as many notes as you need, for drop sets, supersets and tempo',
@@ -3609,7 +3635,7 @@ function logSetupHTML() {
   if (collapsed) {
     const label    = currentLog.name ? tx(currentLog.name) : '';
     const mainLine = label || fmtDate(currentLog.date);
-    const subLine  = label ? fmtDate(currentLog.date) : t('Tap to choose session type');
+    const subLine  = label ? fmtDate(currentLog.date) : t('Tap to choose a template');
     return `
     <div class="card" style="display:flex;align-items:center;gap:12px;padding:10px 14px;margin-bottom:14px;cursor:pointer" onclick="toggleLogSetup()">
       <div style="flex:1;min-width:0">
@@ -3632,7 +3658,7 @@ function logSetupHTML() {
       <input type="date" id="log-date" value="${currentLog.date}" onchange="currentLog.date=this.value;saveDraft()">
     </div>
     <div class="input-group" style="margin-bottom:0">
-      <div class="label">Session Type <span style="color:var(--muted);font-weight:600">(${t('pick as many as you trained')})</span></div>
+      <div class="label">Template <span style="color:var(--muted);font-weight:600">(${t('pick one or more')})</span></div>
       <div class="sess-chips" id="log-sess-chips" style="margin-bottom:${showCustom?'8px':'0'}">${chipsHTML}</div>
       <input type="text" id="log-name-custom"
         placeholder="Type session name…"
@@ -3681,10 +3707,17 @@ let editCustomOpen = false;
 
 function sessionChipsHTML(sess, showCustom, isEdit) {
   const fn = isEdit ? 'true' : 'false';
-  const chips = SESSION_PRESETS.map(p =>
+  // Saved templates are the session list; a part from an older record stays
+  // selectable so editing that workout still works.
+  const names = knownSessionParts();
+  const legacy = sess.types.filter(x => !names.includes(x));
+  const all = [...names, ...legacy];
+  const chips = all.map(p =>
     `<button type="button" class="sess-chip${sess.types.includes(p) ? ' on' : ''}"
-       onclick="toggleSessionType(${JSON.stringify(p).replace(/"/g, '&quot;')},${fn})">${p}</button>`).join('');
-  return chips + `<button type="button" class="sess-chip${showCustom ? ' on' : ''}"
+       onclick="toggleSessionType(${JSON.stringify(p).replace(/"/g, '&quot;')},${fn})">${t(p)}</button>`).join('');
+  const empty = all.length ? '' :
+    `<div style="font-size:12px;color:var(--muted);padding:2px 2px 8px;width:100%">No templates yet — create one in the Exercises tab, or name this session yourself.</div>`;
+  return empty + chips + `<button type="button" class="sess-chip${showCustom ? ' on' : ''}"
        onclick="toggleSessionCustom(${fn})">✏️ Custom</button>`;
 }
 
@@ -3863,16 +3896,16 @@ function exerciseWithPlaceholders(name) {
 function exerciseFromTemplateItem(x) {
   const it = tplItem(x);
   const ex = exerciseWithPlaceholders(it.name);
-  if (exKind(it.name) === 'strength' && (it.weightKg || it.reps)) {
-    const w = it.weightKg ? Math.round(dispW(+it.weightKg, 'kg') * 10) / 10 : '';
-    ex.sets = ex.sets.map(st => ({ ...st, phW: w || st.phW || '', phR: it.reps || st.phR || '' }));
-  }
-  const n = Math.max(0, Math.min(30, parseInt(it.sets, 10) || 0));
-  if (n) {
-    const proto = ex.sets[0] || blankSetFor(it.name);
-    const rows = [];
-    for (let i = 0; i < n; i++) rows.push({ ...(ex.sets[i] || proto) });
-    ex.sets = rows;
+  const kind = exKind(it.name);
+  if (it.rows.length) {
+    const base = ex.sets[0] || {};             // last-time values fill the gaps
+    ex.sets = it.rows.map(r => {
+      if (kind === 'cardio') return { speed:'', mins:'', km:'',
+        phSpeed: r.speed || base.phSpeed || '', phMins: r.mins || base.phMins || '', phKm: r.km || base.phKm || '' };
+      if (kind === 'stretch') return { secs:'', phSecs: r.secs || base.phSecs || '' };
+      const w = r.weightKg ? Math.round(dispW(+r.weightKg, 'kg') * 10) / 10 : '';
+      return { weight:'', reps:'', phW: w || base.phW || '', phR: r.reps || base.phR || '' };
+    });
   }
   const notes = (it.notes || []).map(x => String(x)).filter(x => x.trim());
   if (notes.length) { ex.noteList = notes.slice(); ex.note = notes.join('\n'); }
@@ -3918,15 +3951,13 @@ function saveCurrentAsTemplate() {
   const tpls = DB.templates;                 // NOTE: never name this `t` — it shadows the translator
   const prev = (tpls[name] || []).map(tplItem);
   tpls[name] = currentLog.exercises.map(ex => {
-    const item = { name: ex.name };
+    const item = { name: ex.name, rows: [] };
     const filled = (ex.sets || []).filter(st => st.weight || st.reps || st.km || st.mins || st.speed || st.secs);
-    if (filled.length) item.sets = filled.length;
-    if (exKind(ex.name) === 'strength') {
-      // Heaviest logged set becomes the plan for next time.
-      let best = null;
-      for (const st of filled) if (+st.weight && (!best || +st.weight > +best.weight)) best = st;
-      if (best) { item.weightKg = toKg(+best.weight, DB.unit); item.reps = +best.reps || ''; }
-    }
+    const kind = exKind(ex.name);
+    // Every logged set becomes a planned row for next time.
+    item.rows = filled.map(st => kind === 'cardio' ? { speed: st.speed || '', mins: st.mins || '', km: st.km || '' }
+      : kind === 'stretch' ? { secs: st.secs || '' }
+      : { weightKg: st.weight ? toKg(+st.weight, DB.unit) : '', reps: st.reps || '' });
     // Keep whatever plan note the template already had — today's notes are not it.
     const old = prev.find(o => o.name === ex.name);
     if (old && old.notes && old.notes.length) item.notes = old.notes.slice();
@@ -4938,21 +4969,16 @@ function toggleFailed(ei, si) {
 }
 
 function openAddExModal() {
-  const active = getActiveLog();
-  const used   = new Set(active.exercises.map(e=>e.name));
-  const avail  = exSortDisplay(allExerciseNames().filter(e=>!used.has(e)));
   document.getElementById('modal-content').innerHTML = `
   <div style="font-size:18px;font-weight:700;margin-bottom:14px">Add Exercise</div>
   <div class="input-wrapper" style="margin-bottom:8px;position:relative">
     <input type="text" id="ex-search" placeholder="Search or type a new exercise…"
-      oninput="filterExDropdown(this.value)" autocomplete="off"
+      oninput="renderExSearchResults(this.value)" autocomplete="off"
       autocapitalize="words" autocorrect="off" spellcheck="false"
       onkeydown="if(event.key==='Enter'){const v=this.value.trim();if(v)pickExerciseName(v)}">
-    <div id="ex-dropdown" class="ac-dropdown" style="display:none"></div>
   </div>
   <button class="btn btn-primary btn-full" style="margin-bottom:14px" onclick="pickExerciseName(document.getElementById('ex-search').value.trim())">Next: Pick Muscle →</button>
-  <div class="label">Common Exercises</div>
-  <div>${avail.map(e=>`<span class="ex-chip" onclick="pickExerciseName('${esc(e)}')">${exDisp(e)}</span>`).join('')}</div>`;
+  <div id="ex-results">${exSearchResultsHTML('')}</div>`;
   openModal();
   setTimeout(()=>document.getElementById('ex-search')?.focus(), 100);
 }
@@ -5012,6 +5038,29 @@ function pickExerciseName(name) {
 }
 function confirmAddExercise(name) {
   addExercise(name, [...pickedMuscles]);
+}
+
+// Search results for the log's Add Exercise sheet: recents until you type,
+// then whatever matches — plus the option to create the name you typed.
+function exSearchResultsHTML(q) {
+  q = String(q || '').trim();
+  const active = getActiveLog();
+  const used   = new Set((active && active.exercises || []).map(e => e.name));
+  const all    = allExerciseNames();
+  const list   = q ? exSortDisplay(all.filter(e => !used.has(e) && exMatch(e, q)))
+                   : recentExerciseNames(8, [...used]);
+  const isNew  = q && !resolveExerciseName(q, all);
+  const chips  = list.map(e => `<span class="ex-chip" onclick="pickExerciseName('${esc(e)}')">${exDisp(e)}</span>`).join('');
+  if (!q) {
+    return (list.length ? `<div class="label" style="margin-bottom:6px">Recent exercises</div>` + chips : '');
+  }
+  return `${isNew ? `<span class="ex-chip" style="border-color:var(--accent);color:var(--accent)" onclick="pickExerciseName('${esc(q)}')">+ Add "${escHtml(q)}"</span>` : ''}
+    ${chips}
+    ${(!chips && !isNew) ? `<div style="font-size:12px;color:var(--muted);padding:8px 2px">No matches</div>` : ''}`;
+}
+function renderExSearchResults(q) {
+  const el = document.getElementById('ex-results');
+  if (el) { el.innerHTML = exSearchResultsHTML(q); if (typeof applyLangSafe === 'function') applyLangSafe(); }
 }
 
 function filterExDropdown(q) {
@@ -5495,7 +5544,7 @@ function renderWorkoutEditModal() {
       <input type="date" id="edit-log-date" value="${w.date}" onchange="editingWorkout.date=this.value">
     </div>
     <div class="input-group" style="margin-bottom:0">
-      <div class="label">Session Type <span style="color:var(--muted);font-weight:600">(${t('pick as many as you trained')})</span></div>
+      <div class="label">Template <span style="color:var(--muted);font-weight:600">(${t('pick one or more')})</span></div>
       <div class="sess-chips" id="edit-sess-chips">${chipsHTML}</div>
       <input type="text" id="edit-log-name-custom"
         placeholder="Type session name…"
@@ -6103,22 +6152,44 @@ function templatesSectionHTML() {
 // A template entry is either a bare exercise name (older data) or a planned
 // item: { name, sets, weightKg, reps, notes[] }. Everything that reads a
 // template goes through these two helpers, so both shapes keep working.
+// A blank planned row, shaped by the exercise's kind (same fields the log uses).
+function tplBlankRow(name, src) {
+  const k = exKind(name);
+  if (k === 'cardio')  return { speed: (src && src.speed) || '', mins: (src && src.mins) || '', km: (src && src.km) || '' };
+  if (k === 'stretch') return { secs: (src && src.secs) || '' };
+  return { weightKg: (src && src.weightKg) || '', reps: (src && src.reps) || '' };
+}
 function tplItem(x) {
-  if (typeof x === 'string') return { name: x };
-  if (x && typeof x === 'object' && x.name) return x;
-  return { name: String(x || '') };
+  if (typeof x === 'string') return { name: x, rows: [], notes: [] };
+  const src  = (x && typeof x === 'object') ? x : {};
+  const name = String(src.name || '');
+  const it = { name, rows: [], notes: Array.isArray(src.notes) ? src.notes.slice() : [] };
+  if (Array.isArray(src.rows)) it.rows = src.rows.map(r => ({ ...r }));
+  else if (src.sets) {                      // v83 shape: a count plus one target
+    const n = Math.max(1, Math.min(30, parseInt(src.sets, 10) || 1));
+    for (let i = 0; i < n; i++) it.rows.push(tplBlankRow(name, src));
+  } else if (src.weightKg || src.reps) it.rows.push(tplBlankRow(name, src));
+  return it;
 }
 function tplItems(key) { return (DB.templates[key] || []).map(tplItem); }
 function tplNames(list) { return (list || []).map(x => tplItem(x).name); }
 // "Bench Press 4×60kg" for the one-line summaries.
 function tplItemLabel(x, unit) {
   const it = tplItem(x), u = unit || DB.unit;
-  const bits = [];
-  if (it.sets) bits.push(it.sets + '×');
-  if (it.weightKg) bits.push(Math.round(dispW(+it.weightKg, 'kg') * 10) / 10 + u);
-  else if (it.reps) bits.push(it.reps + 'r');
-  else if (bits.length) bits[0] = it.sets + (it.reps ? '×' + it.reps : '');
-  return exDisp(it.name) + (bits.length ? ' ' + bits.join('') : '');
+  const plan = tplPlanText(it, u);
+  return exDisp(it.name) + (plan ? ' ' + plan : '');
+}
+// "4×60kg" / "3 sets" / "3 intervals" — the planned shape in one short string.
+function tplPlanText(it, unit) {
+  const u = unit || DB.unit, n = it.rows.length;
+  if (!n) return '';
+  const k = exKind(it.name);
+  if (k === 'cardio')  return n + (n === 1 ? ' interval' : ' intervals');
+  if (k === 'stretch') return n + (n === 1 ? ' hold' : ' holds');
+  let top = 0, reps = '';
+  for (const r of it.rows) if (+r.weightKg > top) { top = +r.weightKg; reps = r.reps || ''; }
+  if (!top) return n + (n === 1 ? ' set' : ' sets');
+  return n + '×' + (Math.round(dispW(top, 'kg') * 10) / 10) + u + (reps ? '×' + reps : '');
 }
 
 // Template builder modal — pick a session type, search & tick exercises
@@ -6127,11 +6198,11 @@ function openTemplateBuilder(name) {
   tplBuilder = {
     name: name || '',
     orig: (name && DB.templates[name]) ? name : '',   // the key to replace when renamed
-    picked: name && DB.templates[name] ? DB.templates[name].map(x => ({ ...tplItem(x) })) : [],
+    picked: name && DB.templates[name] ? DB.templates[name].map(tplItem) : [],
     query: ''
   };
+  tplOpen = new Set(name ? [0] : []);
   renderTemplateBuilder();
-  setTimeout(()=>document.getElementById('tpl-search')?.focus(), 150);
 }
 function renderTemplateBuilder() {
   const isEdit  = !!tplBuilder.orig;
@@ -6150,7 +6221,7 @@ function renderTemplateBuilder() {
       oninput="tplBuilder.name=this.value" autocapitalize="words" autocorrect="off">
   </div>
   <div class="input-group">
-    <div class="label">Fill from a session type</div>
+    <div class="label">Fill from a preset name</div>
     <div class="select-wrap">
       <select onchange="tplBuilder.name=this.value==='__custom__'?'':this.value;renderTemplateBuilder()">
         <option value="" ${!tplBuilder.name?'selected':''}>Select session type…</option>
@@ -6179,40 +6250,134 @@ function renderTemplateBuilder() {
 }
 // Each picked exercise gets its plan: how many sets, at what weight × reps,
 // plus as many free notes as the technique needs (drop sets, supersets…).
+let tplOpen = new Set([0]);        // which template exercises are expanded
 function tplPickedHTML() {
   const unit = DB.unit;
-  return tplBuilder.picked.map((it, i) => {
-    const strength = exKind(it.name) === 'strength';
-    const w = it.weightKg ? Math.round(dispW(+it.weightKg, 'kg') * 10) / 10 : '';
-    return `
-    <div class="tpl-item">
-      <div class="tpl-item-head">
-        <div style="flex:1;min-width:0;font-size:14px;font-weight:700">${exDisp(it.name)}</div>
-        <button class="del-btn" style="width:30px;height:30px;flex-shrink:0" aria-label="Remove" onclick="tplToggle('${esc(it.name)}')">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+  return tplBuilder.picked.map((it, i) => tplItemCardHTML(it, i, unit)).join('');
+}
+// Mirrors the log's exercise card: a header you can fold, a table of sets, and notes.
+function tplItemCardHTML(it, i, unit) {
+  unit = unit || DB.unit;
+  const kind   = exKind(it.name);
+  const muscle = getMuscleForExercise(it.name);
+  const isOpen = tplOpen.has(i);
+  const bits   = [];
+  if (muscle && kind === 'strength') bits.push(muscle);
+  const plan = tplPlanText(it, unit);
+  bits.push(plan || t('No sets planned'));
+  const nNotes = (it.notes || []).filter(x => String(x).trim()).length;
+  if (nNotes) bits.push('💬' + nNotes);
+  return `
+  <div class="card-sm ex-acc${isOpen ? ' open' : ''}" id="tplitem-${i}" style="margin-bottom:10px;padding:0;overflow:hidden">
+    <div class="ex-acc-header" onclick="tplToggleOpen(${i})">
+      <div style="display:flex;align-items:center;gap:6px;min-width:0">
+        <span class="ex-acc-chevron">▾</span>
+        <div style="min-width:0">
+          <div style="font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${exDisp(it.name)}</div>
+          <div id="tplsum-${i}" style="font-size:11px;color:var(--accent);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${bits.join(' · ')}</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:3px;flex-shrink:0" onclick="event.stopPropagation()">
+        <button class="del-btn" aria-label="Remove" onclick="tplToggle('${esc(it.name)}')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/>
+          </svg>
         </button>
       </div>
-      <div class="tpl-fields ${strength ? 'strength' : 'simple'}">
-        <div>
-          <div class="label">Sets</div>
-          <input type="number" inputmode="numeric" min="1" max="30" step="1" placeholder="—"
-            value="${it.sets || ''}" oninput="tplSetField(${i},'sets',this.value)">
-        </div>
-        ${strength ? `
-        <div>
-          <div class="label">Weight (${unit})</div>
-          <input type="number" inputmode="decimal" min="0" step="0.5" placeholder="—"
-            value="${w}" oninput="tplSetField(${i},'weight',this.value)">
-        </div>
-        <div>
-          <div class="label">Reps</div>
-          <input type="number" inputmode="numeric" min="1" max="100" step="1" placeholder="—"
-            value="${it.reps || ''}" oninput="tplSetField(${i},'reps',this.value)">
-        </div>` : ''}
+    </div>
+    <div class="ex-acc-body">
+      ${tplRowsHTML(it, i, unit)}
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button class="btn btn-secondary btn-sm" style="flex:1" onclick="tplAddRow(${i})">${
+          kind === 'stretch' ? '+ Add Hold' : kind === 'cardio' ? '+ Add Interval' : '+ Add Set'}</button>
       </div>
       ${tplNotesHTML(i)}
-    </div>`;
-  }).join('');
+    </div>
+  </div>`;
+}
+function tplRowsHTML(it, i, unit) {
+  const kind = exKind(it.name);
+  const del = ri => `<button class="del-btn" onclick="tplRemoveRow(${i},${ri})" aria-label="Remove">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>`;
+  if (!it.rows.length) {
+    return `<div style="font-size:12px;color:var(--muted);padding:2px 2px 4px">${t('No sets planned — the exercise loads with one empty set.')}</div>`;
+  }
+  if (kind === 'cardio') {
+    return `<div class="cardio-header"><span>#</span><span>Speed (km/h)</span><span>Time (min)</span><span>Distance (km)</span><span></span></div>` +
+      it.rows.map((r, ri) => `
+      <div class="cardio-row">
+        <div class="set-num">${ri+1}</div>
+        <input type="number" inputmode="decimal" min="0" step="0.1" placeholder="—" value="${r.speed ?? ''}" oninput="tplSetRow(${i},${ri},'speed',this.value)">
+        <input type="number" inputmode="decimal" min="0" step="1" placeholder="—" value="${r.mins ?? ''}" oninput="tplSetRow(${i},${ri},'mins',this.value)">
+        <input type="number" inputmode="decimal" min="0" step="0.1" placeholder="—" value="${r.km ?? ''}" oninput="tplSetRow(${i},${ri},'km',this.value)">
+        ${del(ri)}
+      </div>`).join('');
+  }
+  if (kind === 'stretch') {
+    return `<div class="stretch-header"><span>#</span><span>Time (sec)</span><span></span><span></span></div>` +
+      it.rows.map((r, ri) => `
+      <div class="stretch-row">
+        <div class="set-num">${ri+1}</div>
+        <input type="number" inputmode="numeric" min="0" step="5" placeholder="—" value="${r.secs ?? ''}" oninput="tplSetRow(${i},${ri},'secs',this.value)">
+        <div></div>
+        ${del(ri)}
+      </div>`).join('');
+  }
+  return `<div class="sets-header"><span>Set</span><span>Wt (${unit})</span><span>Reps</span><span></span><span></span></div>` +
+    it.rows.map((r, ri) => {
+      const w = r.weightKg ? Math.round(dispW(+r.weightKg, 'kg') * 10) / 10 : '';
+      return `
+      <div class="set-row">
+        <div class="set-num">${ri+1}</div>
+        <input type="number" inputmode="decimal" min="0" step="0.5" placeholder="—" value="${w}" oninput="tplSetRow(${i},${ri},'weightKg',this.value)">
+        <input type="number" inputmode="numeric" min="0" step="1" placeholder="—" value="${r.reps ?? ''}" oninput="tplSetRow(${i},${ri},'reps',this.value)">
+        <div></div>
+        ${del(ri)}
+      </div>`;
+    }).join('');
+}
+function tplToggleOpen(i) {
+  if (tplOpen.has(i)) tplOpen.delete(i); else tplOpen.add(i);
+  const card = document.getElementById('tplitem-' + i);
+  if (card) card.classList.toggle('open', tplOpen.has(i));
+  growNotes(card);
+}
+function tplRefreshItem(i) {
+  const card = document.getElementById('tplitem-' + i); if (!card) return;
+  card.outerHTML = tplItemCardHTML(tplBuilder.picked[i], i, DB.unit);
+  const nc = document.getElementById('tplitem-' + i);
+  if (typeof applyLangSafe === 'function') applyLangSafe();
+  growNotes(nc);
+}
+function tplRefreshSummary(i) {
+  const el = document.getElementById('tplsum-' + i);
+  const it = tplBuilder.picked[i];
+  if (!el || !it) return;
+  const kind = exKind(it.name), muscle = getMuscleForExercise(it.name), bits = [];
+  if (muscle && kind === 'strength') bits.push(muscle);
+  bits.push(tplPlanText(it, DB.unit) || t('No sets planned'));
+  const nNotes = (it.notes || []).filter(x => String(x).trim()).length;
+  if (nNotes) bits.push('💬' + nNotes);
+  el.textContent = bits.join(' · ');
+}
+function tplSetRow(i, ri, field, val) {
+  const it = tplBuilder.picked[i]; if (!it || !it.rows[ri]) return;
+  if (field === 'weightKg') it.rows[ri].weightKg = val === '' ? '' : toKg(+val, DB.unit);
+  else it.rows[ri][field] = val === '' ? '' : +val;
+  tplRefreshSummary(i);
+}
+function tplAddRow(i) {
+  const it = tplBuilder.picked[i]; if (!it) return;
+  const last = it.rows[it.rows.length - 1];
+  it.rows.push(tplBlankRow(it.name, last));     // a new set repeats the last plan
+  tplOpen.add(i);
+  tplRefreshItem(i);
+}
+function tplRemoveRow(i, ri) {
+  const it = tplBuilder.picked[i]; if (!it) return;
+  it.rows.splice(ri, 1);
+  tplRefreshItem(i);
 }
 function tplNotesHTML(i) {
   const it = tplBuilder.picked[i]; if (!it) return '';
@@ -6228,17 +6393,12 @@ function tplNotesHTML(i) {
     <button class="ex-note-add" onclick="tplAddNote(${i})">+ Add note</button>
   </div>`;
 }
-function tplSetField(i, field, val) {
-  const it = tplBuilder.picked[i]; if (!it) return;
-  if (field === 'weight') it.weightKg = val === '' ? '' : toKg(+val, DB.unit);
-  else if (field === 'sets') it.sets = val === '' ? '' : Math.max(1, Math.min(30, parseInt(val, 10) || 1));
-  else it.reps = val === '' ? '' : Math.max(1, Math.min(100, parseInt(val, 10) || 1));
-}
 function tplSetNote(i, ni, val) {
   const it = tplBuilder.picked[i]; if (!it) return;
   if (!Array.isArray(it.notes)) it.notes = [];
   while (it.notes.length <= ni) it.notes.push('');
   it.notes[ni] = val;
+  tplRefreshSummary(i);
   // Reveal the × as soon as the only note has text, without a re-render.
   const box = document.getElementById(`tplnotes-${i}`);
   if (box && it.notes.length === 1 && val.trim()) {
@@ -6270,17 +6430,39 @@ function tplRemoveNote(i, ni) {
   it.notes.splice(ni, 1);
   tplRefreshNotes(i, null);
 }
+// Exercises used most recently, newest first — the short list shown before
+// anything is typed into a search box.
+function recentExerciseNames(limit, exclude) {
+  const skip = new Set(exclude || []);
+  const out = [];
+  const sorted = [...DB.workouts].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  for (const w of sorted) {
+    for (const ex of (w.exercises || [])) {
+      if (skip.has(ex.name) || out.includes(ex.name)) continue;
+      out.push(ex.name);
+      if (out.length >= (limit || 8)) return out;
+    }
+  }
+  for (const n of exSortDisplay(allExerciseNames())) {
+    if (skip.has(n) || out.includes(n)) continue;
+    out.push(n);
+    if (out.length >= (limit || 8)) break;
+  }
+  return out;
+}
 function tplListHTML() {
   const q = (tplBuilder.query || '').trim();
   const picked = tplBuilder.picked.map(x => x.name);
-  const avail = exSortDisplay(allExerciseNames().filter(n => !picked.includes(n))
-    .filter(n => exMatch(n, q)));
+  const pool = allExerciseNames().filter(n => !picked.includes(n));
+  const avail = q ? exSortDisplay(pool.filter(n => exMatch(n, q)))
+                  : recentExerciseNames(8, picked);
   if (!avail.length) {
     return q
       ? `<div style="font-size:12px;color:var(--muted);padding:8px 2px">No match for "${tplBuilder.query}". Add it from the Exercises tab first.</div>`
       : `<div style="font-size:12px;color:var(--muted);padding:8px 2px">All exercises selected</div>`;
   }
-  return avail.map(n=>`<span class="ex-chip" onclick="tplToggle('${esc(n)}')">${exDisp(n)}</span>`).join('');
+  return (q ? '' : `<div class="label" style="margin-bottom:6px">Recent exercises</div>`)
+    + avail.map(n=>`<span class="ex-chip" onclick="tplToggle('${esc(n)}')">${exDisp(n)}</span>`).join('');
 }
 function tplRefreshList() {
   const el = document.getElementById('tpl-list');
@@ -6288,7 +6470,8 @@ function tplRefreshList() {
 }
 function tplToggle(n) {
   const i = tplBuilder.picked.findIndex(x => x.name === n);
-  if (i >= 0) tplBuilder.picked.splice(i, 1); else tplBuilder.picked.push({ name: n });
+  if (i >= 0) { tplBuilder.picked.splice(i, 1); tplOpen.delete(i); }
+  else { tplBuilder.picked.push(tplItem({ name: n })); tplOpen = new Set([tplBuilder.picked.length - 1]); }
   // Update picked rows, count, and list in place (keeps search focus & keyboard)
   const picked = document.getElementById('tpl-picked');
   if (picked) picked.innerHTML = tplPickedHTML();
@@ -6309,9 +6492,12 @@ function saveTemplateFromBuilder() {
       !confirm(tf('A template called "{name}" already exists. Replace it?', {name:t(name)}))) return;
   tpls[name] = tplBuilder.picked.map(it => {
     const out = { name: it.name };
-    if (it.sets) out.sets = it.sets;
-    if (it.weightKg) out.weightKg = it.weightKg;
-    if (it.reps) out.reps = it.reps;
+    const rows = (it.rows || []).map(r => {
+      const o = {};
+      for (const k of ['weightKg','reps','speed','mins','km','secs']) if (r[k] !== '' && r[k] != null) o[k] = r[k];
+      return o;
+    });
+    if (rows.length) out.rows = rows;
     const notes = (it.notes || []).map(x => String(x).replace(/\s+$/, '')).filter(x => x.trim());
     if (notes.length) out.notes = notes;
     return out;
@@ -6322,7 +6508,9 @@ function saveTemplateFromBuilder() {
   showToast(orig && orig !== name
     ? tf('Renamed to "{name}" 📋', {name:t(name)})
     : tf('{name} template saved 📋', {name:t(name)}));
-  if (currentView === 'prs') renderPRs(); else showView('prs');
+  if (currentView === 'log') renderLog();
+  else if (currentView === 'prs') renderPRs();
+  else showView('prs');
 }
 function deleteTemplateFromBuilder(name) { deleteTemplate(name, 'modal'); }
 
