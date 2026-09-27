@@ -1378,6 +1378,7 @@ const I18N = {
     'Another note… (a specific set, form cue, etc.)':'別のメモ…（特定のセット、フォームの気づきなど）',
     '+ Add note':'+ メモを追加','Delete this note?':'このメモを削除しますか？','Delete note':'メモを削除',
     'Exercise notes can now be multi-line, and you can add as many as you like':'種目メモが複数行に対応し、いくつでも追加できるように',
+    'The template editor keeps its Save button pinned at the bottom — no scrolling to find it':'テンプレート編集の保存ボタンが下部に固定 — スクロールして探す必要がなくなりました',
     'Template exercises are edited exactly like the log — a set table you can add to, row by row':'テンプレートの種目編集が記録画面と同じレイアウトに — セットを1行ずつ追加できます',
     'The session picker now lists your templates; pick one or several for the day':'セッション選択がテンプレート一覧に — その日のテンプレートを1つ以上選べます',
     'Exercise search shows recent exercises first, then whatever you type':'種目検索は最近使った種目を先に表示し、入力すると絞り込みます',
@@ -1869,10 +1870,13 @@ function allExerciseNames() {
 // phone silently. This surfaces it: a home-screen badge, a local notification
 // and a "what's new" banner, so an update is never invisible.
 // ═══════════════════════════════════════════════════════
-const APP_VERSION = 84;
+const APP_VERSION = 85;
 
 // Release notes, newest first. Keys are version numbers.
 const WHATS_NEW = {
+  85: [
+    'The template editor keeps its Save button pinned at the bottom — no scrolling to find it'
+  ],
   84: [
     'Template exercises are edited exactly like the log — a set table you can add to, row by row',
     'The session picker now lists your templates; pick one or several for the day',
@@ -6239,11 +6243,19 @@ function renderTemplateBuilder() {
     autocomplete="off" autocapitalize="words" autocorrect="off" spellcheck="false"
     style="margin-bottom:10px">
 
-  <div id="tpl-list" style="flex:1;margin-bottom:14px">${tplListHTML()}</div>
+  <div id="tpl-list" style="flex:1;margin-bottom:10px">${tplListHTML()}</div>
 
   <div style="margin-top:auto">
-    <button class="btn btn-primary btn-full" onclick="saveTemplateFromBuilder()">${isEdit?'Update':'Save'} Template</button>
-    ${isEdit?`<button class="btn btn-danger btn-full" style="margin-top:8px" onclick="deleteTemplateFromBuilder('${esc(tplBuilder.name)}')">Delete Template</button>`:''}
+    ${isEdit?`<button class="btn btn-danger btn-full" onclick="deleteTemplateFromBuilder('${esc(tplBuilder.name)}')">Delete Template</button>`:''}
+  </div>
+  <div class="modal-action-bar">
+    <button class="btn btn-primary" style="flex:1" onclick="saveTemplateFromBuilder()">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+        <polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>
+      </svg>
+      ${isEdit?'Update':'Save'} Template
+    </button>
   </div>
   </div>`;
   openModal();

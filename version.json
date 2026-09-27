@@ -1,5 +1,5 @@
 {
-  "version": 84,
-  "name": "v84 — log-style template editing, template sessions",
+  "version": 85,
+  "name": "v85 — sticky save in the template editor",
   "pushEndpoint": "https://liftlog-push.tomodamnnn0406.workers.dev"
 }
